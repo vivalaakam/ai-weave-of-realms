@@ -22,16 +22,16 @@ Update status as work progresses.
 
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
-| 1.1 | `LuaEngine` struct: init mlua runtime, load/call script | — | TODO | |
-| 1.2 | Expose `SeededRng` to Lua as mlua UserData | — | TODO | |
-| 1.3 | Chunk generator: invoke Lua `generate_chunk` → `Chunk` | — | TODO | |
-| 1.4 | Chunk stitcher: blend/smooth chunk boundaries | — | TODO | |
-| 1.5 | Map assembler: generate N×M chunks → `GameMap` | — | TODO | |
-| 1.6 | `scripts/generators/default.lua` — basic terrain generation | — | TODO | |
-| 1.7 | Lua evaluator: invoke `evaluate(map)` → f64 score | — | TODO | |
-| 1.8 | Lua validator: invoke `validate(map)` → (bool, msg) | — | TODO | |
-| 1.9 | `scripts/rules/evaluate.lua` — basic map scoring rules | — | TODO | |
-| 1.10 | `scripts/rules/validate.lua` — basic map validity rules | — | TODO | |
+| 1.1 | `LuaEngine` struct: init mlua runtime, load/call script | — | DONE | Встроен в каждый компонент |
+| 1.2 | Expose `SeededRng` to Lua as mlua UserData | — | DONE | LuaRng(RefCell<SeededRng>) |
+| 1.3 | Chunk generator: invoke Lua `generate_chunk` → `Chunk` | — | DONE | ChunkGenerator |
+| 1.4 | Chunk stitcher: blend/smooth chunk boundaries | — | DONE | majority-vote по 4 соседям |
+| 1.5 | Map assembler: generate N×M chunks → `GameMap` | — | DONE | MapAssembler + generate_best_of |
+| 1.6 | `scripts/generators/default.lua` — basic terrain generation | — | DONE | |
+| 1.7 | Lua evaluator: invoke `evaluate(map)` → f64 score | — | DONE | MapEvaluator |
+| 1.8 | Lua validator: invoke `validate(map)` → (bool, msg) | — | DONE | MapValidator |
+| 1.9 | `scripts/rules/evaluate.lua` — basic map scoring rules | — | DONE | |
+| 1.10 | `scripts/rules/validate.lua` — basic map validity rules | — | DONE | |
 
 ## Phase 2 — Tiled Integration
 

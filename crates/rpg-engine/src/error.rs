@@ -9,9 +9,13 @@ pub enum Error {
     #[error("out of bounds: {0}")]
     OutOfBounds(String),
 
-    /// An invalid tile kind identifier was encountered.
-    #[error("invalid tile kind: {0}")]
+    /// An invalid tile identifier (unknown name, GID or ID) was encountered.
+    #[error("invalid tile: {0}")]
     InvalidTileKind(String),
+
+    /// A tile slice or vector had the wrong length.
+    #[error("invalid tile data: {0}")]
+    InvalidTiles(String),
 
     /// A game state operation was attempted in an invalid state.
     #[error("invalid game state: {0}")]

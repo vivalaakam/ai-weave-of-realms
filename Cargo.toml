@@ -4,6 +4,7 @@ members = [
     "crates/rpg-mapgen",
     "crates/rpg-tiled",
     "crates/rpg-godot",
+    "crates/rpg-tools",
 ]
 resolver = "2"
 

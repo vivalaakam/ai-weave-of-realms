@@ -61,11 +61,11 @@ impl Chunk {
     /// Creates a new chunk from a flat tile vector.
     ///
     /// # Errors
-    /// Returns [`Error::InvalidTileKind`] if `tiles` does not contain exactly
+    /// Returns [`Error::InvalidTiles`] if `tiles` does not contain exactly
     /// [`CHUNK_TILE_COUNT`] elements.
     pub fn from_vec(coord: ChunkCoord, tiles: Vec<Tile>) -> Result<Self, Error> {
         if tiles.len() != CHUNK_TILE_COUNT {
-            return Err(Error::InvalidTileKind(format!(
+            return Err(Error::InvalidTiles(format!(
                 "expected {} tiles, got {}",
                 CHUNK_TILE_COUNT,
                 tiles.len()
@@ -126,7 +126,6 @@ impl Chunk {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::tile::TileKind;
 
     #[test]
     fn chunk_filled_correct_size() {
@@ -137,8 +136,8 @@ mod tests {
     #[test]
     fn chunk_get_round_trip() {
         let mut chunk = Chunk::filled(ChunkCoord::new(1, 2), Tile::default());
-        chunk.get_mut(3, 5).unwrap().kind = TileKind::Water;
-        assert_eq!(chunk.get(3, 5).unwrap().kind, TileKind::Water);
+        chunk.get_mut(3, 5).unwrap().kind = Tiles::Water;
+        assert_eq!(chunk.get(3, 5).unwrap().kind, Tiles::Water);
     }
 
     #[test]

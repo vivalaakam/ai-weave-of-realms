@@ -1,0 +1,17 @@
+[package]
+name = "rpg-tools"
+version = "0.1.0"
+edition = "2021"
+description = "Development tools for the AI RPG project (map generation tester, etc.)."
+
+[[bin]]
+name = "mapgen"
+path = "src/bin/mapgen.rs"
+
+[dependencies]
+rpg-engine = { path = "../rpg-engine" }
+rpg-mapgen = { path = "../rpg-mapgen" }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+image = "0.25"
+clap = { version = "4", features = ["derive"] }

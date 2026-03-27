@@ -167,14 +167,14 @@ impl GameMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::tile::{Tile, TileKind};
+    use crate::map::tile::{Tile, Tiles};
 
     fn make_map(cw: u32, ct: u32) -> GameMap {
         let chunks = (0..cw * ct)
             .map(|i| {
                 Chunk::filled(
                     ChunkCoord::new(i % cw, i / cw),
-                    Tile::new(TileKind::Grass),
+                    Tile::new(Tiles::Meadow),
                 )
             })
             .collect();
@@ -198,8 +198,8 @@ mod tests {
     fn get_tile_returns_correct_tile() {
         let mut map = make_map(3, 3);
         let coord = MapCoord::new(33, 1); // chunk (1,0), local (1,1)
-        map.get_tile_mut(coord).unwrap().kind = TileKind::Water;
-        assert_eq!(map.get_tile(coord).unwrap().kind, TileKind::Water);
+        map.get_tile_mut(coord).unwrap().kind = Tiles::Water;
+        assert_eq!(map.get_tile(coord).unwrap().kind, Tiles::Water);
     }
 
     #[test]
