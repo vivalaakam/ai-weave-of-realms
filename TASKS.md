@@ -32,6 +32,7 @@ Update status as work progresses.
 | 1.8 | Lua validator: invoke `validate(map)` → (bool, msg) | — | DONE | MapValidator |
 | 1.9 | `scripts/rules/evaluate.lua` — basic map scoring rules | — | DONE | |
 | 1.10 | `scripts/rules/validate.lua` — basic map validity rules | — | DONE | |
+| 1.11 | Проанализировать правила генерации, исправить `MAP_GENERATION_RULES.md` и добавить альтернативный генератор `scripts/generators/codex-variant.lua` | Codex | DONE | `codex-variant.lua` добавлен; правила синхронизированы с `tile.rs`, мостами/POI и инвариантом города из `03_city_rules.lua` |
 
 ## Phase 2 — Tiled Integration
 
@@ -89,3 +90,4 @@ Update status as work progresses.
 | 2026-03-27 | Isometric staggered diamond layout | Matches Disciples 2 visual style |
 | 2026-03-27 | `anyhow` forbidden, use `thiserror` per crate | Consistent structured error handling |
 | 2026-03-27 | `tracing` for all logging | Structured, filterable, async-compatible |
+| 2026-03-27 | `MAP_GENERATION_RULES.md` must match runtime truth from `Tiles` and Lua validators | Avoid drift between documentation, generator scripts, and validation invariants |
