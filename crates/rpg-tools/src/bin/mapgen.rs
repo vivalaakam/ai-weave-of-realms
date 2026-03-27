@@ -2,19 +2,27 @@
 //!
 //! Generates a map from a seed phrase and produces:
 //! - A PNG image saved to disk (coloured by tile type)
+//! - A TMX tiled map referencing the root project tileset
 //! - ASCII art printed to stdout
 //! - Tile statistics
 
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Parser;
 use image::{ImageBuffer, Rgb};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use rpg_engine::map::game_map::GameMap;
 use rpg_engine::map::tile::Tiles;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
+
+const TILESET_PATH: &str = "tileset/tileset.tsx";
+const TILE_WIDTH: u32 = 64;
+const TILE_HEIGHT: u32 = 64;
 
 fn main() {
     // ── Init tracing ──────────────────────────────────────────────────────────
@@ -68,7 +76,7 @@ fn main() {
     let assembler = match MapAssembler::new(config) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("error: failed to initialise map assembler: {e}");
+            error!(error = %e, "failed to initialise map assembler");
             std::process::exit(1);
         }
     };
@@ -80,16 +88,28 @@ fn main() {
             match assembler.generate() {
                 Ok(m) => m,
                 Err(e) => {
-                    eprintln!("error: map generation failed: {e}");
+                    error!(error = %e, "map generation failed");
                     std::process::exit(1);
                 }
             }
         }
         Err(e) => {
-            eprintln!("error: map generation failed: {e}");
+            error!(error = %e, "map generation failed");
             std::process::exit(1);
         }
     };
+
+    let output_dir = match create_generation_dir(&args.output) {
+        Ok(path) => path,
+        Err(e) => {
+            error!(error = %e, root = %args.output.display(), "failed to create generation output directory");
+            std::process::exit(1);
+        }
+    };
+
+    let png_path = output_dir.join("map.png");
+    let tmx_path = output_dir.join("map.tmx");
+    let tileset_path = resolve_project_path(TILESET_PATH);
 
     // ── Print statistics ──────────────────────────────────────────────────────
     print_stats(&map);
@@ -99,10 +119,26 @@ fn main() {
         print_ascii(&map);
     }
 
-    // ── Save PNG ──────────────────────────────────────────────────────────────
-    save_png(&map, &args.output, args.scale);
+    save_png(&map, &png_path, args.scale);
 
-    info!(path = %args.output.display(), "done");
+    if let Err(e) = save_tmx(&map, &tmx_path, &tileset_path) {
+        error!(error = %e, path = %tmx_path.display(), "failed to save TMX");
+        std::process::exit(1);
+    }
+
+    if args.open {
+        if let Err(e) = open_file(&tmx_path) {
+            error!(error = %e, path = %tmx_path.display(), "failed to open generated TMX");
+            std::process::exit(1);
+        }
+    }
+
+    info!(
+        output_dir = %output_dir.display(),
+        png = %png_path.display(),
+        tmx = %tmx_path.display(),
+        "done"
+    );
 }
 
 // ─── CLI Args ─────────────────────────────────────────────────────────────────
@@ -127,8 +163,8 @@ struct Args {
     #[arg(long, default_value = "default-seed")]
     seed: String,
 
-    /// Output path for the generated PNG image.
-    #[arg(long, default_value = "output/map.png")]
+    /// Root directory where timestamped generation folders will be created.
+    #[arg(long, default_value = "output")]
     output: PathBuf,
 
     /// Map width in tiles (must be a multiple of 32).
@@ -163,6 +199,10 @@ struct Args {
     /// Skip ASCII art output to stdout.
     #[arg(long)]
     no_ascii: bool,
+
+    /// Open the generated TMX file with the system default application.
+    #[arg(long)]
+    open: bool,
 }
 
 // ─── Statistics ───────────────────────────────────────────────────────────────
@@ -249,8 +289,6 @@ fn print_ascii(map: &GameMap) {
 // ─── PNG export ───────────────────────────────────────────────────────────────
 
 /// Saves the map as a PNG image where each tile is `scale × scale` pixels.
-///
-/// Creates the output directory if it does not exist.
 fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
     let w = map.tile_width() * scale;
     let h = map.tile_height() * scale;
@@ -277,17 +315,161 @@ fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
         }
     }
 
-    // Create output directory if needed
-    if let Some(parent) = output.parent() {
-        if !parent.as_os_str().is_empty() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                eprintln!("warning: could not create output directory: {e}");
-            }
-        }
-    }
-
     match img.save(output) {
         Ok(_) => info!(path = %output.display(), width = w, height = h, "PNG saved"),
-        Err(e) => eprintln!("error: failed to save PNG: {e}"),
+        Err(e) => error!(error = %e, path = %output.display(), "failed to save PNG"),
+    }
+}
+
+/// Creates a new timestamped directory for this generation under `root`.
+fn create_generation_dir(root: &PathBuf) -> Result<PathBuf, std::io::Error> {
+    let timestamp = generation_timestamp();
+    let dir = root.join(timestamp);
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+/// Returns a monotonic-enough timestamp label suitable for directory names.
+fn generation_timestamp() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("gen-{}-{:03}", now.as_secs(), now.subsec_millis())
+}
+
+/// Resolves a repo-relative path against the current working directory.
+fn resolve_project_path(relative: &str) -> PathBuf {
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(relative)
+}
+
+/// Writes a TMX file referencing the root project tileset.
+fn save_tmx(map: &GameMap, output: &PathBuf, tileset_path: &PathBuf) -> Result<(), std::io::Error> {
+    let relative_tileset = relative_path(output.parent().unwrap_or(output), tileset_path);
+    let csv = tile_csv(map);
+    let tmx = format!(
+        concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+            "<map version=\"1.10\" tiledversion=\"1.11.0\" orientation=\"staggered\" ",
+            "renderorder=\"right-down\" width=\"{width}\" height=\"{height}\" ",
+            "tilewidth=\"{tile_width}\" tileheight=\"{tile_height}\" infinite=\"0\" ",
+            "staggeraxis=\"x\" staggerindex=\"odd\" nextlayerid=\"2\" nextobjectid=\"1\">\n",
+            "  <tileset firstgid=\"1\" source=\"{tileset}\"/>\n",
+            "  <layer id=\"1\" name=\"Terrain\" width=\"{width}\" height=\"{height}\">\n",
+            "    <data encoding=\"csv\">\n",
+            "{csv}\n",
+            "    </data>\n",
+            "  </layer>\n",
+            "</map>\n"
+        ),
+        width = map.tile_width(),
+        height = map.tile_height(),
+        tile_width = TILE_WIDTH,
+        tile_height = TILE_HEIGHT,
+        tileset = xml_escape_attr(&relative_tileset),
+        csv = csv
+    );
+
+    fs::write(output, tmx)?;
+    info!(path = %output.display(), tileset = %relative_tileset, "TMX saved");
+    Ok(())
+}
+
+/// Serialises map tile gids as TMX CSV layer data.
+fn tile_csv(map: &GameMap) -> String {
+    let mut rows: Vec<String> = Vec::with_capacity(map.tile_height() as usize);
+
+    for ty in 0..map.tile_height() {
+        let mut gids: Vec<String> = Vec::with_capacity(map.tile_width() as usize);
+        for tx in 0..map.tile_width() {
+            let coord = rpg_engine::map::game_map::MapCoord::new(tx, ty);
+            if let Ok(tile) = map.get_tile(coord) {
+                gids.push(tile.kind.to_gid().to_string());
+            } else {
+                gids.push("0".to_string());
+            }
+        }
+        rows.push(format!("      {}", gids.join(",")));
+    }
+
+    rows.join(",\n")
+}
+
+/// Computes a relative path from `from_dir` to `to_path`.
+fn relative_path(from_dir: &std::path::Path, to_path: &std::path::Path) -> String {
+    let from_abs = if from_dir.is_absolute() {
+        from_dir.to_path_buf()
+    } else {
+        resolve_project_path(from_dir.to_string_lossy().as_ref())
+    };
+    let to_abs = if to_path.is_absolute() {
+        to_path.to_path_buf()
+    } else {
+        resolve_project_path(to_path.to_string_lossy().as_ref())
+    };
+
+    let from_components: Vec<_> = from_abs.components().collect();
+    let to_components: Vec<_> = to_abs.components().collect();
+
+    let mut common_len = 0usize;
+    while common_len < from_components.len()
+        && common_len < to_components.len()
+        && from_components[common_len] == to_components[common_len]
+    {
+        common_len += 1;
+    }
+
+    let mut rel = PathBuf::new();
+    for _ in common_len..from_components.len() {
+        rel.push("..");
+    }
+    for component in &to_components[common_len..] {
+        rel.push(component.as_os_str());
+    }
+
+    rel.to_string_lossy().replace('\\', "/")
+}
+
+/// Escapes a string for safe XML attribute output.
+fn xml_escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Opens a file using the default system handler.
+fn open_file(path: &PathBuf) -> Result<(), std::io::Error> {
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut cmd = Command::new("open");
+        cmd.arg(path);
+        cmd
+    };
+
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut cmd = Command::new("xdg-open");
+        cmd.arg(path);
+        cmd
+    };
+
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "start", "", &path.to_string_lossy()]);
+        cmd
+    };
+
+    let status = command.status()?;
+    if status.success() {
+        info!(path = %path.display(), "opened generated TMX");
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "open command exited with status {status}"
+        )))
     }
 }

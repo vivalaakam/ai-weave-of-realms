@@ -33,6 +33,7 @@ Update status as work progresses.
 | 1.9 | `scripts/rules/evaluate.lua` — basic map scoring rules | — | DONE | |
 | 1.10 | `scripts/rules/validate.lua` — basic map validity rules | — | DONE | |
 | 1.11 | Проанализировать правила генерации, исправить `MAP_GENERATION_RULES.md` и добавить альтернативный генератор `scripts/generators/codex-variant.lua` | Codex | DONE | `codex-variant.lua` добавлен; правила синхронизированы с `tile.rs`, мостами/POI и инвариантом города из `03_city_rules.lua` |
+| 1.12 | Расширить `mapgen`: сохранять каждую генерацию в timestamp-директорию, экспортировать PNG + TMX и поддержать `--open` для итогового `.tmx` | Codex | DONE | `mapgen` пишет `output/gen-*/map.png` и `map.tmx`, TMX ссылается на корневой `tileset/tileset.tsx`, `--open` открывает `.tmx` |
 
 ## Phase 2 — Tiled Integration
 
@@ -91,3 +92,4 @@ Update status as work progresses.
 | 2026-03-27 | `anyhow` forbidden, use `thiserror` per crate | Consistent structured error handling |
 | 2026-03-27 | `tracing` for all logging | Structured, filterable, async-compatible |
 | 2026-03-27 | `MAP_GENERATION_RULES.md` must match runtime truth from `Tiles` and Lua validators | Avoid drift between documentation, generator scripts, and validation invariants |
+| 2026-03-27 | `mapgen` exports both PNG and TMX into a per-run timestamp directory | Keeps generation artefacts grouped and lets TMX reference the shared root tileset |
