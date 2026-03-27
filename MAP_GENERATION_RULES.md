@@ -21,13 +21,13 @@ Reference document for all map generation agents and validators.
 | `meadow`         | yes      | Default open terrain                             |
 | `forest`         | yes      | Forest cluster                                   |
 | `road`           | yes      | Constructed road                                 |
-| `city`           | yes      | City interior tile                               |
-| `city_entrance`  | yes      | City entry point (isometric south tip)           |
-| `water`          | no       | Lake / water body                                |
-| `river`          | no       | River (edge-to-edge water band)                  |
+| `city`           | no      | City interior tile                               |
+| `city_entrance`  | no      | City entry point (isometric south tip)           |
+| `water`          | yes       | Lake / water body                                |
+| `river`          | yes       | River (edge-to-edge water band)                  |
 | `mountain`       | no       | Mountain ridge                                   |
-| `gold`           | yes      | Gold mine deposit                                |
-| `resource`       | yes      | Generic resource deposit                         |
+| `gold`           | no      | Gold mine deposit                                |
+| `resource`       | no      | Generic resource deposit                         |
 
 ---
 
