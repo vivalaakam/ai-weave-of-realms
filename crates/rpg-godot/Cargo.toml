@@ -1,0 +1,19 @@
+[package]
+name = "rpg-godot"
+version = "0.1.0"
+edition = "2021"
+description = "GDExtension bridge between Godot 4 and rpg-engine. Only crate with Godot dependency."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rpg-engine = { path = "../rpg-engine" }
+rpg-mapgen = { path = "../rpg-mapgen" }
+rpg-tiled = { path = "../rpg-tiled" }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+godot = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

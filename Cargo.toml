@@ -1,0 +1,32 @@
+[workspace]
+members = [
+    "crates/rpg-engine",
+    "crates/rpg-mapgen",
+    "crates/rpg-tiled",
+    "crates/rpg-godot",
+]
+resolver = "2"
+
+[workspace.dependencies]
+# Error handling
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Hashing / PRNG
+sha3 = "0.10"
+
+# Lua scripting
+mlua = { version = "0.10", features = ["lua54", "vendored"] }
+
+# TMX / XML
+quick-xml = { version = "0.37", features = ["serialize"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Godot
+godot = { git = "https://github.com/godot-rust/gdext", branch = "master" }

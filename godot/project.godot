@@ -1,0 +1,25 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; but you can edit it using a text editor for manual tweaks.
+; Resource paths can be relative to the project location
+; (res://) or absolute.
+
+config_version=5
+
+[application]
+
+config/name="AI RPG v2"
+config/description="A strategy RPG in the style of Disciples 2."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.4", "Forward Plus")
+config/icon="res://assets/icon.svg"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"

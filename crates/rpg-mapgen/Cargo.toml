@@ -1,0 +1,15 @@
+[package]
+name = "rpg-mapgen"
+version = "0.1.0"
+edition = "2021"
+description = "Procedural map generator with Lua scripting, chunk stitching, evaluation and validation."
+
+[dependencies]
+rpg-engine = { path = "../rpg-engine" }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+mlua = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

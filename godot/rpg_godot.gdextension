@@ -1,0 +1,12 @@
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.1
+reloadable = true
+
+[libraries]
+macos.debug   = "res://../target/debug/librpg_godot.dylib"
+macos.release = "res://../target/release/librpg_godot.dylib"
+windows.debug.x86_64   = "res://../target/debug/rpg_godot.dll"
+windows.release.x86_64 = "res://../target/release/rpg_godot.dll"
+linux.debug.x86_64   = "res://../target/debug/librpg_godot.so"
+linux.release.x86_64 = "res://../target/release/librpg_godot.so"
