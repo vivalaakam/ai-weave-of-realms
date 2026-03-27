@@ -3,14 +3,16 @@
 //! # Lua script contract
 //! The script must return a function with the signature:
 //! ```lua
-//! function generate_chunk(rng, x, y) -> table[1024]
+//! function generate_chunk(rng, x, y, base_tiles_or_nil) -> table[1024]
 //! ```
 //! where `rng` is a [`LuaRng`] userdata, `x`/`y` are the chunk grid indices,
+//! `base_tiles_or_nil` is either `nil` (first in pipeline) or a 1-indexed
+//! Lua table of 1024 tile kind strings from the previous pipeline stage,
 //! and the return value is a 1-indexed Lua table of exactly 1024 tile kind strings.
 
 use std::path::Path;
 
-use mlua::{Function, Lua, Table};
+use mlua::{Function, Lua, Table, Value};
 use tracing::{debug, instrument};
 
 use rpg_engine::map::chunk::{Chunk, ChunkCoord, CHUNK_TILE_COUNT};
@@ -60,9 +62,7 @@ impl ChunkGenerator {
 
     /// Generates a single chunk at `coord` using the supplied `map_seed`.
     ///
-    /// The chunk seed is deterministically derived as
-    /// `derive_seed(map_seed, coord.to_seed_context())`, so each
-    /// `(map_seed, coord)` pair always produces the same chunk.
+    /// Delegates to [`generate_with_base`](Self::generate_with_base) with `base = None`.
     ///
     /// # Arguments
     /// * `coord`    - Grid position of the chunk within the parent map.
@@ -73,6 +73,29 @@ impl ChunkGenerator {
     /// [`Error::InvalidChunkData`] if the returned table is malformed.
     #[instrument(skip(self, map_seed), fields(cx = coord.x, cy = coord.y))]
     pub fn generate(&self, coord: ChunkCoord, map_seed: &[u8; 32]) -> Result<Chunk, Error> {
+        self.generate_with_base(coord, map_seed, None)
+    }
+
+    /// Generates a chunk using an optional base from the previous pipeline stage.
+    ///
+    /// Passes `(rng, cx, cy, base_table_or_nil)` to the Lua function.
+    /// `base` is `Some(&Chunk)` from the previous generator, or `None` for the first.
+    ///
+    /// # Arguments
+    /// * `coord`    - Grid position of the chunk within the parent map.
+    /// * `map_seed` - The 32-byte map-level seed.
+    /// * `base`     - Optional chunk from the previous pipeline stage.
+    ///
+    /// # Errors
+    /// Returns [`Error::LuaExecution`] if the Lua function fails, or
+    /// [`Error::InvalidChunkData`] if the returned table is malformed.
+    #[instrument(skip(self, map_seed, base), fields(cx = coord.x, cy = coord.y))]
+    pub fn generate_with_base(
+        &self,
+        coord: ChunkCoord,
+        map_seed: &[u8; 32],
+        base: Option<&Chunk>,
+    ) -> Result<Chunk, Error> {
         let chunk_seed = derive_seed(map_seed, &coord.to_seed_context());
         let rng = self
             .lua
@@ -82,9 +105,32 @@ impl ChunkGenerator {
                 source,
             })?;
 
+        // Build base_value: a 1-indexed Lua table of tile kind strings, or Nil
+        let base_value: Value = match base {
+            Some(chunk) => {
+                let table = self
+                    .lua
+                    .create_table_with_capacity(CHUNK_TILE_COUNT, 0)
+                    .map_err(|source| Error::LuaExecution {
+                        function: "create_table(base_tiles)".into(),
+                        source,
+                    })?;
+                for (i, tile) in chunk.tiles().iter().enumerate() {
+                    table
+                        .raw_set(i + 1, tile.kind.as_str())
+                        .map_err(|source| Error::LuaExecution {
+                            function: "base_table.set".into(),
+                            source,
+                        })?;
+                }
+                Value::Table(table)
+            }
+            None => Value::Nil,
+        };
+
         let tiles_table: Table = self
             .func
-            .call((rng, coord.x, coord.y))
+            .call((rng, coord.x, coord.y, base_value))
             .map_err(|source| Error::LuaExecution {
                 function: "generate_chunk".into(),
                 source,
@@ -206,5 +252,39 @@ mod tests {
         let seed = keccak256("bad-tiles");
         let result = gen.generate(ChunkCoord::new(0, 0), &seed);
         assert!(matches!(result, Err(Error::InvalidChunkData(_))));
+    }
+
+    #[test]
+    fn generate_with_base_passes_tiles_to_lua() {
+        init_tracing();
+        // This generator reads the base tiles and copies them through unchanged
+        let source = r#"
+            return function(rng, x, y, base)
+                local tiles = {}
+                if base ~= nil then
+                    for i = 1, 32 * 32 do
+                        tiles[i] = base[i]
+                    end
+                else
+                    for i = 1, 32 * 32 do
+                        tiles[i] = "meadow"
+                    end
+                end
+                return tiles
+            end
+        "#;
+        let lua = Lua::new();
+        let func: Function = lua.load(source).eval().unwrap();
+        let gen = ChunkGenerator { lua, func };
+
+        let seed = keccak256("base-test");
+
+        // First generate a base chunk (all meadow)
+        let base_gen = make_inline_generator();
+        let base_chunk = base_gen.generate(ChunkCoord::new(0, 0), &seed).unwrap();
+
+        // Now generate with base — should copy through
+        let result = gen.generate_with_base(ChunkCoord::new(0, 0), &seed, Some(&base_chunk)).unwrap();
+        assert_eq!(result.tiles(), base_chunk.tiles());
     }
 }

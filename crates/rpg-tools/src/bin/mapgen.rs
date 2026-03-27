@@ -30,27 +30,37 @@ fn main() {
 
     info!(seed = %args.seed, "starting map generation");
 
-    // ── Build config ──────────────────────────────────────────────────────────
-    let mut config = MapConfig {
-        chunks_wide: args.width,
-        chunks_tall: args.height,
-        seed: args.seed.clone(),
-        generator_script: args.generator.clone(),
-        evaluator_script: args.evaluator.clone(),
-        validator_script: args.validator.clone(),
-    };
+    // ── Build generator pipeline ──────────────────────────────────────────────
+    let mut generators: Vec<PathBuf> = args.generators.clone();
 
-    // If no evaluator/validator paths given, try default paths
-    if config.evaluator_script.is_none() {
-        let default = PathBuf::from("scripts/rules/evaluate.lua");
-        if default.exists() {
-            config.evaluator_script = Some(default);
+    // Fall back to default script if no generators were specified
+    if generators.is_empty() {
+        generators.push(PathBuf::from("scripts/generators/default.lua"));
+    }
+
+    // ── Build config ──────────────────────────────────────────────────────────
+    let first = generators.remove(0);
+    let mut config = MapConfig::default_3x3(args.seed.clone(), first);
+    config.chunks_wide = args.width;
+    config.chunks_tall = args.height;
+    for g in generators {
+        config = config.with_generator(g);
+    }
+    config.validator_dir = args.validator_dir.clone();
+    config.validator_script = args.validator.clone();
+    config.evaluator_script = args.evaluator.clone();
+
+    // If no validator dir or script given, try default paths
+    if config.validator_dir.is_none() {
+        let default = PathBuf::from("scripts/rules");
+        if default.is_dir() {
+            config.validator_dir = Some(default);
         }
     }
-    if config.validator_script.is_none() {
-        let default = PathBuf::from("scripts/rules/validate.lua");
+    if config.evaluator_script.is_none() {
+        let default = PathBuf::from("scripts/evaluators/evaluate.lua");
         if default.exists() {
-            config.validator_script = Some(default);
+            config.evaluator_script = Some(default);
         }
     }
 
@@ -101,6 +111,15 @@ fn main() {
 ///
 /// Generates a procedural map from a seed phrase and outputs:
 /// a PNG image, ASCII art, and tile statistics.
+///
+/// ## Pipeline generators
+///
+/// Pass one or more `--generator path` flags to build the generator pipeline.
+/// Generators are applied to every chunk in the order they are specified.
+/// Each subsequent generator receives the tiles from the previous stage as
+/// its 4th Lua argument.
+///
+/// If no `--generator` flags are given, `scripts/generators/default.lua` is used.
 #[derive(Parser, Debug)]
 #[command(name = "mapgen", author, version, about, long_about = None)]
 struct Args {
@@ -120,11 +139,16 @@ struct Args {
     #[arg(long, default_value_t = 3)]
     height: u32,
 
-    /// Path to the Lua chunk generator script.
-    #[arg(long, default_value = "scripts/generators/default.lua")]
-    generator: PathBuf,
+    /// Generator script path (repeatable, applied as a pipeline in order).
+    /// Example: --generator scripts/generators/default.lua --generator scripts/generators/forest.lua
+    #[arg(long = "generator", value_name = "SCRIPT")]
+    generators: Vec<PathBuf>,
 
-    /// Path to the Lua validator script (optional).
+    /// Path to a directory of validation rule .lua files (takes precedence over --validator).
+    #[arg(long)]
+    validator_dir: Option<PathBuf>,
+
+    /// Path to the Lua validator script (optional; ignored if --validator-dir is set).
     #[arg(long)]
     validator: Option<PathBuf>,
 

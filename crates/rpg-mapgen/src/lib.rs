@@ -26,6 +26,7 @@ pub mod map_assembler;
 pub mod map_table;
 pub mod rng_userdata;
 pub mod stitcher;
+pub mod validation_rule_set;
 pub mod validator;
 
 #[cfg(test)]

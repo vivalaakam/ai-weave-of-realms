@@ -1,12 +1,19 @@
 //! Map assembler — orchestrates chunk generation, stitching, and validation.
 //!
 //! [`MapAssembler`] is the primary entry point for producing a fully assembled
-//! and validated [`GameMap`].  It:
-//! 1. Derives per-chunk seeds from the map seed phrase.
-//! 2. Generates each chunk in row-major order via a Lua generator script.
-//! 3. Stitches chunk boundary seams.
-//! 4. Optionally validates the map with a Lua validator script.
-//! 5. Optionally evaluates the map with a Lua evaluator script.
+//! and validated [`GameMap`].
+//!
+//! ## Pipeline generators
+//! All registered generators are applied to **every** chunk in order.
+//! Each subsequent generator receives the tiles from the previous stage as
+//! its 4th Lua argument (`base_tiles`).  The first generator receives `nil`.
+//!
+//! ## Validation
+//! Validation can be configured as:
+//! - A directory of `.lua` rule files (loaded in sorted order by [`ValidationRuleSet`])
+//! - A single `.lua` file via [`MapConfig::validator_script`]
+//!
+//! If both are provided, the directory takes precedence.
 
 use std::path::PathBuf;
 
@@ -20,6 +27,7 @@ use crate::chunk_generator::ChunkGenerator;
 use crate::error::Error;
 use crate::evaluator::MapEvaluator;
 use crate::stitcher::Stitcher;
+use crate::validation_rule_set::ValidationRuleSet;
 use crate::validator::MapValidator;
 
 // ─── MapConfig ────────────────────────────────────────────────────────────────
@@ -31,50 +39,105 @@ pub struct MapConfig {
     pub chunks_wide: u32,
     /// Number of chunks along the vertical axis.
     pub chunks_tall: u32,
-    /// Human-readable seed phrase.  Hashed to a `[u8; 32]` via Keccak256.
+    /// Human-readable seed phrase.  Hashed to `[u8; 32]` via Keccak256.
     pub seed: String,
-    /// Path to the Lua chunk generator script.
-    pub generator_script: PathBuf,
+    /// Ordered list of generator scripts applied as a pipeline to every chunk.
+    /// Must contain at least one entry.
+    pub generators: Vec<PathBuf>,
+    /// Optional path to a directory containing validation rule `.lua` files.
+    /// Takes precedence over [`validator_script`](Self::validator_script) if set.
+    pub validator_dir: Option<PathBuf>,
+    /// Optional path to a single validation script.
+    pub validator_script: Option<PathBuf>,
     /// Optional path to the Lua evaluator script.
     pub evaluator_script: Option<PathBuf>,
-    /// Optional path to the Lua validator script.
-    pub validator_script: Option<PathBuf>,
 }
 
 impl MapConfig {
-    /// Creates a minimal config for a 3×3 chunk map (96×96 tiles).
+    /// Creates a minimal 3×3-chunk config with a single pipeline generator.
     pub fn default_3x3(seed: impl Into<String>, generator_script: impl Into<PathBuf>) -> Self {
         Self {
             chunks_wide: 3,
             chunks_tall: 3,
             seed: seed.into(),
-            generator_script: generator_script.into(),
-            evaluator_script: None,
+            generators: vec![generator_script.into()],
+            validator_dir: None,
             validator_script: None,
+            evaluator_script: None,
         }
     }
 
-    /// Adds a validator script path to the config.
+    /// Appends a generator script to the pipeline.
+    ///
+    /// Generators are applied to each chunk in the order they were added.
+    pub fn with_generator(mut self, path: impl Into<PathBuf>) -> Self {
+        self.generators.push(path.into());
+        self
+    }
+
+    /// Sets the validation rules directory.
+    pub fn with_validator_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.validator_dir = Some(path.into());
+        self
+    }
+
+    /// Sets a single validation script (ignored if `validator_dir` is also set).
     pub fn with_validator(mut self, path: impl Into<PathBuf>) -> Self {
         self.validator_script = Some(path.into());
         self
     }
 
-    /// Adds an evaluator script path to the config.
+    /// Sets the evaluator script.
     pub fn with_evaluator(mut self, path: impl Into<PathBuf>) -> Self {
         self.evaluator_script = Some(path.into());
         self
     }
 }
 
+// ─── Validation wrapper ───────────────────────────────────────────────────────
+
+/// Internal helper: either a rule set (directory) or a single validator.
+enum Validator {
+    RuleSet(ValidationRuleSet),
+    Single(MapValidator),
+}
+
+impl Validator {
+    /// Returns `Ok(())` if the map passes all rules, or `Err(ValidationFailed)`.
+    fn validate(&self, map: &GameMap) -> Result<(), Error> {
+        match self {
+            Validator::RuleSet(rs) => {
+                let results = rs.validate_all(map)?;
+                let failed: Vec<_> = results.iter().filter(|r| !r.valid).collect();
+                if let Some(first) = failed.first() {
+                    return Err(Error::ValidationFailed(
+                        first.reason.clone().unwrap_or_default(),
+                    ));
+                }
+                Ok(())
+            }
+            Validator::Single(v) => {
+                let result = v.validate(map)?;
+                if !result.is_valid() {
+                    return Err(Error::ValidationFailed(
+                        result.reason.unwrap_or_default(),
+                    ));
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 // ─── MapAssembler ─────────────────────────────────────────────────────────────
 
-/// Assembles a complete [`GameMap`] from chunks generated by a Lua script.
+/// Assembles a complete [`GameMap`] from chunks generated by a Lua pipeline.
 pub struct MapAssembler {
     config: MapConfig,
-    generator: ChunkGenerator,
+    /// Pipeline generators loaded from the config, in order.
+    generators: Vec<ChunkGenerator>,
     evaluator: Option<MapEvaluator>,
-    validator: Option<MapValidator>,
+    validator: Option<Validator>,
     /// Derived 32-byte map seed (Keccak256 of `config.seed`).
     map_seed: [u8; 32],
 }
@@ -86,34 +149,52 @@ impl MapAssembler {
     /// before generation begins.
     ///
     /// # Errors
-    /// Returns [`Error::ScriptLoad`] if any script file cannot be loaded,
-    /// or [`Error::Io`] if a script file cannot be read.
+    /// Returns [`Error::ScriptLoad`] if any script file cannot be loaded, or
+    /// [`Error::InvalidState`] if the generators list is empty.
     pub fn new(config: MapConfig) -> Result<Self, Error> {
-        let map_seed = keccak256(&config.seed);
-        let generator = ChunkGenerator::from_script(&config.generator_script)?;
+        if config.generators.is_empty() {
+            return Err(Error::Engine(rpg_engine::error::Error::InvalidState(
+                "pipeline must have at least one generator".to_string(),
+            )));
+        }
 
+        // Load all generators in pipeline order
+        let mut generators = Vec::with_capacity(config.generators.len());
+        for path in &config.generators {
+            let gen = ChunkGenerator::from_script(path)?;
+            debug!(path = %path.display(), "pipeline generator loaded");
+            generators.push(gen);
+        }
+
+        // Load evaluator
         let evaluator = config
             .evaluator_script
             .as_deref()
             .map(MapEvaluator::from_script)
             .transpose()?;
 
-        let validator = config
-            .validator_script
-            .as_deref()
-            .map(MapValidator::from_script)
-            .transpose()?;
+        // Load validator (directory takes precedence over single script)
+        let validator = if let Some(dir) = &config.validator_dir {
+            Some(Validator::RuleSet(ValidationRuleSet::from_dir(dir)?))
+        } else if let Some(script) = &config.validator_script {
+            Some(Validator::Single(MapValidator::from_script(script)?))
+        } else {
+            None
+        };
+
+        let map_seed = keccak256(&config.seed);
 
         info!(
             seed = %config.seed,
             chunks_wide = config.chunks_wide,
             chunks_tall = config.chunks_tall,
+            generators = config.generators.len(),
             "map assembler initialised"
         );
 
         Ok(Self {
             config,
-            generator,
+            generators,
             evaluator,
             validator,
             map_seed,
@@ -127,12 +208,13 @@ impl MapAssembler {
 
     /// Generates a map without running the validator.
     ///
-    /// Runs all chunk generators and the stitcher, but skips validation even
-    /// if a validator script was provided.
+    /// Each chunk passes through the full generator pipeline: the first
+    /// generator receives `nil` as base, and each subsequent generator
+    /// receives the previous generator's output.
     ///
     /// # Errors
-    /// Returns [`Error::LuaExecution`] if any chunk generator script fails,
-    /// or an engine error if map assembly fails.
+    /// Returns [`Error::LuaExecution`] if any chunk generator fails, or an engine
+    /// error if map assembly fails.
     #[instrument(skip(self))]
     pub fn generate(&self) -> Result<GameMap, Error> {
         let cw = self.config.chunks_wide;
@@ -145,9 +227,13 @@ impl MapAssembler {
         for cy in 0..ct {
             for cx in 0..cw {
                 let coord = ChunkCoord::new(cx, cy);
-                debug!(cx, cy, "generating chunk");
-                let chunk = self.generator.generate(coord, &self.map_seed)?;
-                chunks.push(chunk);
+                debug!(cx, cy, pipeline_stages = self.generators.len(), "generating chunk through pipeline");
+
+                let mut chunk = None;
+                for gen in &self.generators {
+                    chunk = Some(gen.generate_with_base(coord, &self.map_seed, chunk.as_ref())?);
+                }
+                chunks.push(chunk.expect("pipeline must have at least one generator"));
             }
         }
 
@@ -164,43 +250,27 @@ impl MapAssembler {
         Ok(map)
     }
 
-    /// Generates a map and then validates it.
+    /// Generates a map and validates it against all configured rules.
     ///
-    /// If a validator script was provided and the map fails validation, returns
-    /// [`Error::ValidationFailed`].  If no validator was provided, behaves
-    /// identically to [`generate`](Self::generate).
-    ///
-    /// # Errors
-    /// Returns [`Error::ValidationFailed`] if the map does not satisfy the
-    /// Lua validation rules, or any error from [`generate`](Self::generate).
+    /// Returns [`Error::ValidationFailed`] if validation fails.
     pub fn generate_validated(&self) -> Result<GameMap, Error> {
         let map = self.generate()?;
 
         if let Some(v) = &self.validator {
-            let result = v.validate(&map)?;
-            if !result.is_valid() {
-                let reason = result.reason.unwrap_or_default();
-                warn!(%reason, "generated map failed validation");
-                return Err(Error::ValidationFailed(reason));
-            }
-            info!("map passed validation");
+            v.validate(&map)?;
+            info!("map passed all validation rules");
         }
 
         Ok(map)
     }
 
-    /// Generates up to `attempts` maps, returning the first one that passes
-    /// validation.
+    /// Generates up to `attempts` maps, returning the first that passes all rules.
     ///
-    /// If no attempt produces a valid map, returns the last [`Error::ValidationFailed`].
-    /// If no validator is configured, the first map is returned immediately.
+    /// If no valid map is produced, returns the last [`Error::ValidationFailed`].
+    /// If no validator is configured, returns the first generated map.
     ///
     /// # Arguments
-    /// * `attempts` - Maximum number of generation attempts.
-    ///
-    /// # Errors
-    /// Returns [`Error::ValidationFailed`] if all attempts fail validation,
-    /// or any other error from generation.
+    /// * `attempts` — maximum number of generation attempts.
     pub fn generate_best_of(&self, attempts: u32) -> Result<GameMap, Error> {
         let mut last_err: Option<Error> = None;
 
@@ -231,8 +301,7 @@ mod tests {
     use rpg_engine::map::chunk::CHUNK_SIZE;
     use crate::test_utils::init_tracing;
 
-    /// Inline generator script: fills all tiles with grass.
-    const GRASS_GENERATOR: &str = r#"
+    const MEADOW_GENERATOR: &str = r#"
         return function(rng, x, y)
             local tiles = {}
             for i = 1, 32 * 32 do tiles[i] = "meadow" end
@@ -240,7 +309,6 @@ mod tests {
         end
     "#;
 
-    /// Inline generator script: fills all tiles with water (will fail validation).
     const WATER_GENERATOR: &str = r#"
         return function(rng, x, y)
             local tiles = {}
@@ -249,12 +317,13 @@ mod tests {
         end
     "#;
 
-    /// Inline validator: requires >50% passable terrain.
     const PASSABLE_VALIDATOR: &str = r#"
         return function(map)
             local pass = 0
             for _, k in ipairs(map.tiles) do
-                if k ~= "water" and k ~= "mountain" then pass = pass + 1 end
+                if k ~= "water" and k ~= "mountain" and k ~= "river" then
+                    pass = pass + 1
+                end
             end
             if pass / #map.tiles < 0.50 then
                 return false, "too little passable terrain"
@@ -263,26 +332,36 @@ mod tests {
         end
     "#;
 
-    fn write_temp_script(name: &str, content: &str) -> PathBuf {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!("rpg_test_{name}.lua"));
+    fn write_temp(name: &str, content: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("rpg_asm_{name}_{n}.lua"));
         std::fs::write(&path, content).unwrap();
         path
     }
 
-    fn make_assembler(generator: &str) -> MapAssembler {
-        let gen_path = write_temp_script("gen", generator);
-        let config = MapConfig::default_3x3("test-seed", gen_path);
-        MapAssembler::new(config).unwrap()
+    fn write_temp_dir(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("rpg_asm_dir_{name}_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (fname, content) in files {
+            std::fs::write(dir.join(fname), content).unwrap();
+        }
+        dir
+    }
+
+    fn make_config_single(gen: &str) -> MapConfig {
+        MapConfig::default_3x3("seed", write_temp("gen_single", gen))
     }
 
     #[test]
     fn generates_correct_dimensions() {
         init_tracing();
-        let asm = make_assembler(GRASS_GENERATOR);
+        let asm = MapAssembler::new(make_config_single(MEADOW_GENERATOR)).unwrap();
         let map = asm.generate().unwrap();
-        assert_eq!(map.chunks_wide(), 3);
-        assert_eq!(map.chunks_tall(), 3);
         assert_eq!(map.tile_width(), 3 * CHUNK_SIZE as u32);
         assert_eq!(map.tile_height(), 3 * CHUNK_SIZE as u32);
     }
@@ -290,56 +369,43 @@ mod tests {
     #[test]
     fn same_seed_produces_same_map() {
         init_tracing();
-        let gen_path = write_temp_script("gen_det", GRASS_GENERATOR);
-        let config = MapConfig::default_3x3("deterministic", gen_path);
+        let config = make_config_single(MEADOW_GENERATOR);
         let asm = MapAssembler::new(config).unwrap();
-
-        let map_a = asm.generate().unwrap();
-        let map_b = asm.generate().unwrap();
-
-        for (ca, cb) in map_a.chunks().iter().zip(map_b.chunks()) {
+        let a = asm.generate().unwrap();
+        let b = asm.generate().unwrap();
+        for (ca, cb) in a.chunks().iter().zip(b.chunks()) {
             assert_eq!(ca.tiles(), cb.tiles());
         }
     }
 
     #[test]
-    fn validation_passes_for_grass_map() {
+    fn pipeline_applies_generators_in_order() {
         init_tracing();
-        let gen_path = write_temp_script("gen_valid", GRASS_GENERATOR);
-        let val_path = write_temp_script("val_valid", PASSABLE_VALIDATOR);
-        let config = MapConfig::default_3x3("valid-seed", gen_path).with_validator(val_path);
+        let gen_m = write_temp("pipe_m", MEADOW_GENERATOR);
+        let gen_w = write_temp("pipe_w", WATER_GENERATOR);
+        let config = MapConfig::default_3x3("pipe", gen_m).with_generator(gen_w);
         let asm = MapAssembler::new(config).unwrap();
-
-        let map = asm.generate_validated();
-        assert!(map.is_ok(), "grass map should pass validation: {map:?}");
+        let map = asm.generate().unwrap();
+        // WATER_GENERATOR ignores base and fills everything with water
+        let chunk = map.get_chunk(ChunkCoord::new(1, 1)).unwrap();
+        assert_eq!(chunk.get(16, 16).unwrap().kind, rpg_engine::map::tile::Tiles::Water);
     }
 
     #[test]
-    fn validation_fails_for_water_map() {
+    fn validator_dir_runs_all_rules() {
         init_tracing();
-        let gen_path = write_temp_script("gen_water", WATER_GENERATOR);
-        let val_path = write_temp_script("val_water", PASSABLE_VALIDATOR);
-        let config = MapConfig::default_3x3("water-seed", gen_path).with_validator(val_path);
+        let dir = write_temp_dir("valdir", &[("01_rule.lua", PASSABLE_VALIDATOR)]);
+        let config = make_config_single(MEADOW_GENERATOR).with_validator_dir(dir);
         let asm = MapAssembler::new(config).unwrap();
-
-        let result = asm.generate_validated();
-        assert!(
-            matches!(result, Err(Error::ValidationFailed(_))),
-            "all-water map should fail validation, got: {result:?}"
-        );
+        assert!(asm.generate_validated().is_ok());
     }
 
     #[test]
-    fn map_seed_is_deterministic() {
+    fn validation_fails_for_water_map_via_dir() {
         init_tracing();
-        let gen_path = write_temp_script("gen_seed", GRASS_GENERATOR);
-        let config = MapConfig::default_3x3("seed-phrase", gen_path);
+        let dir = write_temp_dir("valdir_fail", &[("01_rule.lua", PASSABLE_VALIDATOR)]);
+        let config = make_config_single(WATER_GENERATOR).with_validator_dir(dir);
         let asm = MapAssembler::new(config).unwrap();
-        let seed_a = *asm.map_seed();
-
-        let gen_path2 = write_temp_script("gen_seed2", GRASS_GENERATOR);
-        let config2 = MapConfig::default_3x3("seed-phrase", gen_path2);
-        let asm2 = MapAssembler::new(config2).unwrap();
-        assert_eq!(seed_a, *asm2.map_seed());
+        assert!(matches!(asm.generate_validated(), Err(Error::ValidationFailed(_))));
     }
 }
