@@ -18,8 +18,18 @@ pub enum Error {
     InvalidTiles(String),
 
     /// A game state operation was attempted in an invalid state.
-    #[error("invalid game state: {0}")]
-    InvalidState(String),
+    #[error("invalid game state: expected {expected} chunks got {got}")]
+    InvalidChunksSize { expected: usize, got: usize },
+
+    /// A game state operation was attempted in an invalid state.
+    #[error("invalid game state: expected {expected} tiles got {got}")]
+    InvalidTilesSize { expected: usize, got: usize },
+
+    #[error("pipeline must have at least one generator")]
+    PipelineEmpty,
+
+    #[error("cannot read validation rule directory '{path}': {err}")]
+    ValidationRuleDir { path: String, err: std::io::Error },
 
     /// Movement was requested to a tile that cannot be reached.
     #[error("unreachable tile at ({x}, {y})")]

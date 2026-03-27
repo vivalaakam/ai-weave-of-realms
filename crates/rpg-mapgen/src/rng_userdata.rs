@@ -27,9 +27,7 @@ impl LuaRng {
 impl UserData for LuaRng {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         // rng:next_f64() → number in [0.0, 1.0)
-        methods.add_method("next_f64", |_, this, ()| {
-            Ok(this.0.borrow_mut().next_f64())
-        });
+        methods.add_method("next_f64", |_, this, ()| Ok(this.0.borrow_mut().next_f64()));
 
         // rng:random_range_u32(lo, hi) → integer in [lo, hi)
         methods.add_method("random_range_u32", |_, this, (lo, hi): (u32, u32)| {
@@ -58,9 +56,9 @@ impl UserData for LuaRng {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::init_tracing;
     use mlua::Lua;
     use rpg_engine::rng::keccak256;
-    use crate::test_utils::init_tracing;
 
     #[test]
     fn lua_rng_next_f64_in_range() {
@@ -70,11 +68,11 @@ mod tests {
         let rng = lua.create_userdata(LuaRng::new(seed)).unwrap();
         lua.globals().set("rng", rng).unwrap();
 
-        let result: f64 = lua
-            .load("return rng:next_f64()")
-            .eval()
-            .unwrap();
-        assert!((0.0..1.0).contains(&result), "next_f64 {result} out of [0,1)");
+        let result: f64 = lua.load("return rng:next_f64()").eval().unwrap();
+        assert!(
+            (0.0..1.0).contains(&result),
+            "next_f64 {result} out of [0,1)"
+        );
     }
 
     #[test]
@@ -113,9 +111,7 @@ mod tests {
                 )
                 .eval()
                 .unwrap();
-            let values: Vec<f64> = (1..=10)
-                .map(|i| table.get::<f64>(i).unwrap())
-                .collect();
+            let values: Vec<f64> = (1..=10).map(|i| table.get::<f64>(i).unwrap()).collect();
             values
         };
 

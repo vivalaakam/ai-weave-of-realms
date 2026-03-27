@@ -126,6 +126,7 @@ impl Chunk {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::tile::Tiles;
 
     #[test]
     fn chunk_filled_correct_size() {

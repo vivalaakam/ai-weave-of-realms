@@ -116,12 +116,12 @@ impl ChunkGenerator {
                         source,
                     })?;
                 for (i, tile) in chunk.tiles().iter().enumerate() {
-                    table
-                        .raw_set(i + 1, tile.kind.as_str())
-                        .map_err(|source| Error::LuaExecution {
+                    table.raw_set(i + 1, tile.kind.as_str()).map_err(|source| {
+                        Error::LuaExecution {
                             function: "base_table.set".into(),
                             source,
-                        })?;
+                        }
+                    })?;
                 }
                 Value::Table(table)
             }
@@ -152,9 +152,9 @@ fn parse_tiles_table(table: Table, coord: ChunkCoord) -> Result<Chunk, Error> {
     let mut tiles = Vec::with_capacity(CHUNK_TILE_COUNT);
 
     for i in 1..=(CHUNK_TILE_COUNT as i64) {
-        let kind_str: String = table.get(i).map_err(|_| {
-            Error::InvalidChunkData(format!("missing tile at Lua index {i}"))
-        })?;
+        let kind_str: String = table
+            .get(i)
+            .map_err(|_| Error::InvalidChunkData(format!("missing tile at Lua index {i}")))?;
 
         let kind = Tiles::from_str(&kind_str).map_err(|_| {
             Error::InvalidChunkData(format!("unknown tile kind '{kind_str}' at index {i}"))
@@ -171,8 +171,8 @@ fn parse_tiles_table(table: Table, coord: ChunkCoord) -> Result<Chunk, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rpg_engine::rng::keccak256;
     use crate::test_utils::init_tracing;
+    use rpg_engine::rng::keccak256;
 
     /// Inline minimal generator script for tests (no filesystem dependency).
     fn make_inline_generator() -> ChunkGenerator {
@@ -284,7 +284,9 @@ mod tests {
         let base_chunk = base_gen.generate(ChunkCoord::new(0, 0), &seed).unwrap();
 
         // Now generate with base — should copy through
-        let result = gen.generate_with_base(ChunkCoord::new(0, 0), &seed, Some(&base_chunk)).unwrap();
+        let result = gen
+            .generate_with_base(ChunkCoord::new(0, 0), &seed, Some(&base_chunk))
+            .unwrap();
         assert_eq!(result.tiles(), base_chunk.tiles());
     }
 }

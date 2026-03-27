@@ -41,8 +41,8 @@ fn main() {
     // ── Build config ──────────────────────────────────────────────────────────
     let first = generators.remove(0);
     let mut config = MapConfig::default_3x3(args.seed.clone(), first);
-    config.chunks_wide = args.width;
-    config.chunks_tall = args.height;
+    config.width = args.width;
+    config.height = args.height;
     for g in generators {
         config = config.with_generator(g);
     }
@@ -131,12 +131,12 @@ struct Args {
     #[arg(long, default_value = "output/map.png")]
     output: PathBuf,
 
-    /// Map width in chunks (each chunk is 32×32 tiles).
-    #[arg(long, default_value_t = 3)]
+    /// Map width in tiles (must be a multiple of 32).
+    #[arg(long, default_value_t = 32)]
     width: u32,
 
-    /// Map height in chunks (each chunk is 32×32 tiles).
-    #[arg(long, default_value_t = 3)]
+    /// Map height in tiles (must be a multiple of 32).
+    #[arg(long, default_value_t = 32)]
     height: u32,
 
     /// Generator script path (repeatable, applied as a pipeline in order).
@@ -172,21 +172,17 @@ fn print_stats(map: &GameMap) {
     let total = (map.tile_width() * map.tile_height()) as usize;
     let mut counts: HashMap<Tiles, usize> = HashMap::new();
 
-    for chunk in map.chunks() {
-        for tile in chunk.tiles() {
-            *counts.entry(tile.kind).or_insert(0) += 1;
-        }
+    for tile in map.tiles() {
+        *counts.entry(tile.kind).or_insert(0) += 1;
     }
 
     println!("\n╔═══════════════════════════════════╗");
     println!("║         Map Statistics            ║");
     println!("╠═══════════════════════════════════╣");
     println!(
-        "║  Size:   {}×{} tiles ({}×{} chunks)",
+        "║  Size:   {}×{} tiles",
         map.tile_width(),
-        map.tile_height(),
-        map.chunks_wide(),
-        map.chunks_tall()
+        map.tile_height()
     );
     println!("║  Total:  {total} tiles");
     println!("╠═══════════════════════════════════╣");

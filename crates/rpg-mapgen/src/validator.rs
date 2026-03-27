@@ -81,20 +81,19 @@ impl MapValidator {
     /// (distinct from a soft validation failure).
     #[instrument(skip(self, map))]
     pub fn validate(&self, map: &GameMap) -> Result<ValidationResult, Error> {
-        let map_table = game_map_to_lua_table(&self.lua, map).map_err(|source| {
-            Error::LuaExecution {
+        let map_table =
+            game_map_to_lua_table(&self.lua, map).map_err(|source| Error::LuaExecution {
                 function: "game_map_to_lua_table".into(),
                 source,
-            }
-        })?;
-
-        let multi: MultiValue = self
-            .func
-            .call(map_table)
-            .map_err(|source| Error::LuaExecution {
-                function: "validate".into(),
-                source,
             })?;
+
+        let multi: MultiValue =
+            self.func
+                .call(map_table)
+                .map_err(|source| Error::LuaExecution {
+                    function: "validate".into(),
+                    source,
+                })?;
 
         let result = parse_validation_result(multi)?;
 
@@ -121,9 +120,7 @@ fn parse_validation_result(mut multi: MultiValue) -> Result<ValidationResult, Er
         other => {
             return Err(Error::LuaExecution {
                 function: "validate (return #1)".into(),
-                source: mlua::Error::runtime(format!(
-                    "expected boolean, got {other:?}"
-                )),
+                source: mlua::Error::runtime(format!("expected boolean, got {other:?}")),
             });
         }
     };
@@ -142,10 +139,9 @@ fn parse_validation_result(mut multi: MultiValue) -> Result<ValidationResult, Er
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mlua::Function;
-    use rpg_engine::map::chunk::{Chunk, ChunkCoord};
-    use rpg_engine::map::tile::{Tile, Tiles};
     use crate::test_utils::init_tracing;
+    use mlua::Function;
+    use rpg_engine::map::tile::{Tile, Tiles};
 
     fn make_validator(script: &str) -> MapValidator {
         let lua = Lua::new();
@@ -154,10 +150,13 @@ mod tests {
     }
 
     fn make_uniform_map(kind: Tiles) -> GameMap {
-        let chunks: Vec<Chunk> = (0..9u32)
-            .map(|i| Chunk::filled(ChunkCoord::new(i % 3, i / 3), Tile::new(kind)))
-            .collect();
-        GameMap::new(3, 3, chunks, [0u8; 32]).unwrap()
+        use rpg_engine::map::chunk::CHUNK_SIZE;
+        let cw: u32 = 3;
+        let ct: u32 = 3;
+        let tw = cw * CHUNK_SIZE as u32;
+        let th = ct * CHUNK_SIZE as u32;
+        let tiles = vec![Tile::new(kind); (tw * th) as usize];
+        GameMap::new(tw, th, tiles, [0u8; 32]).unwrap()
     }
 
     #[test]

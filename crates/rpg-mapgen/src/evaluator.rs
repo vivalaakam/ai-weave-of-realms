@@ -61,12 +61,11 @@ impl MapEvaluator {
     /// Returns [`Error::LuaExecution`] if the Lua function raises an error.
     #[instrument(skip(self, map))]
     pub fn evaluate(&self, map: &GameMap) -> Result<f64, Error> {
-        let map_table = game_map_to_lua_table(&self.lua, map).map_err(|source| {
-            Error::LuaExecution {
+        let map_table =
+            game_map_to_lua_table(&self.lua, map).map_err(|source| Error::LuaExecution {
                 function: "game_map_to_lua_table".into(),
                 source,
-            }
-        })?;
+            })?;
 
         let score: f64 = self
             .func
@@ -86,10 +85,9 @@ impl MapEvaluator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mlua::Function;
-    use rpg_engine::map::chunk::{Chunk, ChunkCoord};
-    use rpg_engine::map::tile::{Tile, Tiles};
     use crate::test_utils::init_tracing;
+    use mlua::Function;
+    use rpg_engine::map::tile::{Tile, Tiles};
 
     fn make_evaluator(script: &str) -> MapEvaluator {
         let lua = Lua::new();
@@ -98,10 +96,13 @@ mod tests {
     }
 
     fn make_uniform_map(kind: Tiles) -> GameMap {
-        let chunks: Vec<Chunk> = (0..9u32)
-            .map(|i| Chunk::filled(ChunkCoord::new(i % 3, i / 3), Tile::new(kind)))
-            .collect();
-        GameMap::new(3, 3, chunks, [0u8; 32]).unwrap()
+        use rpg_engine::map::chunk::CHUNK_SIZE;
+        let cw: u32 = 3;
+        let ct: u32 = 3;
+        let tw = cw * CHUNK_SIZE as u32;
+        let th = ct * CHUNK_SIZE as u32;
+        let tiles = vec![Tile::new(kind); (tw * th) as usize];
+        GameMap::new(tw, th, tiles, [0u8; 32]).unwrap()
     }
 
     #[test]

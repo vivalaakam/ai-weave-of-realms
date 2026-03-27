@@ -36,4 +36,7 @@ pub enum Error {
     /// I/O error while reading a Lua script file.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("map generation pipeline failed: {0}")]
+    PipelineFailed(String),
 }

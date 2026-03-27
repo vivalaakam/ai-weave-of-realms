@@ -38,23 +38,18 @@ impl ValidationRuleSet {
     ///
     /// # Errors
     /// Returns [`Error::ScriptLoad`] if any `.lua` file cannot be read or compiled.
-    /// Returns [`Error::Engine`] with [`InvalidState`](rpg_engine::error::Error::InvalidState)
+    /// Returns [`Error::Engine`] with [`InvalidState`](rpg_engine::error::Error::InvalidChunksSize)
     /// if `dir` cannot be read.
     pub fn from_dir(dir: &Path) -> Result<Self, Error> {
         let mut entries: Vec<_> = std::fs::read_dir(dir)
             .map_err(|e| {
-                Error::Engine(rpg_engine::error::Error::InvalidState(format!(
-                    "cannot read validation rule directory '{}': {e}",
-                    dir.display()
-                )))
+                Error::Engine(rpg_engine::error::Error::ValidationRuleDir {
+                    path: dir.display().to_string(),
+                    err: e,
+                })
             })?
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .map(|x| x == "lua")
-                    .unwrap_or(false)
-            })
+            .filter(|e| e.path().extension().map(|x| x == "lua").unwrap_or(false))
             .collect();
 
         // Sort by file name for deterministic order (e.g. 01_..., 02_...)
@@ -151,17 +146,19 @@ impl From<RuleResult> for ValidationResult {
 mod tests {
     use std::fs;
 
-    use rpg_engine::map::chunk::{Chunk, ChunkCoord};
     use rpg_engine::map::tile::{Tile, Tiles};
 
     use super::*;
     use crate::test_utils::init_tracing;
 
     fn make_uniform_map(kind: Tiles) -> GameMap {
-        let chunks: Vec<Chunk> = (0..9u32)
-            .map(|i| Chunk::filled(ChunkCoord::new(i % 3, i / 3), Tile::new(kind)))
-            .collect();
-        GameMap::new(3, 3, chunks, [0u8; 32]).unwrap()
+        use rpg_engine::map::chunk::CHUNK_SIZE;
+        let cw: u32 = 3;
+        let ct: u32 = 3;
+        let tw = cw * CHUNK_SIZE as u32;
+        let th = ct * CHUNK_SIZE as u32;
+        let tiles = vec![Tile::new(kind); (tw * th) as usize];
+        GameMap::new(tw, th, tiles, [0u8; 32]).unwrap()
     }
 
     fn write_rule(dir: &Path, name: &str, script: &str) {
@@ -188,7 +185,11 @@ mod tests {
     fn single_passing_rule() {
         init_tracing();
         let dir = temp_rule_dir("single_pass");
-        write_rule(&dir, "01_always_pass.lua", "return function(m) return true, nil end");
+        write_rule(
+            &dir,
+            "01_always_pass.lua",
+            "return function(m) return true, nil end",
+        );
         let rs = ValidationRuleSet::from_dir(&dir).unwrap();
         assert_eq!(rs.len(), 1);
         let map = make_uniform_map(Tiles::Meadow);
@@ -201,8 +202,16 @@ mod tests {
     fn multiple_rules_all_run() {
         init_tracing();
         let dir = temp_rule_dir("multi_run");
-        write_rule(&dir, "01_pass.lua", "return function(m) return true, nil end");
-        write_rule(&dir, "02_fail.lua", r#"return function(m) return false, "bad map" end"#);
+        write_rule(
+            &dir,
+            "01_pass.lua",
+            "return function(m) return true, nil end",
+        );
+        write_rule(
+            &dir,
+            "02_fail.lua",
+            r#"return function(m) return false, "bad map" end"#,
+        );
         let rs = ValidationRuleSet::from_dir(&dir).unwrap();
         let map = make_uniform_map(Tiles::Meadow);
         let results = rs.validate_all(&map).unwrap();
@@ -230,7 +239,11 @@ mod tests {
         init_tracing();
         let dir = temp_rule_dir("non_lua");
         write_rule(&dir, "README.md", "# not a rule");
-        write_rule(&dir, "01_rule.lua", "return function(m) return true, nil end");
+        write_rule(
+            &dir,
+            "01_rule.lua",
+            "return function(m) return true, nil end",
+        );
         let rs = ValidationRuleSet::from_dir(&dir).unwrap();
         assert_eq!(rs.len(), 1);
     }

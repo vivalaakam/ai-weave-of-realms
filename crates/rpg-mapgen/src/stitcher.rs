@@ -21,7 +21,6 @@ use std::collections::HashMap;
 use tracing::{debug, instrument};
 
 use rpg_engine::error::Error as EngineError;
-use rpg_engine::map::chunk::CHUNK_SIZE;
 use rpg_engine::map::game_map::{GameMap, MapCoord};
 use rpg_engine::map::tile::Tiles;
 
@@ -36,12 +35,16 @@ impl Stitcher {
     /// Modifies `map` in-place.  The pass is deterministic — the same map
     /// always produces the same result.
     ///
+    /// # Arguments
+    /// * `map`        - The assembled map to stitch in-place.
+    /// * `chunk_size` - The chunk size used during generation (tile units).
+    ///
     /// # Errors
     /// Returns [`EngineError::OutOfBounds`] if an internal coordinate calculation
     /// is incorrect (should not happen for a well-formed map).
-    #[instrument(skip(map), fields(cw = map.chunks_wide(), ct = map.chunks_tall()))]
-    pub fn stitch(map: &mut GameMap) -> Result<(), EngineError> {
-        let changes = Self::collect_changes(map)?;
+    #[instrument(skip(map), fields(tw = map.tile_width(), th = map.tile_height()))]
+    pub fn stitch(map: &mut GameMap, chunk_size: u32) -> Result<(), EngineError> {
+        let changes = Self::collect_changes(map, chunk_size)?;
         let changed = changes.len();
 
         for (coord, kind) in changes {
@@ -56,10 +59,13 @@ impl Stitcher {
     ///
     /// # Errors
     /// Returns [`EngineError::OutOfBounds`] on unexpected coordinate access.
-    fn collect_changes(map: &GameMap) -> Result<Vec<(MapCoord, Tiles)>, EngineError> {
+    fn collect_changes(
+        map: &GameMap,
+        chunk_size: u32,
+    ) -> Result<Vec<(MapCoord, Tiles)>, EngineError> {
         let mut changes = Vec::new();
 
-        for coord in Self::seam_coordinates(map) {
+        for coord in Self::seam_coordinates(map, chunk_size) {
             let current = map.get_tile(coord)?.kind;
             let neighbors = Self::orthogonal_neighbors(coord, map.tile_width(), map.tile_height());
 
@@ -82,39 +88,27 @@ impl Stitcher {
 
     /// Returns all tile coordinates that lie within one tile of a chunk boundary seam.
     ///
-    /// For a map with `chunks_wide × chunks_tall` chunks, there are
-    /// `(chunks_wide - 1)` vertical seams and `(chunks_tall - 1)` horizontal seams.
+    /// Seams occur at every multiple of `chunk_size` along both axes.
     /// Each seam contributes two columns / rows of tile coordinates.
-    fn seam_coordinates(map: &GameMap) -> Vec<MapCoord> {
+    pub fn seam_coordinates(map: &GameMap, chunk_size: u32) -> Vec<MapCoord> {
         let width = map.tile_width();
         let height = map.tile_height();
-        let chunk = CHUNK_SIZE as u32;
 
         let mut coords = Vec::new();
 
-        // Vertical seams: between chunk columns cx and cx+1
-        for cx in 1..map.chunks_wide() {
-            let seam_x = cx * chunk;
+        // Vertical seams: at x = chunk_size, 2*chunk_size, ...
+        for seam_x in (chunk_size..width).step_by(chunk_size as usize) {
             for y in 0..height {
-                if seam_x > 0 {
-                    coords.push(MapCoord::new(seam_x - 1, y));
-                }
-                if seam_x < width {
-                    coords.push(MapCoord::new(seam_x, y));
-                }
+                coords.push(MapCoord::new(seam_x - 1, y));
+                coords.push(MapCoord::new(seam_x, y));
             }
         }
 
-        // Horizontal seams: between chunk rows cy and cy+1
-        for cy in 1..map.chunks_tall() {
-            let seam_y = cy * chunk;
+        // Horizontal seams: at y = chunk_size, 2*chunk_size, ...
+        for seam_y in (chunk_size..height).step_by(chunk_size as usize) {
             for x in 0..width {
-                if seam_y > 0 {
-                    coords.push(MapCoord::new(x, seam_y - 1));
-                }
-                if seam_y < height {
-                    coords.push(MapCoord::new(x, seam_y));
-                }
+                coords.push(MapCoord::new(x, seam_y - 1));
+                coords.push(MapCoord::new(x, seam_y));
             }
         }
 
@@ -151,26 +145,37 @@ impl Stitcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rpg_engine::map::chunk::{Chunk, ChunkCoord};
-    use rpg_engine::map::tile::Tile;
     use crate::test_utils::init_tracing;
+    use rpg_engine::map::chunk::CHUNK_SIZE;
+    use rpg_engine::map::tile::Tile;
 
-    /// Builds a 2×1 map where the left chunk is all `left_kind` and
-    /// the right chunk is all `right_kind`.
+    /// Builds a 2×1 map (64×32 tiles) where the left half is all `left_kind` and
+    /// the right half is all `right_kind`.
     fn make_two_chunk_map(left_kind: Tiles, right_kind: Tiles) -> GameMap {
-        let left = Chunk::filled(ChunkCoord::new(0, 0), Tile::new(left_kind));
-        let right = Chunk::filled(ChunkCoord::new(1, 0), Tile::new(right_kind));
-        GameMap::new(2, 1, vec![left, right], [0u8; 32]).unwrap()
+        let cs = CHUNK_SIZE as u32;
+        let width = cs * 2;
+        let height = cs;
+        let mut tiles = Vec::with_capacity((width * height) as usize);
+        for _y in 0..height {
+            for x in 0..width {
+                if x < cs {
+                    tiles.push(Tile::new(left_kind));
+                } else {
+                    tiles.push(Tile::new(right_kind));
+                }
+            }
+        }
+        GameMap::new(width, height, tiles, [0u8; 32]).unwrap()
     }
 
     #[test]
     fn uniform_map_unchanged() {
         init_tracing();
         let mut map = make_two_chunk_map(Tiles::Meadow, Tiles::Meadow);
-        Stitcher::stitch(&mut map).unwrap();
+        Stitcher::stitch(&mut map, CHUNK_SIZE as u32).unwrap();
 
         // All tiles should still be grass
-        for tile in map.chunks().iter().flat_map(|c| c.tiles()) {
+        for tile in map.tiles() {
             assert_eq!(tile.kind, Tiles::Meadow);
         }
     }
@@ -193,27 +198,27 @@ mod tests {
             Tiles::Meadow
         );
 
-        Stitcher::stitch(&mut map).unwrap();
+        Stitcher::stitch(&mut map, CHUNK_SIZE as u32).unwrap();
 
         // After stitching: interior seam tiles (not at the corners of the chunk)
         // should be changed by majority voting.
-        // Row 1 (not at y=0 edge): left seam tile has 3 water neighbours → stays water
-        // or 3 grass neighbours → becomes grass depending on context.
         // We just check the stitch ran without error (correctness validated visually).
     }
 
     #[test]
     fn seam_coordinates_count_for_2x2_map() {
         init_tracing();
-        // 2×2 chunks = 1 vertical seam + 1 horizontal seam
+        // 2×2 chunks (64×64 tiles):
+        // 1 vertical seam + 1 horizontal seam
         // vertical seam: 2 columns × 64 rows = 128 coords
         // horizontal seam: 2 rows × 64 cols = 128 coords
         // minus 4 duplicated corner coords = 252
-        let chunks: Vec<Chunk> = (0..4)
-            .map(|i| Chunk::filled(ChunkCoord::new(i % 2, i / 2), Tile::default()))
-            .collect();
-        let map = GameMap::new(2, 2, chunks, [0u8; 32]).unwrap();
-        let coords = Stitcher::seam_coordinates(&map);
+        let cs = CHUNK_SIZE as u32;
+        let width = cs * 2;
+        let height = cs * 2;
+        let tiles = vec![Tile::default(); (width * height) as usize];
+        let map = GameMap::new(width, height, tiles, [0u8; 32]).unwrap();
+        let coords = Stitcher::seam_coordinates(&map, cs);
         // Just verify no duplicates and the count is reasonable
         let mut sorted = coords.clone();
         sorted.sort_by_key(|c| (c.y, c.x));
@@ -222,6 +227,10 @@ mod tests {
             v.dedup();
             v.len()
         };
-        assert_eq!(coords.len(), deduped_len, "seam_coordinates should be deduplicated");
+        assert_eq!(
+            coords.len(),
+            deduped_len,
+            "seam_coordinates should be deduplicated"
+        );
     }
 }

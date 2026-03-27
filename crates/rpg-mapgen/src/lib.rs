@@ -29,5 +29,7 @@ pub mod stitcher;
 pub mod validation_rule_set;
 pub mod validator;
 
+pub(crate) mod chunk_grid;
+
 #[cfg(test)]
 pub mod test_utils;
