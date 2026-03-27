@@ -1,7 +1,7 @@
 --- Full terrain generator (combined pipeline).
 --
 -- Single-script equivalent of the full generator pipeline:
---   water → river → forest → mountain → road → resources
+--   water → river → forest → mountain → road → city → resources
 --
 -- Each stage runs in sequence on the same tile table, sharing the one
 -- chunk-level RNG.  The result is fully deterministic: same seed + same
@@ -14,7 +14,8 @@
 -- 4. Forest         — 3–7 circular forest clusters.
 -- 5. Mountains      — 1–3 ridge polylines.
 -- 6. Roads          — 0–2 mostly-straight through-roads.
--- 7. Resources      — 1 gold mine + 4–7 resource deposits.
+-- 7. City           — one 3×3 city block with entrance per chunk.
+-- 8. Resources      — 1 gold mine + 4–7 resource deposits.
 --
 -- ## Pipeline support
 -- Accepts an optional 4th argument `tiles`.  When present, the base-canvas
@@ -353,19 +354,101 @@ local function stage_roads(result, rng)
     end
 end
 
--- ─── Stage 7 – resources ──────────────────────────────────────────────────────
+-- ─── Stage 7 – city block ─────────────────────────────────────────────────────
+--
+-- Places one 3×3 city block per chunk.  Up to 20 candidate positions are tried;
+-- each is accepted only when the 3×3 block plus a 1-tile margin is completely
+-- free of water, river, and mountain.  If no valid position is found the stage
+-- is silently skipped.
+--
+-- Layout:
+--   rows by..by+1  — all "city" (6 tiles)
+--   row  by+2      — "city_entrance" at bx, then "city" × 2
+-- Entrance neighbours outside the block are forced to "meadow" or "road".
+-- Placed BEFORE resources so the resource stage respects the exclusion zone.
 
-local RES_PLACEABLE  = { meadow = true }
+local CITY_BLOCKED = { water = true, river = true, mountain = true }
+
+local function city_area_clear(result, bx, by)
+    -- Check 3-wide × 3-tall block + 1-tile margin on all sides (5×4 scan)
+    for dy = -1, 3 do
+        for dx = -1, 3 do
+            local nx, ny = bx + dx, by + dy
+            if nx >= 0 and nx < CHUNK_SIZE and ny >= 0 and ny < CHUNK_SIZE then
+                if CITY_BLOCKED[result[idx(nx, ny)]] then return false end
+            end
+        end
+    end
+    return true
+end
+
+local function stage_city(result, rng)
+    local bx, by
+    for _ = 1, 20 do
+        local tx = rng:random_range_u32(1, 28)
+        local ty = rng:random_range_u32(1, 26)
+        if city_area_clear(result, tx, ty) then
+            bx, by = tx, ty
+            break
+        end
+    end
+    if not bx then return end  -- no valid position found
+
+    -- Top two rows: all city
+    for dy = 0, 1 do
+        for dx = 0, 2 do
+            result[idx(bx + dx, by + dy)] = "city"
+        end
+    end
+    -- Bottom row: entrance at left, city on right two
+    result[idx(bx,     by + 2)] = "city_entrance"
+    result[idx(bx + 1, by + 2)] = "city"
+    result[idx(bx + 2, by + 2)] = "city"
+
+    -- Force entrance neighbours (outside the 3×3 block) to meadow or road
+    local nb = {
+        { bx - 1, by + 2 }, { bx + 3, by + 2 },
+        { bx,     by + 3 }, { bx + 1, by + 3 }, { bx + 2, by + 3 },
+    }
+    for _, p in ipairs(nb) do
+        local nx, ny = p[1], p[2]
+        if nx >= 0 and nx < CHUNK_SIZE and ny >= 0 and ny < CHUNK_SIZE then
+            result[idx(nx, ny)] = rng:random_bool(0.7) and "meadow" or "road"
+        end
+    end
+end
+
+-- ─── Stage 8 – resources ──────────────────────────────────────────────────────
+--
+-- Rules:
+--   • The resource tile and all 8 neighbours (3×3 area) must be "meadow".
+--   • Resources must not be within SAFE_RADIUS of any settlement tile.
+--   • Resources must be at least MIN_SPACING apart from each other.
+--   • 1 gold mine per chunk + 4–7 generic resource deposits.
+
 local RES_SETTLEMENT = { city = true, city_entrance = true, village = true }
 local MIN_SPACING    = 4
 local SAFE_RADIUS    = 2
-local MAX_TRIES      = 60
+local MAX_TRIES      = 120
+
+--- Returns true when all 9 tiles of the 3×3 area centred on (tx,ty) are "meadow".
+local function meadow_3x3(result, tx, ty)
+    for dy = -1, 1 do
+        for dx = -1, 1 do
+            local nx, ny = tx + dx, ty + dy
+            if nx < 0 or nx >= CHUNK_SIZE or ny < 0 or ny >= CHUNK_SIZE then
+                return false
+            end
+            if result[idx(nx, ny)] ~= "meadow" then return false end
+        end
+    end
+    return true
+end
 
 local function near_settlement(result, tx, ty)
     for dy = -SAFE_RADIUS, SAFE_RADIUS do
         for dx = -SAFE_RADIUS, SAFE_RADIUS do
-            local nx = tx + dx
-            local ny = ty + dy
+            local nx, ny = tx + dx, ty + dy
             if nx >= 0 and nx < CHUNK_SIZE and ny >= 0 and ny < CHUNK_SIZE then
                 if RES_SETTLEMENT[result[idx(nx, ny)]] then return true end
             end
@@ -383,14 +466,14 @@ end
 
 local function try_place_resource(result, rng, placed, kind)
     for _ = 1, MAX_TRIES do
+        -- Keep 1-tile margin so the 3×3 check never goes out of bounds
         local tx = rng:random_range_u32(1, CHUNK_SIZE - 2)
         local ty = rng:random_range_u32(1, CHUNK_SIZE - 2)
-        local i  = idx(tx, ty)
-        if RES_PLACEABLE[result[i]]
+        if meadow_3x3(result, tx, ty)
             and not near_settlement(result, tx, ty)
             and spaced_ok(placed, tx, ty)
         then
-            result[i] = kind
+            result[idx(tx, ty)] = kind
             placed[#placed + 1] = { tx, ty }
             return true
         end
@@ -417,6 +500,7 @@ local function generate_chunk(rng, x, y, tiles)
     stage_forest(result, rng)
     stage_mountains(result, rng)
     stage_roads(result, rng)
+    stage_city(result, rng)
     stage_resources(result, rng)
     return result
 end
