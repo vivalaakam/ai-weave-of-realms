@@ -51,6 +51,8 @@ impl Stitcher {
             map.get_tile_mut(coord)?.kind = kind;
         }
 
+        Self::enforce_chunk_edge_alignment(map, chunk_size)?;
+
         debug!(changed, "stitcher pass complete");
         Ok(())
     }
@@ -137,6 +139,109 @@ impl Stitcher {
         }
 
         n
+    }
+
+    fn enforce_chunk_edge_alignment(
+        map: &mut GameMap,
+        chunk_size: u32,
+    ) -> Result<(), EngineError> {
+        let width = map.tile_width();
+        let height = map.tile_height();
+
+        for chunk_y in (0..height).step_by(chunk_size as usize) {
+            for chunk_x in (0..width).step_by(chunk_size as usize) {
+                for side in 0..4 {
+                    let coords = Self::chunk_edge_coords(chunk_x, chunk_y, chunk_size, side);
+                    Self::normalize_edge_line(map, &coords)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn chunk_edge_coords(chunk_x: u32, chunk_y: u32, chunk_size: u32, side: u8) -> Vec<MapCoord> {
+        let mut coords = Vec::with_capacity(chunk_size as usize);
+
+        for pos in 0..chunk_size {
+            let coord = match side {
+                0 => MapCoord::new(chunk_x + pos, chunk_y),
+                1 => MapCoord::new(chunk_x + chunk_size - 1, chunk_y + pos),
+                2 => MapCoord::new(chunk_x + pos, chunk_y + chunk_size - 1),
+                _ => MapCoord::new(chunk_x, chunk_y + pos),
+            };
+            coords.push(coord);
+        }
+
+        coords
+    }
+
+    fn normalize_edge_line(map: &mut GameMap, coords: &[MapCoord]) -> Result<(), EngineError> {
+        let original: Vec<Tiles> = coords
+            .iter()
+            .map(|coord| map.get_tile(*coord).map(|tile| tile.kind))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut updated = original.clone();
+        let mut natural_fill: Vec<Option<Tiles>> = vec![None; coords.len()];
+
+        for kind in [Tiles::Forest, Tiles::Mountain, Tiles::Water] {
+            let anchors: Vec<usize> = original
+                .iter()
+                .enumerate()
+                .filter_map(|(pos, tile)| {
+                    if *tile == kind && Self::is_edge_anchor(pos as u32) {
+                        Some(pos)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            for &anchor in &anchors {
+                natural_fill[anchor] = Some(kind);
+            }
+
+            for window in anchors.windows(2) {
+                if window[1] - window[0] == 3 {
+                    for fill_pos in window[0]..=window[1] {
+                        natural_fill[fill_pos] = Some(kind);
+                    }
+                }
+            }
+        }
+
+        for (pos, tile) in original.iter().enumerate() {
+            updated[pos] = match tile {
+                Tiles::Road | Tiles::River => {
+                    if Self::is_edge_anchor(pos as u32) {
+                        *tile
+                    } else {
+                        Tiles::Meadow
+                    }
+                }
+                Tiles::Bridge => {
+                    if Self::is_edge_anchor(pos as u32) {
+                        Tiles::Road
+                    } else {
+                        Tiles::Meadow
+                    }
+                }
+                Tiles::Forest | Tiles::Mountain | Tiles::Water => {
+                    natural_fill[pos].unwrap_or(Tiles::Meadow)
+                }
+                _ => *tile,
+            };
+        }
+
+        for (coord, kind) in coords.iter().zip(updated.iter()) {
+            map.get_tile_mut(*coord)?.kind = *kind;
+        }
+
+        Ok(())
+    }
+
+    fn is_edge_anchor(pos: u32) -> bool {
+        pos % 3 == 1
     }
 }
 
@@ -232,5 +337,33 @@ mod tests {
             deduped_len,
             "seam_coordinates should be deduplicated"
         );
+    }
+
+    #[test]
+    fn edge_alignment_rules_are_enforced() {
+        init_tracing();
+        let cs = CHUNK_SIZE as u32;
+        let width = cs;
+        let height = cs;
+        let mut tiles = vec![Tile::default(); (width * height) as usize];
+
+        let idx = |x: u32, y: u32| -> usize { (y * width + x) as usize };
+
+        tiles[idx(0, 0)] = Tile::new(Tiles::Road);
+        tiles[idx(1, 0)] = Tile::new(Tiles::Road);
+        tiles[idx(1, 31)] = Tile::new(Tiles::Forest);
+        tiles[idx(2, 31)] = Tile::new(Tiles::Forest);
+        tiles[idx(3, 31)] = Tile::new(Tiles::Forest);
+        tiles[idx(4, 31)] = Tile::new(Tiles::Forest);
+
+        let mut map = GameMap::new(width, height, tiles, [0u8; 32]).unwrap();
+        Stitcher::stitch(&mut map, cs).unwrap();
+
+        assert_eq!(map.get_tile(MapCoord::new(0, 0)).unwrap().kind, Tiles::Meadow);
+        assert_eq!(map.get_tile(MapCoord::new(1, 0)).unwrap().kind, Tiles::Road);
+        assert_eq!(map.get_tile(MapCoord::new(1, 31)).unwrap().kind, Tiles::Forest);
+        assert_eq!(map.get_tile(MapCoord::new(2, 31)).unwrap().kind, Tiles::Forest);
+        assert_eq!(map.get_tile(MapCoord::new(3, 31)).unwrap().kind, Tiles::Forest);
+        assert_eq!(map.get_tile(MapCoord::new(4, 31)).unwrap().kind, Tiles::Forest);
     }
 }

@@ -66,6 +66,7 @@ different heuristics or stage ordering as long as they:
 6. **Roads** — mostly-straight through-roads.
 7. **City** — one 3×3 city block per chunk.
 8. **Resources** — 1 gold mine + 4–7 resource deposits.
+9. **Edge alignment** — chunk-edge contact is normalised to the connection grid.
 
 ---
 
@@ -164,6 +165,25 @@ The following tiles must not be `water`, `river`, or `mountain`:
 
 ---
 
+## 10.2 Chunk edge connection rules
+
+Chunk edges are treated as connection interfaces for neighbouring chunks.
+
+- Edge coordinates use **0-based local chunk positions** `0..31`.
+- Allowed anchor positions are those where `pos % 3 == 1`, i.e. `1, 4, 7, ...`
+  in 0-based indexing, which corresponds to `2, 5, 8, ...` in 1-based human counting.
+- `road` and `river` may touch a chunk edge **only** at anchor positions.
+- `bridge` must not be exposed on a chunk edge; edge crossings are reduced to `road`.
+- `forest`, `mountain`, and `water` may anchor on the same grid.
+- If the same natural kind touches the edge at two neighbouring anchors
+  (for example positions `1` and `4` in 0-based, or `2` and `5` in 1-based),
+  then the border cells between them must be filled with that same kind, forming
+  one continuous edge segment.
+- Natural edge contact outside an anchored segment is invalid.
+- These rules apply to **all four sides of every chunk**, including outer map borders.
+
+---
+
 ## 11. Map-level validation rules (`scripts/rules/`)
 
 Loaded in sorted filename order; each file must return `function(map) → bool, string?`.
@@ -173,6 +193,7 @@ Loaded in sorted filename order; each file must return `function(map) → bool, 
 | `01_passable_terrain.lua`  | At least 50 % of tiles must be passable           |
 | `02_impassable_limit.lua`  | At most 40 % of tiles may be impassable           |
 | `03_city_rules.lua`        | Every `city_entrance` must be adjacent to ≥1 passable non-city tile |
+| `04_chunk_edge_alignment.lua` | Every chunk edge must satisfy the connection-grid contract |
 
 ---
 

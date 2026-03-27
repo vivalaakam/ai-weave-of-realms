@@ -32,6 +32,20 @@ local function manhattan(tx, ty, ox, oy)
     return math.abs(tx - ox) + math.abs(ty - oy)
 end
 
+local function is_edge_anchor(pos)
+    return pos % 3 == 1
+end
+
+local function random_edge_anchor(rng, lo, hi)
+    local choices = {}
+    for pos = lo, hi do
+        if is_edge_anchor(pos) then
+            choices[#choices + 1] = pos
+        end
+    end
+    return choices[rng:random_range_u32(1, #choices + 1)]
+end
+
 local function point_segment_distance(px, py, ax, ay, bx, by)
     local dx = bx - ax
     local dy = by - ay
@@ -130,7 +144,7 @@ local function stage_ridge(result, rng, state)
     local end_side = (start_side + rng:random_range_u32(1, 4)) % 4
 
     local function side_point(side)
-        local pos = rng:random_range_u32(4, CHUNK_SIZE - 4)
+        local pos = random_edge_anchor(rng, 4, CHUNK_SIZE - 4)
         if side == 0 then return pos, 0
         elseif side == 1 then return CHUNK_SIZE - 1, pos
         elseif side == 2 then return pos, CHUNK_SIZE - 1
@@ -206,17 +220,17 @@ local function stage_river(result, rng, state)
     local tx
     local ty
     if edge == 0 then
-        tx = rng:random_range_u32(4, CHUNK_SIZE - 4)
+        tx = random_edge_anchor(rng, 4, CHUNK_SIZE - 4)
         ty = 0
     elseif edge == 1 then
         tx = CHUNK_SIZE - 1
-        ty = rng:random_range_u32(4, CHUNK_SIZE - 4)
+        ty = random_edge_anchor(rng, 4, CHUNK_SIZE - 4)
     elseif edge == 2 then
-        tx = rng:random_range_u32(4, CHUNK_SIZE - 4)
+        tx = random_edge_anchor(rng, 4, CHUNK_SIZE - 4)
         ty = CHUNK_SIZE - 1
     else
         tx = 0
-        ty = rng:random_range_u32(4, CHUNK_SIZE - 4)
+        ty = random_edge_anchor(rng, 4, CHUNK_SIZE - 4)
     end
 
     if state.lake and rng:random_bool(0.55) then
@@ -438,10 +452,10 @@ local function stage_roads(result, rng, state)
     end
 
     local gates = {}
-    gates[1] = { rng:random_range_u32(8, CHUNK_SIZE - 8), 0 }
-    gates[2] = { CHUNK_SIZE - 1, rng:random_range_u32(8, CHUNK_SIZE - 8) }
+    gates[1] = { random_edge_anchor(rng, 8, CHUNK_SIZE - 8), 0 }
+    gates[2] = { CHUNK_SIZE - 1, random_edge_anchor(rng, 8, CHUNK_SIZE - 8) }
     if rng:random_bool(0.5) then
-        gates[2] = { rng:random_range_u32(8, CHUNK_SIZE - 8), CHUNK_SIZE - 1 }
+        gates[2] = { random_edge_anchor(rng, 8, CHUNK_SIZE - 8), CHUNK_SIZE - 1 }
     end
 
     for _, gate in ipairs(gates) do
@@ -466,17 +480,20 @@ local function stage_poi(result, rng)
     place_poi(result, rng, "village", 80, function(tx, ty)
         return near_any(result, tx, ty, 1, { road = true, bridge = true })
             and not near_any(result, tx, ty, 2, SETTLEMENT)
+            and not near_any(result, tx, ty, 2, { city = true, city_entrance = true })
     end)
 
     place_poi(result, rng, "merchant", 80, function(tx, ty)
         return near_any(result, tx, ty, 1, { road = true, bridge = true })
-            and near_any(result, tx, ty, 4, SETTLEMENT)
+            and near_any(result, tx, ty, 5, SETTLEMENT)
+            and not near_any(result, tx, ty, 2, { city = true, city_entrance = true })
             and not near_any(result, tx, ty, 1, WET)
     end)
 
     place_poi(result, rng, "ruins", 80, function(tx, ty)
         return near_any(result, tx, ty, 1, { forest = true, mountain = true })
             and not near_any(result, tx, ty, 2, SETTLEMENT)
+            and not near_any(result, tx, ty, 2, { city = true, city_entrance = true })
     end)
 end
 

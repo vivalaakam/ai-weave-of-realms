@@ -41,6 +41,20 @@ local function clamp(v, lo, hi)
     return math.max(lo, math.min(hi, v))
 end
 
+local function is_edge_anchor(pos)
+    return pos % 3 == 1
+end
+
+local function random_edge_anchor(rng, lo, hi)
+    local choices = {}
+    for pos = lo, hi do
+        if is_edge_anchor(pos) then
+            choices[#choices + 1] = pos
+        end
+    end
+    return choices[rng:random_range_u32(1, #choices + 1)]
+end
+
 local function dist2d(x1, y1, x2, y2)
     local dx = x1 - x2
     local dy = y1 - y2
@@ -126,7 +140,7 @@ local RIVER_PROTECTED = {
 
 --- Random entry/exit point on `edge` (0=top, 1=right, 2=bottom, 3=left).
 local function edge_point(rng, edge)
-    local pos = rng:random_range_u32(3, CHUNK_SIZE - 4)
+    local pos = random_edge_anchor(rng, 3, CHUNK_SIZE - 4)
     if edge == 0 then return pos, 0
     elseif edge == 1 then return CHUNK_SIZE - 1, pos
     elseif edge == 2 then return pos, CHUNK_SIZE - 1
@@ -293,7 +307,7 @@ local ROAD_BLOCKED = {
 local function road_edge_point(rng, edge)
     local lo  = math.floor(CHUNK_SIZE / 3)
     local hi  = math.floor(2 * CHUNK_SIZE / 3)
-    local pos = rng:random_range_u32(lo, hi)
+    local pos = random_edge_anchor(rng, lo, hi)
     if edge == 0 then return pos, 0
     elseif edge == 1 then return CHUNK_SIZE - 1, pos
     elseif edge == 2 then return pos, CHUNK_SIZE - 1

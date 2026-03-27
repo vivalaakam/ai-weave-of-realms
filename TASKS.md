@@ -34,6 +34,7 @@ Update status as work progresses.
 | 1.10 | `scripts/rules/validate.lua` — basic map validity rules | — | DONE | |
 | 1.11 | Проанализировать правила генерации, исправить `MAP_GENERATION_RULES.md` и добавить альтернативный генератор `scripts/generators/codex-variant.lua` | Codex | DONE | `codex-variant.lua` добавлен; правила синхронизированы с `tile.rs`, мостами/POI и инвариантом города из `03_city_rules.lua` |
 | 1.12 | Расширить `mapgen`: сохранять каждую генерацию в timestamp-директорию, экспортировать PNG + TMX и поддержать `--open` для итогового `.tmx` | Codex | DONE | `mapgen` пишет `output/gen-*/map.png` и `map.tmx`, TMX ссылается на корневой `tileset/tileset.tsx`, `--open` открывает `.tmx` |
+| 1.13 | Ввести правила касания чанков по краям: только позиции `index % 3 = 1` для дорог/рек и согласованные полосы для леса/гор/воды; обновить генераторы и `MAP_GENERATION_RULES.md` | Codex | DONE | Добавлен post-stitch edge contract, валидатор `04_chunk_edge_alignment.lua`, обновлены `terrain.lua` и `codex-variant.lua` |
 
 ## Phase 2 — Tiled Integration
 
@@ -93,3 +94,4 @@ Update status as work progresses.
 | 2026-03-27 | `tracing` for all logging | Structured, filterable, async-compatible |
 | 2026-03-27 | `MAP_GENERATION_RULES.md` must match runtime truth from `Tiles` and Lua validators | Avoid drift between documentation, generator scripts, and validation invariants |
 | 2026-03-27 | `mapgen` exports both PNG and TMX into a per-run timestamp directory | Keeps generation artefacts grouped and lets TMX reference the shared root tileset |
+| 2026-03-27 | Chunk edges use a 3-step connection grid (`pos % 3 == 1`) for roads/rivers and anchored continuous segments for forest/mountain/water | Ensures deterministic chunk-to-chunk connectivity and prevents ragged seam contacts |
