@@ -2,9 +2,12 @@
 //!
 //! Set as the root node type in `main.tscn` (`type="MainScene"`).
 
-use godot::classes::{Camera2D, INode, InputEvent, InputEventMouseButton, Node, TileMapLayer};
+use godot::classes::{
+    Button, Camera2D, INode, InputEvent, InputEventMouseButton, LineEdit, Node, TileMapLayer,
+};
 use godot::global::MouseButton;
 use godot::prelude::*;
+use tracing::{info, warn};
 
 use crate::coords::{tile_to_world, world_to_tile};
 use crate::game_manager::GameManager;
@@ -14,7 +17,7 @@ use crate::map_node::MapNode;
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const GENERATOR_PATH: &str = "res://scripts/generators/terrain.lua";
-const SEED: &str = "default-seed";
+const DEFAULT_SEED: &str = "default-seed";
 const MAP_WIDTH: i32 = 96;
 const MAP_HEIGHT: i32 = 96;
 
@@ -54,9 +57,18 @@ impl INode for MainScene {
             gm.connect("score_changed", &cb_score);
         }
 
-        // Defer new_game so map_ready fires after ready() returns,
+        if let Some(mut seed_input) = self.seed_input() {
+            let cb_seed_submit = self.base().callable("_on_seed_submitted");
+            seed_input.connect("text_submitted", &cb_seed_submit);
+        }
+        if let Some(mut start_button) = self.start_button() {
+            let cb_start_pressed = self.base().callable("_on_start_pressed");
+            start_button.connect("pressed", &cb_start_pressed);
+        }
+
+        // Defer startup so map_ready fires after ready() returns,
         // avoiding a double-borrow of MainScene.
-        self.base_mut().call_deferred("_start_game", &[]);
+        self.base_mut().call_deferred("_start_game_from_ui", &[]);
     }
 
     fn input(&mut self, event: Gd<InputEvent>) {
@@ -87,14 +99,34 @@ impl MainScene {
     /// Called deferred from `ready()` so that `map_ready` fires after `ready()`
     /// returns — prevents a double-borrow of `MainScene`.
     #[func]
-    fn _start_game(&mut self) {
+    fn _start_game_from_ui(&mut self) {
+        self.start_game_with_seed(self.current_seed());
+    }
+
+    #[func]
+    fn _on_start_pressed(&mut self) {
+        self.start_game_with_seed(self.current_seed());
+    }
+
+    #[func]
+    fn _on_seed_submitted(&mut self, seed: GString) {
+        self.start_game_with_seed(Self::normalize_seed(seed.to_string()));
+    }
+
+    fn start_game_with_seed(&mut self, seed: String) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        gm.bind_mut().new_game(
-            GString::from(SEED),
+        self.selected_hero_id = -1;
+        let started = gm.bind_mut().new_game(
+            GString::from(seed.as_str()),
             GString::from(GENERATOR_PATH),
             MAP_WIDTH,
             MAP_HEIGHT,
         );
+        if started {
+            info!("started new game from seed '{seed}'");
+        } else {
+            warn!("failed to start new game from seed '{seed}'");
+        }
     }
 
     // ── Signal handlers ───────────────────────────────────────────────────────
@@ -104,6 +136,7 @@ impl MainScene {
         let tilemap: Gd<TileMapLayer> = self.base().get_node_as("World/TileMapLayer");
         let mut map_node: Gd<MapNode> = self.base().get_node_as("World/MapNode");
         map_node.bind_mut().populate_tilemap(tilemap.clone());
+        self.clear_hero_nodes();
         self.spawn_heroes();
         self.center_camera(tilemap);
     }
@@ -132,9 +165,12 @@ impl MainScene {
         _att_alive: bool,
         _def_alive: bool,
     ) {
-        godot_print!(
-            "Combat: hero {} dealt {} dmg, hero {} dealt {} dmg",
-            attacker_id, def_dmg, defender_id, att_dmg
+        info!(
+            attacker_id,
+            defender_id,
+            attacker_damage = att_dmg,
+            defender_damage = def_dmg,
+            "combat resolved"
         );
     }
 
@@ -153,7 +189,7 @@ impl MainScene {
 
     #[func]
     fn _on_turn_advanced(&mut self, turn: i64) {
-        godot_print!("Turn {}", turn);
+        info!(turn, "turn advanced");
     }
 
     #[func]
@@ -214,6 +250,13 @@ impl MainScene {
         root.add_child(&hero_node);
     }
 
+    fn clear_hero_nodes(&mut self) {
+        let Some(root) = self.base().get_node_or_null("World/Heroes") else { return };
+        for mut child in root.get_children().iter_shared() {
+            child.queue_free();
+        }
+    }
+
     fn center_camera(&mut self, tilemap: Gd<TileMapLayer>) {
         let center = Self::tilemap_center(tilemap)
             .unwrap_or_else(|| tile_to_world(MAP_WIDTH / 2, MAP_HEIGHT / 2));
@@ -242,5 +285,32 @@ impl MainScene {
         let world  = center + mb.get_position() - half;
         let tile   = world_to_tile(world);
         (tile.x >= 0 && tile.y >= 0).then_some(tile)
+    }
+
+    fn current_seed(&self) -> String {
+        self.seed_input()
+            .map(|input| Self::normalize_seed(input.get_text().to_string()))
+            .unwrap_or_else(|| DEFAULT_SEED.to_string())
+    }
+
+    fn normalize_seed(seed: String) -> String {
+        let trimmed = seed.trim();
+        if trimmed.is_empty() {
+            DEFAULT_SEED.to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn seed_input(&self) -> Option<Gd<LineEdit>> {
+        self.base()
+            .get_node_or_null("UI/SeedPanel/MarginContainer/Controls/SeedInput")
+            .and_then(|node| node.try_cast::<LineEdit>().ok())
+    }
+
+    fn start_button(&self) -> Option<Gd<Button>> {
+        self.base()
+            .get_node_or_null("UI/SeedPanel/MarginContainer/Controls/StartButton")
+            .and_then(|node| node.try_cast::<Button>().ok())
     }
 }

@@ -82,7 +82,7 @@ Update status as work progresses.
 
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
-| 5.1 | Map generation on game start from seed input | — | TODO | |
+| 5.1 | Map generation on game start from seed input | Codex | DONE | `MainScene` стартует из `LineEdit`, кнопка `Generate` перезапускает сессию, старые hero nodes очищаются перед новой генерацией |
 | 5.2 | Hero placement on generated map start position | — | TODO | |
 | 5.3 | Enemy spawning driven by Lua rules | — | TODO | |
 | 5.4 | Win/loss conditions via score threshold | — | TODO | |

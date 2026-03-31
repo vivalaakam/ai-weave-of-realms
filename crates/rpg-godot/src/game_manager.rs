@@ -118,6 +118,10 @@ impl GameManager {
         self.state = Some(GameState::new(map, Vec::new()));
 
         // Defer signal emission to avoid borrow conflicts in signal handlers
+        self.base_mut().call_deferred(
+            "emit_signal",
+            &["score_changed".to_variant(), 0i64.to_variant()],
+        );
         self.base_mut().call_deferred("emit_signal", &["map_ready".to_variant()]);
         true
     }
