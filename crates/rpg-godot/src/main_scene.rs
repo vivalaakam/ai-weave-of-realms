@@ -296,6 +296,7 @@ impl MainScene {
         info!(count = enemy_count, "enemies spawned");
     }
 
+
     /// Called after enemies are spawned via Lua script.
     /// Creates visual hero nodes for all enemies.
     #[func]
@@ -303,18 +304,25 @@ impl MainScene {
         if count <= 0 {
             return;
         }
-        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let enemy_ids = gm.bind().get_living_enemy_hero_ids();
-        for id in enemy_ids.iter_shared() {
-            let hero_id = id;
-            if hero_id < 0 {
-                continue;
-            }
-            let pos = gm.bind().get_hero_position(hero_id);
-            if pos.x >= 0 && pos.y >= 0 {
-                self.create_hero_node(hero_id, "enemy", pos.x, pos.y);
+
+        // Collect enemy data first (immutable borrow)
+        let mut enemy_data: Vec<(i64, i32, i32)> = Vec::new();
+        {
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let enemy_ids = gm.bind().get_living_enemy_hero_ids();
+            for id in enemy_ids.iter_shared() {
+                let pos = gm.bind().get_hero_position(id);
+                if pos.x >= 0 && pos.y >= 0 {
+                    enemy_data.push((id, pos.x, pos.y));
+                }
             }
         }
+
+        // Now create hero nodes (mutable borrow)
+        for (hero_id, x, y) in enemy_data {
+            self.create_hero_node(hero_id, "enemy", x, y);
+        }
+
         self.update_heroes_list();
     }
 

@@ -207,7 +207,7 @@ impl GameManager {
                 }
 
                 debug!(count, "enemies spawned");
-                self.base_mut().emit_signal("enemies_spawned", &[count.to_variant()]);
+                self.base_mut().call_deferred("emit_signal", &["enemies_spawned".to_variant(), count.to_variant()]);
                 count
             }
             Err(e) => {
