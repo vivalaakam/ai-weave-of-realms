@@ -92,6 +92,12 @@ text = "Seed: default-seed"
 [node name="CursorValue" type="Label" parent="UI/DebugPanel/MarginContainer/Content"]
 text = "Cursor: -, -"
 
+[node name="ZoomValue" type="Label" parent="UI/DebugPanel/MarginContainer/Content"]
+text = "Zoom: 1.00"
+
+[node name="ResetZoomButton" type="Button" parent="UI/DebugPanel/MarginContainer/Content"]
+text = "Reset Zoom"
+
 [node name="CenterTitle" type="Label" parent="UI/DebugPanel/MarginContainer/Content"]
 text = "Center Tile"
 

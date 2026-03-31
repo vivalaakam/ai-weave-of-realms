@@ -32,9 +32,9 @@ Update status as work progresses.
 | 1.8 | Lua validator: invoke `validate(map)` → (bool, msg) | — | DONE | MapValidator |
 | 1.9 | `scripts/rules/evaluate.lua` — basic map scoring rules | — | DONE | |
 | 1.10 | `scripts/rules/validate.lua` — basic map validity rules | — | DONE | |
-| 1.11 | Проанализировать правила генерации, исправить `MAP_GENERATION_RULES.md` и добавить альтернативный генератор `scripts/generators/codex-variant.lua` | Codex | DONE | `codex-variant.lua` добавлен; правила синхронизированы с `tile.rs`, мостами/POI и инвариантом города из `03_city_rules.lua` |
-| 1.12 | Расширить `mapgen`: сохранять каждую генерацию в timestamp-директорию, экспортировать PNG + TMX и поддержать `--open` для итогового `.tmx` | Codex | DONE | `mapgen` пишет `output/gen-*/map.png` и `map.tmx`, TMX ссылается на корневой `tileset/tileset.tsx`, `--open` открывает `.tmx` |
-| 1.13 | Ввести правила касания чанков по краям: только позиции `index % 3 = 1` для дорог/рек и согласованные полосы для леса/гор/воды; обновить генераторы и `MAP_GENERATION_RULES.md` | Codex | DONE | Добавлен post-stitch edge contract, валидатор `04_chunk_edge_alignment.lua`, обновлены `terrain.lua` и `codex-variant.lua` |
+| 1.11 | Проанализировать правила генерации, исправить `MAP_GENERATION_RULES.md` и добавить альтернативный генератор `scripts/generators/codex-variant.lua` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 1.12 | Расширить `mapgen`: сохранять каждую генерацию в timestamp-директорию, экспортировать PNG + TMX и поддержать `--open` для итогового `.tmx` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 1.13 | Ввести правила касания чанков по краям: только позиции `index % 3 = 1` для дорог/рек и согласованные полосы для леса/гор/воды; обновить генераторы и `MAP_GENERATION_RULES.md` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 
 ## Phase 2 — Tiled Integration
 
@@ -68,29 +68,30 @@ Update status as work progresses.
 | 4.5 | `CombatResolver`: trigger auto-resolve on enemy encounter | — | DONE | встроен в GameManager.move_hero (combat_resolved сигнал) |
 | 4.6 | `ScoreUI`: display current score as HUD label | — | DONE | score_ui.rs, format var, on_score_changed |
 | 4.7 | Isometric camera + tile hover highlight | — | DONE | camera_controller.gd, tile_highlight.gd, main.tscn |
-| 4.8 | Перевести визуализацию Godot-карты на рабочую изометрию и подготовить изометрические тайловые ассеты на основе цветовой привязки `TileKind` | Codex | DONE | `rpg-godot` синхронизирован с 14-тайловым атласом 64x64/64x32, добавлен генератор `build_isometric_tileset`, общий атлас строится из `Tiles::all()` и `Tiles::as_color()` |
-| 4.9 | Восстановить изометрический tileset после `just clean` и исключить его удаление из workflow очистки | Codex | DONE | `clean` больше не удаляет `godot/assets/tileset.png`, ignore снят в `godot/.gitignore`, tileset пересоздан и проверен через `just clean` |
-| 4.10 | Исправить падение Godot при создании TileSet после обновления изометрического атласа | Codex | DONE | `_sync-assets` сбрасывает stale import cache `tileset.png`, `MapNode` создаёт atlas tiles по фактической ширине текстуры и предупреждает о mismatch вместо падения |
-| 4.11 | Исправить потерю регистрации GDExtension-классов в Godot на macOS | Codex | DONE | В `.gdextension` добавлены явные `macos.*.arm64` записи, `reloadable` отключён, `just build` нормализует `install_name` dylib до `@rpath/librpg_godot.dylib` |
-| 4.12 | Убрать зависимость runtime-рендера карты от `.godot/imported/*.ctex` для tileset | Codex | DONE | `MapNode` грузит `res://assets/tileset.png` через `Image` + `ImageTexture`, `_sync-assets` больше не удаляет import cache и runtime не зависит от `.ctex` |
-| 4.13 | Диагностировать отсутствие видимой карты после восстановления tileset runtime-загрузки | Codex | DONE | Первичное центрирование камеры переведено на `TileMapLayer.map_to_local`, smoothing сбрасывается после установки позиции, карта больше не “уезжает” после первого кадра |
-| 4.14 | Добавить keyboard zoom на `-` / `=` и корректное растяжение сцены при fullscreen | Codex | DONE | `CameraController` поддерживает zoom по `-` / `=` / `+`, в `project.godot` включён `window/stretch/aspect="expand"` |
-| 4.10 | Исправить runtime-настройку `TileSet` в Godot, чтобы `TileMapLayer` использовал изометрический diamond-layout, а не прямоугольную сетку | Codex | DONE | В `MapNode::build_tileset()` включены `TileLayout::DIAMOND_RIGHT` и `TileOffsetAxis::HORIZONTAL` |
-| 4.15 | Исправить zoom и fullscreen-resize: до `1920×1080` окно должно показывать больше карты без глобального stretch, выше порога — масштабировать содержимое | Codex | DONE | Глобальный stretch убран, базовый viewport = `1920×1080`, `CameraController` держит manual zoom и автоматически компенсирует размеры viewport выше лимита |
+| 4.8 | Перевести визуализацию Godot-карты на рабочую изометрию и подготовить изометрические тайловые ассеты на основе цветовой привязки `TileKind` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.9 | Восстановить изометрический tileset после `just clean` и исключить его удаление из workflow очистки | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.10 | Исправить падение Godot при создании TileSet после обновления изометрического атласа | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.11 | Исправить потерю регистрации GDExtension-классов в Godot на macOS | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.12 | Убрать зависимость runtime-рендера карты от `.godot/imported/*.ctex` для tileset | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.13 | Диагностировать отсутствие видимой карты после восстановления tileset runtime-загрузки | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.14 | Добавить keyboard zoom на `-` / `=` и корректное растяжение сцены при fullscreen | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.10 | Исправить runtime-настройку `TileSet` в Godot, чтобы `TileMapLayer` использовал изометрический diamond-layout, а не прямоугольную сетку | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.15 | Исправить zoom и fullscreen-resize: до `1920×1080` окно должно показывать больше карты без глобального stretch, выше порога — масштабировать содержимое | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 
 ## Phase 5 — Polish & Integration
 
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
-| 5.1 | Map generation on game start from seed input | Codex | DONE | `MainScene` стартует из `LineEdit`, кнопка `Generate` перезапускает сессию, старые hero nodes очищаются перед новой генерацией |
-| 5.2 | Hero placement on generated map start position | Codex | DONE | Добавлен `rpg-engine::spawn`: игрок стартует с приоритетом у `CityEntrance`, враг — на дальней проходимой клетке; `MainScene` больше не использует хардкод координат |
-| 5.3 | Enemy spawning driven by Lua rules | — | TODO | |
+| 5.1 | Map generation on game start from seed input | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.2 | Hero placement on generated map start position | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.3 | Enemy spawning driven by Lua rules | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 | 5.4 | Win/loss conditions via score threshold | — | TODO | |
 | 5.5 | Save/load `GameState` (serde + JSON or binary) | — | TODO | |
-| 5.6 | Добавить циклическое переключение героев по `Tab` и ограничить камеру по краям карты | Codex | DONE | `Tab` циклически выбирает следующего живого player-hero и фокусирует камеру; clamp камеры переведён на ромб карты, regression с уехавшей допустимой областью исправлен сменой направления нормалей |
-| 5.7 | Добавить debug-панель камеры: seed, позиция курсора и ручной ввод центральной клетки | Codex | DONE | Добавлен правый debug-sidebar: current seed, tile под курсором и ввод `CenterX/CenterY` с ручным фокусом камеры для отладки bounds |
-| 5.8 | Временно отключить camera clamp для отладки системы координат | Codex | DONE | `CameraController::configure_map_bounds()` временно сбрасывает bounds в `None`, чтобы камера больше не ограничивалась экранным clamp во время отладки |
-| 5.9 | Синхронизировать координаты ввода/камеры с реальным `TileMapLayer` | Codex | DONE | Клик, курсор, highlight, позиции героев и фокус камеры переведены с ручных формул на `TileMapLayer.map_to_local/local_to_map`, чтобы логика использовала ту же систему координат, что и рендер |
+| 5.6 | Добавить циклическое переключение героев по `Tab` и ограничить камеру по краям карты | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.7 | Добавить debug-панель камеры: seed, позиция курсора и ручной ввод центральной клетки | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.8 | Временно отключить camera clamp для отладки системы координат | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.9 | Синхронизировать координаты ввода/камеры с реальным `TileMapLayer` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.10 | Добавить в debug-панель сброс zoom и показ текущего значения | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 
 ---
 

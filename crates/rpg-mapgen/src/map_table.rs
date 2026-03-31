@@ -3,10 +3,12 @@
 //! Both the evaluator and validator receive the map as a Lua table:
 //! ```lua
 //! {
-//!   width  = <number>,              -- total tile width
-//!   height = <number>,              -- total tile height
-//!   tiles  = { "meadow", "water", ... },  -- flat, row-major, 1-indexed
-//!   get    = function(x, y) -> string,    -- safe 0-based accessor
+//!   width        = <number>,              -- total tile width
+//!   height       = <number>,              -- total tile height
+//!   chunks_wide  = <number>,              -- number of chunks horizontally
+//!   chunks_tall  = <number>,              -- number of chunks vertically
+//!   tiles        = { "meadow", "water", ... },  -- flat, row-major, 1-indexed
+//!   get          = function(x, y) -> string,    -- safe 0-based accessor
 //! }
 //! ```
 
@@ -29,6 +31,13 @@ pub fn game_map_to_lua_table(lua: &Lua, map: &GameMap) -> mlua::Result<Table> {
 
     t.set("width", tw)?;
     t.set("height", th)?;
+
+    // Calculate chunk dimensions (32x32 chunks)
+    const CHUNK_SIZE: u32 = 32;
+    let cw = (tw + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    let ct = (th + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    t.set("chunks_wide", cw)?;
+    t.set("chunks_tall", ct)?;
 
     // Build flat 1-indexed tile array in global row-major order
     let tiles = lua.create_table_with_capacity(0, (tw * th) as usize)?;

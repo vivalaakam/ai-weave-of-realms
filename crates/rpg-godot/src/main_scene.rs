@@ -52,6 +52,8 @@ impl INode for MainScene {
         gm.connect("combat_resolved", &cb_combat_resolved);
         gm.connect("hero_defeated",   &cb_hero_defeated);
         gm.connect("turn_advanced",   &cb_turn_advanced);
+        let cb_enemies_spawned = self.base().callable("_on_enemies_spawned");
+        gm.connect("enemies_spawned", &cb_enemies_spawned);
 
         // score_changed → ScoreUI.on_score_changed
         if let Some(sui) = self.base().get_node_or_null("UI/ScoreUI") {
@@ -71,6 +73,10 @@ impl INode for MainScene {
             let cb_center_pressed = self.base().callable("_on_center_button_pressed");
             center_button.connect("pressed", &cb_center_pressed);
         }
+        if let Some(mut reset_zoom_button) = self.reset_zoom_button() {
+            let cb_reset_zoom = self.base().callable("_on_reset_zoom_pressed");
+            reset_zoom_button.connect("pressed", &cb_reset_zoom);
+        }
         if let Some(mut center_x) = self.center_x_input() {
             let cb_center_submit = self.base().callable("_on_center_inputs_submitted");
             center_x.connect("text_submitted", &cb_center_submit);
@@ -87,6 +93,7 @@ impl INode for MainScene {
 
     fn process(&mut self, _delta: f64) {
         self.update_cursor_debug();
+        self.update_zoom_debug();
     }
 
     fn input(&mut self, event: Gd<InputEvent>) {
@@ -150,6 +157,14 @@ impl MainScene {
     #[func]
     fn _on_center_inputs_submitted(&mut self, _value: GString) {
         self.focus_camera_from_debug_inputs();
+    }
+
+    #[func]
+    fn _on_reset_zoom_pressed(&mut self) {
+        if let Some(mut camera) = self.camera_controller() {
+            camera.bind_mut().reset_zoom();
+        }
+        self.update_zoom_debug();
     }
 
     fn start_game_with_seed(&mut self, seed: String) {
@@ -254,11 +269,12 @@ impl MainScene {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     fn spawn_heroes(&mut self) {
-        let Some((player_spawn, enemy_spawn)) = self.hero_spawn_positions() else {
-            warn!("skipping hero spawn because no valid start positions were found");
+        let Some(player_spawn) = self.player_spawn_position() else {
+            warn!("skipping hero spawn because no valid start position was found");
             return;
         };
 
+        // Spawn player hero
         self.add_game_hero(
             1,
             "Hero",
@@ -272,19 +288,32 @@ impl MainScene {
             "player",
         );
         self.create_hero_node(1, "player", player_spawn.x, player_spawn.y);
-        self.add_game_hero(
-            2,
-            "Enemy",
-            40,
-            12,
-            6,
-            8,
-            3,
-            i64::from(enemy_spawn.x),
-            i64::from(enemy_spawn.y),
-            "enemy",
-        );
-        self.create_hero_node(2, "enemy", enemy_spawn.x, enemy_spawn.y);
+
+        // Spawn enemies via Lua-driven spawner
+        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let enemy_count = gm.bind_mut().spawn_enemies();
+        info!(count = enemy_count, "enemies spawned");
+    }
+
+    /// Called after enemies are spawned via Lua script.
+    /// Creates visual hero nodes for all enemies.
+    #[func]
+    fn _on_enemies_spawned(&mut self, count: i64) {
+        if count <= 0 {
+            return;
+        }
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let enemy_ids = gm.bind().get_living_enemy_hero_ids();
+        for id in enemy_ids.iter_shared() {
+            let hero_id = id;
+            if hero_id < 0 {
+                continue;
+            }
+            let pos = gm.bind().get_hero_position(hero_id);
+            if pos.x >= 0 && pos.y >= 0 {
+                self.create_hero_node(hero_id, "enemy", pos.x, pos.y);
+            }
+        }
     }
 
     fn add_game_hero(
@@ -386,6 +415,13 @@ impl MainScene {
         label.set_text(&text);
     }
 
+    fn update_zoom_debug(&self) {
+        let Some(mut label) = self.zoom_value_label() else { return };
+        let Some(camera) = self.camera_controller() else { return };
+        let zoom = camera.bind().current_zoom();
+        label.set_text(&format!("Zoom: {:.2}", zoom));
+    }
+
     fn configure_camera_bounds(&self) {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         let width = gm.bind().get_map_width() as i32;
@@ -395,11 +431,10 @@ impl MainScene {
         }
     }
 
-    fn hero_spawn_positions(&self) -> Option<(Vector2i, Vector2i)> {
+    fn player_spawn_position(&self) -> Option<Vector2i> {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         let player = gm.bind().get_player_spawn();
-        let enemy = gm.bind().get_enemy_spawn();
-        (player.x >= 0 && player.y >= 0 && enemy.x >= 0 && enemy.y >= 0).then_some((player, enemy))
+        (player.x >= 0 && player.y >= 0).then_some(player)
     }
 
     fn select_first_player_hero(&mut self) {
@@ -493,6 +528,12 @@ impl MainScene {
             .and_then(|node| node.try_cast::<Button>().ok())
     }
 
+    fn reset_zoom_button(&self) -> Option<Gd<Button>> {
+        self.base()
+            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/ResetZoomButton")
+            .and_then(|node| node.try_cast::<Button>().ok())
+    }
+
     fn center_x_input(&self) -> Option<Gd<LineEdit>> {
         self.base()
             .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CenterInputs/CenterX")
@@ -514,6 +555,12 @@ impl MainScene {
     fn cursor_value_label(&self) -> Option<Gd<Label>> {
         self.base()
             .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CursorValue")
+            .and_then(|node| node.try_cast::<Label>().ok())
+    }
+
+    fn zoom_value_label(&self) -> Option<Gd<Label>> {
+        self.base()
+            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/ZoomValue")
             .and_then(|node| node.try_cast::<Label>().ok())
     }
 

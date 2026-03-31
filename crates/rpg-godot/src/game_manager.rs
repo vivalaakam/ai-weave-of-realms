@@ -17,7 +17,7 @@
 
 use godot::classes::ProjectSettings;
 use godot::prelude::*;
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 use rpg_engine::game_state::{GameState, TurnEvent};
 use rpg_engine::hero::{Faction, Hero};
@@ -26,6 +26,7 @@ use rpg_engine::movement;
 use rpg_engine::rng::SeededRng;
 use rpg_engine::spawn;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
+use rpg_mapgen::spawner::EnemySpawner;
 
 // ─── GameManager ──────────────────────────────────────────────────────────────
 
@@ -35,12 +36,13 @@ pub struct GameManager {
     base: Base<Node>,
     state: Option<GameState>,
     rng: Option<SeededRng>,
+    enemy_spawner: Option<EnemySpawner>,
 }
 
 #[godot_api]
 impl INode for GameManager {
     fn init(base: Base<Node>) -> Self {
-        Self { base, state: None, rng: None }
+        Self { base, state: None, rng: None, enemy_spawner: None }
     }
 }
 
@@ -72,6 +74,9 @@ impl GameManager {
 
     #[signal]
     fn score_changed(score: i64);
+
+    #[signal]
+    fn enemies_spawned(count: i64);
 
     // ── Session setup ─────────────────────────────────────────────────────────
 
@@ -118,6 +123,24 @@ impl GameManager {
         self.rng   = Some(SeededRng::new(&seed_str));
         self.state = Some(GameState::new(map, Vec::new()));
 
+        // Load enemy spawn script if not already loaded
+        if self.enemy_spawner.is_none() {
+            let spawn_script = std::path::PathBuf::from(
+                ProjectSettings::singleton()
+                    .globalize_path(&GString::from("res://scripts/rules/spawn_enemies.lua"))
+                    .to_string(),
+            );
+            match EnemySpawner::from_script(&spawn_script) {
+                Ok(spawner) => {
+                    debug!(path = %spawn_script.display(), "enemy spawner loaded");
+                    self.enemy_spawner = Some(spawner);
+                }
+                Err(e) => {
+                    warn!("failed to load enemy spawner: {e}");
+                }
+            }
+        }
+
         // Defer signal emission to avoid borrow conflicts in signal handlers
         self.base_mut().call_deferred(
             "emit_signal",
@@ -155,6 +178,50 @@ impl GameManager {
         );
         state.heroes.push(hero);
         true
+    }
+
+    /// Spawns enemies on the map using the Lua spawn script.
+    ///
+    /// Returns the number of enemies spawned.
+    #[func]
+    pub fn spawn_enemies(&mut self) -> i64 {
+        let Some(state) = &self.state else { return 0; };
+        let Some(spawner) = &self.enemy_spawner else {
+            debug!("enemy spawner not loaded");
+            return 0;
+        };
+
+        match spawner.spawn(&state.map) {
+            Ok(spawns) => {
+                let count = spawns.len() as i64;
+                if count == 0 {
+                    return 0;
+                }
+
+                // Add enemies to game state
+                for spawn in &spawns {
+                    let hero: Hero = spawn.into();
+                    if let Some(state) = &mut self.state {
+                        state.heroes.push(hero);
+                    }
+                }
+
+                debug!(count, "enemies spawned");
+                self.base_mut().emit_signal("enemies_spawned", &[count.to_variant()]);
+                count
+            }
+            Err(e) => {
+                warn!("enemy spawn failed: {e}");
+                0
+            }
+        }
+    }
+
+    /// Returns the number of living enemies on the map.
+    #[func]
+    pub fn get_enemy_count(&self) -> i64 {
+        let Some(state) = &self.state else { return 0 };
+        state.living_heroes(Faction::Enemy).len() as i64
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -345,6 +412,17 @@ impl GameManager {
         let Some(state) = &self.state else { return Array::new() };
         let mut ids = Array::new();
         for hero in state.heroes.iter().filter(|hero| hero.faction == Faction::Player && hero.is_alive()) {
+            ids.push(hero.id as i64);
+        }
+        ids
+    }
+
+    /// Returns ids of all living enemy heroes in stable insertion order.
+    #[func]
+    pub fn get_living_enemy_hero_ids(&self) -> Array<i64> {
+        let Some(state) = &self.state else { return Array::new() };
+        let mut ids = Array::new();
+        for hero in state.heroes.iter().filter(|hero| hero.faction == Faction::Enemy && hero.is_alive()) {
             ids.push(hero.id as i64);
         }
         ids

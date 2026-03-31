@@ -161,6 +161,17 @@ impl CameraController {
         self.base_mut().set_position(clamped);
     }
 
+    /// Resets manual zoom to the default value.
+    pub fn reset_zoom(&mut self) {
+        self.manual_zoom = 1.0;
+        self.refresh_zoom();
+    }
+
+    /// Returns the current effective zoom multiplier on the X axis.
+    pub fn current_zoom(&self) -> f32 {
+        self.base().get_zoom().x
+    }
+
     fn apply_zoom(&mut self, delta: f32) {
         self.manual_zoom = (self.manual_zoom + delta).clamp(ZOOM_MIN, ZOOM_MAX);
         self.refresh_zoom();
