@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Shield (body) -->
+  <path d="M32 12 L48 20 L48 38 Q48 52 32 56 Q16 52 16 38 L16 20 Z" fill="#3498db" stroke="#2980b9" stroke-width="2"/>
+  <!-- Shield emblem -->
+  <path d="M32 22 L42 28 L42 38 Q42 46 32 50 Q22 46 22 38 L22 28 Z" fill="#2980b9"/>
+  <!-- Cross emblem -->
+  <rect x="29" y="26" width="6" height="18" fill="#ecf0f1" rx="1"/>
+  <rect x="25" y="32" width="14" height="6" fill="#ecf0f1" rx="1"/>
+</svg>

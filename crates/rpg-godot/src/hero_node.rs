@@ -1,16 +1,9 @@
 //! `HeroNode` GDExtension node — visual representative of a hero on the map.
 //!
-//! Attach to a `Node2D` (or `Sprite2D`) in the scene.  Wire up the
-//! `move_requested` signal to `GameManager.move_hero` from GDScript.
-//!
-//! ## Usage (GDScript)
-//! ```gdscript
-//! func _ready():
-//!     $HeroNode.hero_id   = 1
-//!     $HeroNode.faction   = "player"
-//!     $HeroNode.move_requested.connect(func(x, y): gm.move_hero(1, x, y))
-//! ```
+//! Displays a sprite based on faction (player=hero, enemy=enemy).
+//! Position is controlled by the parent scene via world coordinates.
 
+use godot::classes::{ResourceLoader, Sprite2D, Texture2D};
 use godot::prelude::*;
 
 // ─── HeroNode ─────────────────────────────────────────────────────────────────
@@ -35,6 +28,9 @@ pub struct HeroNode {
     // Tile coordinates on the game map.
     tile_x: i64,
     tile_y: i64,
+
+    // Child sprite node
+    sprite_path: GString,
 }
 
 #[godot_api]
@@ -47,7 +43,12 @@ impl INode2D for HeroNode {
             selectable: true,
             tile_x: 0,
             tile_y: 0,
+            sprite_path: GString::default(),
         }
+    }
+
+    fn ready(&mut self) {
+        self.setup_sprite();
     }
 }
 
@@ -59,12 +60,61 @@ impl HeroNode {
     #[signal]
     fn selected(hero_id: i64);
 
+    // ── Sprite setup ──────────────────────────────────────────────────────────
+
+    /// Creates and adds a Sprite2D child based on faction.
+    fn setup_sprite(&mut self) {
+        let faction_str = self.faction.to_string();
+        let texture_path = if faction_str == "enemy" {
+            "res://assets/enemy.png"
+        } else {
+            "res://assets/hero.png"
+        };
+
+        // Load texture using the same pattern as MapNode
+        let texture = match ResourceLoader::singleton().load(texture_path) {
+            Some(res) => res,
+            None => {
+                tracing::warn!(path = texture_path, "failed to load hero sprite texture");
+                return;
+            }
+        };
+
+        // Cast to Texture2D
+        let texture = match texture.try_cast::<Texture2D>() {
+            Ok(tex) => tex,
+            Err(_) => {
+                tracing::warn!(path = texture_path, "failed to cast to Texture2D");
+                return;
+            }
+        };
+
+        // Create Sprite2D using GD type system
+        let mut sprite: Gd<Sprite2D> = Sprite2D::new_alloc();
+        sprite.set_texture(&texture);
+        sprite.set_centered(true);
+        
+        // Position sprite offset (lift up so base aligns with tile center)
+        sprite.set_offset(Vector2::new(0.0, -24.0));
+        
+        // Set z-index for proper layering (heroes above tiles)
+        sprite.set_z_index(100);
+
+        // Set modulate based on faction
+        if faction_str == "enemy" {
+            sprite.set_modulate(Color::from_rgba8(255, 100, 100, 255));
+        }
+
+        let sprite_name = if faction_str == "enemy" { "EnemySprite" } else { "HeroSprite" };
+        self.base_mut().add_child(&sprite.clone());
+        sprite.set_name(&StringName::from(sprite_name));
+        
+        self.sprite_path = GString::from(sprite_name);
+    }
+
     // ── State updates from GameManager signals ────────────────────────────────
 
     /// Called when `GameManager.hero_moved` fires for this hero.
-    ///
-    /// Updates the tile position and smoothly moves the node to the new
-    /// isometric pixel position (basic instant-move; tween in GDScript).
     #[func]
     pub fn on_hero_moved(
         &mut self,
@@ -79,12 +129,9 @@ impl HeroNode {
         }
         self.tile_x = to_x;
         self.tile_y = to_y;
-        // Caller (GDScript) handles repositioning the node in world space.
     }
 
     /// Called when `GameManager.hero_defeated` fires for this hero.
-    ///
-    /// Hides the node.  Destruction / animation is handled in GDScript.
     #[func]
     pub fn on_hero_defeated(&mut self, hero_id: i64) {
         if hero_id == self.hero_id {
@@ -92,21 +139,18 @@ impl HeroNode {
         }
     }
 
-    // ── Queries ───────────────────────────────────────────────────────────────
+    // ── Queries ─────────────────────────────────────────────────────────────
 
-    /// Returns the current tile column.
     #[func]
     pub fn get_tile_x(&self) -> i64 {
         self.tile_x
     }
 
-    /// Returns the current tile row.
     #[func]
     pub fn get_tile_y(&self) -> i64 {
         self.tile_y
     }
 
-    /// Sets tile position without emitting any signal.
     #[func]
     pub fn set_tile_position(&mut self, x: i64, y: i64) {
         self.tile_x = x;
@@ -114,8 +158,6 @@ impl HeroNode {
     }
 
     /// Emits `move_requested` toward `(x, y)`.
-    ///
-    /// Includes `hero_id` so receivers can route without additional lookups.
     #[func]
     pub fn request_move(&mut self, x: i64, y: i64) {
         if self.selectable {
@@ -134,5 +176,11 @@ impl HeroNode {
             let id = self.hero_id;
             self.base_mut().emit_signal("selected", &[id.to_variant()]);
         }
+    }
+
+    /// Returns whether this hero is an enemy.
+    #[func]
+    pub fn is_enemy(&self) -> bool {
+        self.faction.to_string() == "enemy"
     }
 }

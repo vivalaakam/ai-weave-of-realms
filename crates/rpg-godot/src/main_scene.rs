@@ -3,7 +3,7 @@
 //! Set as the root node type in `main.tscn` (`type="MainScene"`).
 
 use godot::classes::{
-    Button, Camera2D, INode, InputEvent, InputEventKey, InputEventMouseButton, Label, LineEdit,
+    Button, Camera2D, INode, VBoxContainer, InputEvent, InputEventKey, InputEventMouseButton, Label, LineEdit,
     Node, TileMapLayer,
 };
 use godot::global::{Key, MouseButton};
@@ -194,6 +194,7 @@ impl MainScene {
         self.configure_camera_bounds();
         self.clear_hero_nodes();
         self.spawn_heroes();
+        self.update_heroes_list();
         self.set_center_debug_inputs(MAP_WIDTH / 2, MAP_HEIGHT / 2);
         self.select_first_player_hero();
         self.center_camera(tilemap);
@@ -314,6 +315,7 @@ impl MainScene {
                 self.create_hero_node(hero_id, "enemy", pos.x, pos.y);
             }
         }
+        self.update_heroes_list();
     }
 
     fn add_game_hero(
@@ -446,6 +448,58 @@ impl MainScene {
         self.set_selected_hero(hero_id, false);
     }
 
+    /// Updates the heroes list in the UI panel.
+    fn update_heroes_list(&mut self) {
+        let Some(list) = self.heroes_list() else {
+            return;
+        };
+
+        // Clear existing children
+        for mut child in list.get_children().iter_shared() {
+            child.queue_free();
+        }
+
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+
+        // Add player heroes
+        let player_ids = gm.bind().get_living_player_hero_ids();
+        for id in player_ids.iter_shared() {
+            self.add_hero_to_list(&gm, id, "Hero", list.clone());
+        }
+
+        // Add enemy heroes
+        let enemy_ids = gm.bind().get_living_enemy_hero_ids();
+        for id in enemy_ids.iter_shared() {
+            self.add_hero_to_list(&gm, id, "Enemy", list.clone());
+        }
+    }
+
+    fn add_hero_to_list(&self, gm: &Gd<GameManager>, hero_id: i64, name_prefix: &str, mut list: Gd<VBoxContainer>) {
+        let pos = gm.bind().get_hero_position(hero_id);
+        let is_alive = gm.bind().is_hero_alive(hero_id);
+        
+        let mut btn: Gd<Button> = Button::new_alloc();
+        btn.set_text(&format!("{} {} ({}:{})", name_prefix, hero_id, pos.x, pos.y));
+        btn.set_disabled(!is_alive);
+        
+        // Connect with hero_id as argument
+        let cb = self.base().callable("_on_hero_list_clicked").bind(&[hero_id.to_variant()]);
+        btn.connect("pressed", &cb);
+        
+        list.add_child(&btn);
+    }
+
+    #[func]
+    fn _on_hero_list_clicked(&mut self, hero_id: i64) {
+        self.focus_camera_on_hero(hero_id);
+    }
+
+    fn heroes_list(&self) -> Option<Gd<VBoxContainer>> {
+        self.base()
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/ScrollContainer/HeroesList")
+            .and_then(|node| node.try_cast::<VBoxContainer>().ok())
+    }
+
     fn select_next_player_hero(&mut self) {
         let heroes = self.player_hero_ids();
         if heroes.is_empty() {
@@ -524,43 +578,43 @@ impl MainScene {
 
     fn center_button(&self) -> Option<Gd<Button>> {
         self.base()
-            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CenterButton")
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/CenterButton")
             .and_then(|node| node.try_cast::<Button>().ok())
     }
 
     fn reset_zoom_button(&self) -> Option<Gd<Button>> {
         self.base()
-            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/ResetZoomButton")
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/ResetZoomButton")
             .and_then(|node| node.try_cast::<Button>().ok())
     }
 
     fn center_x_input(&self) -> Option<Gd<LineEdit>> {
         self.base()
-            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CenterInputs/CenterX")
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/CenterInputs/CenterX")
             .and_then(|node| node.try_cast::<LineEdit>().ok())
     }
 
     fn center_y_input(&self) -> Option<Gd<LineEdit>> {
         self.base()
-            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CenterInputs/CenterY")
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/CenterInputs/CenterY")
             .and_then(|node| node.try_cast::<LineEdit>().ok())
     }
 
     fn seed_value_label(&self) -> Option<Gd<Label>> {
         self.base()
-            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/SeedValue")
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/SeedValue")
             .and_then(|node| node.try_cast::<Label>().ok())
     }
 
     fn cursor_value_label(&self) -> Option<Gd<Label>> {
         self.base()
-            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CursorValue")
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/CursorValue")
             .and_then(|node| node.try_cast::<Label>().ok())
     }
 
     fn zoom_value_label(&self) -> Option<Gd<Label>> {
         self.base()
-            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/ZoomValue")
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/ZoomValue")
             .and_then(|node| node.try_cast::<Label>().ok())
     }
 
