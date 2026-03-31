@@ -7,7 +7,6 @@ _sync-assets:
     mkdir -p godot/bin godot/assets
     rsync -a --delete scripts/ godot/scripts/
     cp tileset/tileset.png godot/assets/tileset.png
-    rm -f godot/.godot/imported/tileset.png-*.ctex godot/.godot/imported/tileset.png-*.md5
 
 # Build GDExtension (debug) and sync assets.
 build: _sync-assets

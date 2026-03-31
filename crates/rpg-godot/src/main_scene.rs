@@ -103,9 +103,9 @@ impl MainScene {
     fn _on_map_ready(&mut self) {
         let tilemap: Gd<TileMapLayer> = self.base().get_node_as("World/TileMapLayer");
         let mut map_node: Gd<MapNode> = self.base().get_node_as("World/MapNode");
-        map_node.bind_mut().populate_tilemap(tilemap);
+        map_node.bind_mut().populate_tilemap(tilemap.clone());
         self.spawn_heroes();
-        self.center_camera();
+        self.center_camera(tilemap);
     }
 
     #[func]
@@ -214,15 +214,24 @@ impl MainScene {
         root.add_child(&hero_node);
     }
 
-    fn center_camera(&mut self) {
-        let cx = MAP_WIDTH / 2;
-        let cy = MAP_HEIGHT / 2;
-        let center = tile_to_world(cx, cy);
+    fn center_camera(&mut self, tilemap: Gd<TileMapLayer>) {
+        let center = Self::tilemap_center(tilemap)
+            .unwrap_or_else(|| tile_to_world(MAP_WIDTH / 2, MAP_HEIGHT / 2));
+
         if let Some(cam) = self.base().get_node_or_null("World/Camera2D") {
             if let Ok(mut cam2d) = cam.try_cast::<Camera2D>() {
+                cam2d.set_position_smoothing_enabled(false);
                 cam2d.set_position(center);
+                cam2d.reset_smoothing();
+                cam2d.set_position_smoothing_enabled(true);
             }
         }
+    }
+
+    fn tilemap_center(mut tilemap: Gd<TileMapLayer>) -> Option<Vector2> {
+        let center_cell = Vector2i::new(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+        let local = tilemap.call("map_to_local", &[center_cell.to_variant()]);
+        local.try_to::<Vector2>().ok()
     }
 
     fn mouse_to_tile(&self, mb: &InputEventMouseButton) -> Option<Vector2i> {

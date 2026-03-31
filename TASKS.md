@@ -72,6 +72,8 @@ Update status as work progresses.
 | 4.9 | Восстановить изометрический tileset после `just clean` и исключить его удаление из workflow очистки | Codex | DONE | `clean` больше не удаляет `godot/assets/tileset.png`, ignore снят в `godot/.gitignore`, tileset пересоздан и проверен через `just clean` |
 | 4.10 | Исправить падение Godot при создании TileSet после обновления изометрического атласа | Codex | DONE | `_sync-assets` сбрасывает stale import cache `tileset.png`, `MapNode` создаёт atlas tiles по фактической ширине текстуры и предупреждает о mismatch вместо падения |
 | 4.11 | Исправить потерю регистрации GDExtension-классов в Godot на macOS | Codex | DONE | В `.gdextension` добавлены явные `macos.*.arm64` записи, `reloadable` отключён, `just build` нормализует `install_name` dylib до `@rpath/librpg_godot.dylib` |
+| 4.12 | Убрать зависимость runtime-рендера карты от `.godot/imported/*.ctex` для tileset | Codex | DONE | `MapNode` грузит `res://assets/tileset.png` через `Image` + `ImageTexture`, `_sync-assets` больше не удаляет import cache и runtime не зависит от `.ctex` |
+| 4.13 | Диагностировать отсутствие видимой карты после восстановления tileset runtime-загрузки | Codex | IN PROGRESS | Проверка кадра, параметров `TileMapLayer` и факта заполнения ячеек/создания `TileSet` в рантайме |
 | 4.10 | Исправить runtime-настройку `TileSet` в Godot, чтобы `TileMapLayer` использовал изометрический diamond-layout, а не прямоугольную сетку | Codex | DONE | В `MapNode::build_tileset()` включены `TileLayout::DIAMOND_RIGHT` и `TileOffsetAxis::HORIZONTAL` |
 
 ## Phase 5 — Polish & Integration

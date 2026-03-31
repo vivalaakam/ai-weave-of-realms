@@ -5,7 +5,7 @@
 
 use godot::classes::tile_set::{TileLayout, TileOffsetAxis, TileShape};
 use godot::classes::{
-    INode, Node, ResourceLoader, Texture2D, TileMapLayer, TileSet, TileSetAtlasSource,
+    INode, Image, ImageTexture, Node, ResourceLoader, Texture2D, TileMapLayer, TileSet, TileSetAtlasSource,
     TileSetSource,
 };
 use godot::prelude::*;
@@ -73,6 +73,7 @@ impl MapNode {
                     .done();
             }
         }
+        tm.update_internals();
 
         self.base_mut().emit_signal("tilemap_populated", &[
             width.to_variant(),
@@ -93,10 +94,7 @@ impl MapNode {
     /// Builds a [`TileSet`] with one [`TileSetAtlasSource`] (source id 0)
     /// loaded from `res://assets/tileset.png`.
     fn build_tileset() -> Option<Gd<TileSet>> {
-        // Load texture
-        let tex: Gd<Texture2D> = ResourceLoader::singleton()
-            .load("res://assets/tileset.png")
-            .and_then(|r| r.try_cast::<Texture2D>().ok())?;
+        let tex = Self::load_tileset_texture()?;
         let actual_cols = Self::texture_cols(&tex);
         let expected_cols = Self::atlas_cols();
         if actual_cols <= 0 {
@@ -146,5 +144,21 @@ impl MapNode {
 
     fn texture_cols(texture: &Gd<Texture2D>) -> i32 {
         texture.get_width() / ATLAS_TILE_W
+    }
+
+    fn load_tileset_texture() -> Option<Gd<Texture2D>> {
+        if let Some(texture) = ResourceLoader::singleton()
+            .load("res://assets/tileset.png")
+            .and_then(|resource| resource.try_cast::<Texture2D>().ok())
+        {
+            return Some(texture);
+        }
+
+        godot_warn!(
+            "MapNode: falling back to direct PNG loading for res://assets/tileset.png; imported texture not available"
+        );
+
+        let image: Gd<Image> = Image::load_from_file("res://assets/tileset.png")?;
+        ImageTexture::create_from_image(&image).map(|texture| texture.upcast())
     }
 }
