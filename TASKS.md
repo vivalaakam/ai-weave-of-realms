@@ -73,8 +73,10 @@ Update status as work progresses.
 | 4.10 | Исправить падение Godot при создании TileSet после обновления изометрического атласа | Codex | DONE | `_sync-assets` сбрасывает stale import cache `tileset.png`, `MapNode` создаёт atlas tiles по фактической ширине текстуры и предупреждает о mismatch вместо падения |
 | 4.11 | Исправить потерю регистрации GDExtension-классов в Godot на macOS | Codex | DONE | В `.gdextension` добавлены явные `macos.*.arm64` записи, `reloadable` отключён, `just build` нормализует `install_name` dylib до `@rpath/librpg_godot.dylib` |
 | 4.12 | Убрать зависимость runtime-рендера карты от `.godot/imported/*.ctex` для tileset | Codex | DONE | `MapNode` грузит `res://assets/tileset.png` через `Image` + `ImageTexture`, `_sync-assets` больше не удаляет import cache и runtime не зависит от `.ctex` |
-| 4.13 | Диагностировать отсутствие видимой карты после восстановления tileset runtime-загрузки | Codex | IN PROGRESS | Проверка кадра, параметров `TileMapLayer` и факта заполнения ячеек/создания `TileSet` в рантайме |
+| 4.13 | Диагностировать отсутствие видимой карты после восстановления tileset runtime-загрузки | Codex | DONE | Первичное центрирование камеры переведено на `TileMapLayer.map_to_local`, smoothing сбрасывается после установки позиции, карта больше не “уезжает” после первого кадра |
+| 4.14 | Добавить keyboard zoom на `-` / `=` и корректное растяжение сцены при fullscreen | Codex | DONE | `CameraController` поддерживает zoom по `-` / `=` / `+`, в `project.godot` включён `window/stretch/aspect="expand"` |
 | 4.10 | Исправить runtime-настройку `TileSet` в Godot, чтобы `TileMapLayer` использовал изометрический diamond-layout, а не прямоугольную сетку | Codex | DONE | В `MapNode::build_tileset()` включены `TileLayout::DIAMOND_RIGHT` и `TileOffsetAxis::HORIZONTAL` |
+| 4.15 | Исправить zoom и fullscreen-resize: до `1920×1080` окно должно показывать больше карты без глобального stretch, выше порога — масштабировать содержимое | Codex | DONE | Глобальный stretch убран, базовый viewport = `1920×1080`, `CameraController` держит manual zoom и автоматически компенсирует размеры viewport выше лимита |
 
 ## Phase 5 — Polish & Integration
 
