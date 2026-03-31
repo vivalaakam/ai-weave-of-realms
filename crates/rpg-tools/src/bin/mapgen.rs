@@ -19,10 +19,9 @@ use tracing::{error, info, warn};
 use rpg_engine::map::game_map::GameMap;
 use rpg_engine::map::tile::Tiles;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
+use rpg_tiled::write_tmx;
 
 const TILESET_PATH: &str = "tileset/tileset.tsx";
-const TILE_WIDTH: u32 = 64;
-const TILE_HEIGHT: u32 = 64;
 
 fn main() {
     // ── Init tracing ──────────────────────────────────────────────────────────
@@ -121,7 +120,8 @@ fn main() {
 
     save_png(&map, &png_path, args.scale);
 
-    if let Err(e) = save_tmx(&map, &tmx_path, &tileset_path) {
+    let tileset_rel = relative_path(tmx_path.parent().unwrap_or(&tmx_path), &tileset_path);
+    if let Err(e) = write_tmx(&map, &tmx_path, &tileset_rel) {
         error!(error = %e, path = %tmx_path.display(), "failed to save TMX");
         std::process::exit(1);
     }
@@ -344,58 +344,6 @@ fn resolve_project_path(relative: &str) -> PathBuf {
         .join(relative)
 }
 
-/// Writes a TMX file referencing the root project tileset.
-fn save_tmx(map: &GameMap, output: &PathBuf, tileset_path: &PathBuf) -> Result<(), std::io::Error> {
-    let relative_tileset = relative_path(output.parent().unwrap_or(output), tileset_path);
-    let csv = tile_csv(map);
-    let tmx = format!(
-        concat!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
-            "<map version=\"1.10\" tiledversion=\"1.11.0\" orientation=\"staggered\" ",
-            "renderorder=\"right-down\" width=\"{width}\" height=\"{height}\" ",
-            "tilewidth=\"{tile_width}\" tileheight=\"{tile_height}\" infinite=\"0\" ",
-            "staggeraxis=\"x\" staggerindex=\"odd\" nextlayerid=\"2\" nextobjectid=\"1\">\n",
-            "  <tileset firstgid=\"1\" source=\"{tileset}\"/>\n",
-            "  <layer id=\"1\" name=\"Terrain\" width=\"{width}\" height=\"{height}\">\n",
-            "    <data encoding=\"csv\">\n",
-            "{csv}\n",
-            "    </data>\n",
-            "  </layer>\n",
-            "</map>\n"
-        ),
-        width = map.tile_width(),
-        height = map.tile_height(),
-        tile_width = TILE_WIDTH,
-        tile_height = TILE_HEIGHT,
-        tileset = xml_escape_attr(&relative_tileset),
-        csv = csv
-    );
-
-    fs::write(output, tmx)?;
-    info!(path = %output.display(), tileset = %relative_tileset, "TMX saved");
-    Ok(())
-}
-
-/// Serialises map tile gids as TMX CSV layer data.
-fn tile_csv(map: &GameMap) -> String {
-    let mut rows: Vec<String> = Vec::with_capacity(map.tile_height() as usize);
-
-    for ty in 0..map.tile_height() {
-        let mut gids: Vec<String> = Vec::with_capacity(map.tile_width() as usize);
-        for tx in 0..map.tile_width() {
-            let coord = rpg_engine::map::game_map::MapCoord::new(tx, ty);
-            if let Ok(tile) = map.get_tile(coord) {
-                gids.push(tile.kind.to_gid().to_string());
-            } else {
-                gids.push("0".to_string());
-            }
-        }
-        rows.push(format!("      {}", gids.join(",")));
-    }
-
-    rows.join(",\n")
-}
-
 /// Computes a relative path from `from_dir` to `to_path`.
 fn relative_path(from_dir: &std::path::Path, to_path: &std::path::Path) -> String {
     let from_abs = if from_dir.is_absolute() {
@@ -429,15 +377,6 @@ fn relative_path(from_dir: &std::path::Path, to_path: &std::path::Path) -> Strin
     }
 
     rel.to_string_lossy().replace('\\', "/")
-}
-
-/// Escapes a string for safe XML attribute output.
-fn xml_escape_attr(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 /// Opens a file using the default system handler.

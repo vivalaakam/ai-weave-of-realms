@@ -6,7 +6,6 @@
 use rpg_engine::error::Error as EngineError;
 use rpg_engine::map::chunk::{Chunk, ChunkCoord, CHUNK_SIZE};
 use rpg_engine::map::game_map::GameMap;
-use rpg_engine::map::tile::Tile;
 
 use crate::error::Error;
 

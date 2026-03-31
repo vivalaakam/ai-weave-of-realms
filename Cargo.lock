@@ -1305,6 +1305,7 @@ dependencies = [
  "image",
  "rpg-engine",
  "rpg-mapgen",
+ "rpg-tiled",
  "tracing",
  "tracing-subscriber",
 ]

@@ -1,0 +1,31 @@
+[gd_scene load_steps=1 format=3 uid="uid://rpg_main_scene"]
+
+[node name="Main" type="MainScene"]
+
+[node name="GameManager" type="GameManager" parent="."]
+
+[node name="World" type="Node2D" parent="."]
+
+[node name="TileMapLayer" type="TileMapLayer" parent="World"]
+
+[node name="MapNode" type="MapNode" parent="World"]
+game_manager_path = NodePath("/root/Main/GameManager")
+
+[node name="TileHighlight" type="TileHighlight" parent="World"]
+
+[node name="Heroes" type="Node2D" parent="World"]
+
+[node name="Camera2D" type="CameraController" parent="World"]
+zoom = Vector2(1, 1)
+position_smoothing_enabled = true
+position_smoothing_speed = 5.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="ScoreUI" type="ScoreUI" parent="UI"]
+anchors_preset = 1
+offset_left = -200.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 40.0
+format = "Score: {score}"

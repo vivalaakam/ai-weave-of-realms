@@ -11,6 +11,7 @@ path = "src/bin/mapgen.rs"
 [dependencies]
 rpg-engine = { path = "../rpg-engine" }
 rpg-mapgen = { path = "../rpg-mapgen" }
+rpg-tiled  = { path = "../rpg-tiled" }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 image = "0.25"

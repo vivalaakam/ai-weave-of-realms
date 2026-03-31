@@ -40,34 +40,34 @@ Update status as work progresses.
 
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
-| 2.1 | TMX data model structs (Map, Layer, Tileset, Tile) | — | TODO | |
-| 2.2 | TMX exporter: `GameMap` → `.tmx` XML | — | TODO | Isometric staggered format |
-| 2.3 | TMX importer: `.tmx` XML → `GameMap` | — | TODO | |
-| 2.4 | Isometric tileset descriptor (GID ↔ TileKind mapping) | — | TODO | |
-| 2.5 | Integration test: generate → export TMX → import TMX → compare | — | TODO | |
+| 2.1 | TMX data model structs (Map, Layer, Tileset, Tile) | — | DONE | Встроено в exporter/importer, seed как custom property |
+| 2.2 | TMX exporter: `GameMap` → `.tmx` XML | — | DONE | `rpg-tiled::exporter`, `mapgen` использует библиотеку |
+| 2.3 | TMX importer: `.tmx` XML → `GameMap` | — | DONE | `rpg-tiled::importer`, quick-xml event parser |
+| 2.4 | Isometric tileset descriptor (GID ↔ TileKind mapping) | — | DONE | `Tiles::to_gid` / `from_gid` в rpg-engine |
+| 2.5 | Integration test: generate → export TMX → import TMX → compare | — | DONE | round_trip_* тесты в importer.rs |
 
 ## Phase 3 — Game Mechanics
 
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
-| 3.1 | `Hero` struct with stats: hp, atk, def, spd, mov | — | TODO | |
-| 3.2 | Movement: compute reachable tiles given MOV budget | — | TODO | BFS/Dijkstra on tile graph |
-| 3.3 | Auto-resolve combat: `resolve_combat(attacker, defender, rng)` | — | TODO | |
-| 3.4 | `ScoreBoard`: track events, compute total score | — | TODO | |
-| 3.5 | `GameState`: map + heroes + turn counter + score | — | TODO | |
-| 3.6 | Turn manager: advance turn, reset MOV, trigger events | — | TODO | |
+| 3.1 | `Hero` struct with stats: hp, atk, def, spd, mov | — | DONE | hero.rs, Faction enum, serde |
+| 3.2 | Movement: compute reachable tiles given MOV budget | — | DONE | movement.rs, Dijkstra 4-way, road cost=0 |
+| 3.3 | Auto-resolve combat: `resolve_combat(attacker, defender, rng)` | — | DONE | combat.rs, initiative by spd, damage formula |
+| 3.4 | `ScoreBoard`: track events, compute total score | — | DONE | score.rs, 5 event types |
+| 3.5 | `GameState`: map + heroes + turn counter + score | — | DONE | game_state.rs, move_hero, attack_hero |
+| 3.6 | Turn manager: advance turn, reset MOV, trigger events | — | DONE | advance_turn в GameState, TurnEvent enum |
 
 ## Phase 4 — Godot Bridge
 
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
-| 4.1 | GDExtension scaffold: gdext setup, `.gdextension` file | — | TODO | |
-| 4.2 | `MapNode`: render `GameMap` as Godot TileMapLayer | — | TODO | |
-| 4.3 | `HeroNode`: render hero sprite, handle tile click → move | — | TODO | |
-| 4.4 | `GameManager`: owns `GameState`, drives turn loop | — | TODO | |
-| 4.5 | `CombatResolver`: trigger auto-resolve on enemy encounter | — | TODO | |
-| 4.6 | `ScoreUI`: display current score as HUD label | — | TODO | |
-| 4.7 | Isometric camera + tile hover highlight | — | TODO | |
+| 4.1 | GDExtension scaffold: gdext setup, `.gdextension` file | — | DONE | rpg-godot crate, RpgGodotExtension entry point |
+| 4.2 | `MapNode`: render `GameMap` as Godot TileMapLayer | — | DONE | map_node.rs, populate_tilemap, tilemap_populated signal |
+| 4.3 | `HeroNode`: render hero sprite, handle tile click → move | — | DONE | hero_node.rs, move_requested/selected signals |
+| 4.4 | `GameManager`: owns `GameState`, drives turn loop | — | DONE | game_manager.rs, все сигналы и функции |
+| 4.5 | `CombatResolver`: trigger auto-resolve on enemy encounter | — | DONE | встроен в GameManager.move_hero (combat_resolved сигнал) |
+| 4.6 | `ScoreUI`: display current score as HUD label | — | DONE | score_ui.rs, format var, on_score_changed |
+| 4.7 | Isometric camera + tile hover highlight | — | DONE | camera_controller.gd, tile_highlight.gd, main.tscn |
 
 ## Phase 5 — Polish & Integration
 

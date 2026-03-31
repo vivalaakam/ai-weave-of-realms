@@ -6,13 +6,23 @@
 //! of the rendering layer for testing and tooling.
 //!
 //! ## Modules
-//! - [`rng`]  — Keccak256-based deterministic [`rng::SeededRng`]
-//! - [`map`]  — Map types: [`map::TileKind`], [`map::Tile`], [`map::Chunk`], [`map::GameMap`]
-//! - [`error`] — Crate-level error type
+//! - [`rng`]        — Keccak256-based deterministic [`rng::SeededRng`]
+//! - [`map`]        — Map types: tiles, chunks, [`map::game_map::GameMap`]
+//! - [`hero`]       — [`hero::Hero`] entity and [`hero::Faction`]
+//! - [`movement`]   — Reachable tiles and pathfinding (Dijkstra)
+//! - [`combat`]     — Auto-resolve combat between heroes
+//! - [`score`]      — [`score::ScoreBoard`] and [`score::ScoreEvent`]
+//! - [`game_state`] — [`game_state::GameState`] and turn manager
+//! - [`error`]      — Crate-level error type
 
+pub mod combat;
 pub mod error;
+pub mod game_state;
+pub mod hero;
 pub mod map;
+pub mod movement;
 pub mod rng;
+pub mod score;
 
 #[cfg(test)]
 pub mod test_utils;

@@ -6,16 +6,27 @@
 //! All game logic lives in `rpg-engine`; this crate is responsible solely for
 //! exposing that logic to the Godot scene tree through `GodotClass` nodes.
 //!
-//! ## Modules
-//! - [`error`] — Crate-level error type
+//! ## Registered classes
+//! | Class | Base | Purpose |
+//! |-------|------|---------|
+//! | [`GameManager`](game_manager::GameManager) | `Node` | Owns `GameState`, drives turn loop |
+//! | [`MapNode`](map_node::MapNode) | `Node` | Populates `TileMapLayer` from map data |
+//! | [`HeroNode`](hero_node::HeroNode) | `Node2D` | Visual hero unit, emits move/select signals |
+//! | [`ScoreUI`](score_ui::ScoreUI) | `Label` | Auto-updates score display |
 
 use godot::prelude::*;
 
+pub mod camera_controller;
+pub mod coords;
 pub mod error;
+pub mod game_manager;
+pub mod hero_node;
+pub mod main_scene;
+pub mod map_node;
+pub mod score_ui;
+pub mod tile_highlight;
 
-/// GDExtension entry point.
-///
-/// Registers all Godot classes exported by this library.
+/// GDExtension entry point — registers all Godot classes.
 struct RpgGodotExtension;
 
 #[gdextension]
