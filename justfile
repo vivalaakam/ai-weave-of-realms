@@ -7,16 +7,19 @@ _sync-assets:
     mkdir -p godot/bin godot/assets
     rsync -a --delete scripts/ godot/scripts/
     cp tileset/tileset.png godot/assets/tileset.png
+    rm -f godot/.godot/imported/tileset.png-*.ctex godot/.godot/imported/tileset.png-*.md5
 
 # Build GDExtension (debug) and sync assets.
 build: _sync-assets
     cargo build -p rpg-godot
     cp target/debug/librpg_godot.dylib {{ BIN_DIR }}/librpg_godot.dylib
+    install_name_tool -id @rpath/librpg_godot.dylib {{ BIN_DIR }}/librpg_godot.dylib
 
 # Build GDExtension (release) and sync assets.
 build-release: _sync-assets
     cargo build -p rpg-godot --release
     cp target/release/librpg_godot.dylib {{ BIN_DIR }}/librpg_godot.dylib
+    install_name_tool -id @rpath/librpg_godot.dylib {{ BIN_DIR }}/librpg_godot.dylib
 
 # Run all workspace tests.
 test:
@@ -41,4 +44,4 @@ mapgen:
 # Remove build artefacts.
 clean:
     cargo clean
-    rm -rf {{ BIN_DIR }} godot/scripts godot/assets/tileset.png
+    rm -rf {{ BIN_DIR }} godot/scripts

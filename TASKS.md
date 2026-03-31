@@ -68,6 +68,11 @@ Update status as work progresses.
 | 4.5 | `CombatResolver`: trigger auto-resolve on enemy encounter | — | DONE | встроен в GameManager.move_hero (combat_resolved сигнал) |
 | 4.6 | `ScoreUI`: display current score as HUD label | — | DONE | score_ui.rs, format var, on_score_changed |
 | 4.7 | Isometric camera + tile hover highlight | — | DONE | camera_controller.gd, tile_highlight.gd, main.tscn |
+| 4.8 | Перевести визуализацию Godot-карты на рабочую изометрию и подготовить изометрические тайловые ассеты на основе цветовой привязки `TileKind` | Codex | DONE | `rpg-godot` синхронизирован с 14-тайловым атласом 64x64/64x32, добавлен генератор `build_isometric_tileset`, общий атлас строится из `Tiles::all()` и `Tiles::as_color()` |
+| 4.9 | Восстановить изометрический tileset после `just clean` и исключить его удаление из workflow очистки | Codex | DONE | `clean` больше не удаляет `godot/assets/tileset.png`, ignore снят в `godot/.gitignore`, tileset пересоздан и проверен через `just clean` |
+| 4.10 | Исправить падение Godot при создании TileSet после обновления изометрического атласа | Codex | DONE | `_sync-assets` сбрасывает stale import cache `tileset.png`, `MapNode` создаёт atlas tiles по фактической ширине текстуры и предупреждает о mismatch вместо падения |
+| 4.11 | Исправить потерю регистрации GDExtension-классов в Godot на macOS | Codex | DONE | В `.gdextension` добавлены явные `macos.*.arm64` записи, `reloadable` отключён, `just build` нормализует `install_name` dylib до `@rpath/librpg_godot.dylib` |
+| 4.10 | Исправить runtime-настройку `TileSet` в Godot, чтобы `TileMapLayer` использовал изометрический diamond-layout, а не прямоугольную сетку | Codex | DONE | В `MapNode::build_tileset()` включены `TileLayout::DIAMOND_RIGHT` и `TileOffsetAxis::HORIZONTAL` |
 
 ## Phase 5 — Polish & Integration
 
@@ -95,3 +100,4 @@ Update status as work progresses.
 | 2026-03-27 | `MAP_GENERATION_RULES.md` must match runtime truth from `Tiles` and Lua validators | Avoid drift between documentation, generator scripts, and validation invariants |
 | 2026-03-27 | `mapgen` exports both PNG and TMX into a per-run timestamp directory | Keeps generation artefacts grouped and lets TMX reference the shared root tileset |
 | 2026-03-27 | Chunk edges use a 3-step connection grid (`pos % 3 == 1`) for roads/rivers and anchored continuous segments for forest/mountain/water | Ensures deterministic chunk-to-chunk connectivity and prevents ragged seam contacts |
+| 2026-03-31 | Isometric tileset atlas is generated from `rpg_engine::map::tile::Tiles` instead of being maintained manually | Keeps Godot rendering, TMX export, tile count, and color semantics in sync from one source of truth |

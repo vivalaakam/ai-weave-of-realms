@@ -2,9 +2,13 @@
 
 use godot::prelude::*;
 
-/// Tile pixel width (matches tileset).
+/// Source texture width of one atlas tile in pixels.
+pub const ATLAS_TILE_W: i32 = 64;
+/// Source texture height of one atlas tile in pixels.
+pub const ATLAS_TILE_H: i32 = 64;
+/// Isometric footprint width in world space.
 pub const TILE_W: f32 = 64.0;
-/// Tile pixel height (matches tileset).
+/// Isometric footprint height in world space.
 pub const TILE_H: f32 = 32.0;
 
 /// Converts tile grid coordinates to isometric world position.

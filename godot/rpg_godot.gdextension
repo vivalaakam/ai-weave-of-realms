@@ -1,9 +1,13 @@
 [configuration]
 entry_symbol = "gdext_rust_init"
 compatibility_minimum = "4.1"
-reloadable = true
+reloadable = false
 
 [libraries]
+macos.debug.editor.arm64 = "res://bin/librpg_godot.dylib"
+macos.release.editor.arm64 = "res://bin/librpg_godot.dylib"
+macos.debug.arm64 = "res://bin/librpg_godot.dylib"
+macos.release.arm64 = "res://bin/librpg_godot.dylib"
 macos.debug   = "res://bin/librpg_godot.dylib"
 macos.release = "res://bin/librpg_godot.dylib"
 windows.debug.x86_64   = "res://bin/rpg_godot.dll"

@@ -3,17 +3,13 @@
 //! `MapNode` is intentionally thin — it reads tile data from `GameManager`
 //! and writes GIDs to a `TileMapLayer`.  All game logic stays in `GameManager`.
 
-use godot::classes::tile_set::TileShape;
+use godot::classes::tile_set::{TileLayout, TileOffsetAxis, TileShape};
 use godot::classes::{
     INode, Node, ResourceLoader, Texture2D, TileMapLayer, TileSet, TileSetAtlasSource,
     TileSetSource,
 };
 use godot::prelude::*;
-
-/// Number of tiles in `res://assets/tileset.png` (832 px ÷ 64 px).
-const ATLAS_COLS: i32 = 13;
-/// Pixel size of each tile in the atlas sheet.
-const ATLAS_TILE_PX: i32 = 64;
+use crate::coords::{ATLAS_TILE_H, ATLAS_TILE_W, TILE_H, TILE_W};
 
 // ─── MapNode ──────────────────────────────────────────────────────────────────
 
@@ -68,7 +64,8 @@ impl MapNode {
             for x in 0..width {
                 let gid  = gm.bind().get_tile_gid(x, y);
                 if gid <= 0 { continue; }
-                let col  = ((gid - 1) as i32).clamp(0, ATLAS_COLS - 1);
+                let atlas_cols = Self::atlas_cols();
+                let col  = ((gid - 1) as i32).clamp(0, atlas_cols - 1);
                 let cell = Vector2i::new(x as i32, y as i32);
                 tm.set_cell_ex(cell)
                     .source_id(0)
@@ -100,22 +97,35 @@ impl MapNode {
         let tex: Gd<Texture2D> = ResourceLoader::singleton()
             .load("res://assets/tileset.png")
             .and_then(|r| r.try_cast::<Texture2D>().ok())?;
+        let actual_cols = Self::texture_cols(&tex);
+        let expected_cols = Self::atlas_cols();
+        if actual_cols <= 0 {
+            godot_warn!("MapNode: tileset texture width is too small for atlas tile size");
+            return None;
+        }
+        if actual_cols != expected_cols {
+            godot_warn!(
+                "MapNode: tileset texture columns mismatch (expected {}, got {})",
+                expected_cols,
+                actual_cols,
+            );
+        }
 
         // Atlas source
         let mut atlas = TileSetAtlasSource::new_gd();
         atlas.set_texture(&tex);
-        atlas.set_texture_region_size(Vector2i::new(ATLAS_TILE_PX, ATLAS_TILE_PX));
+        atlas.set_texture_region_size(Vector2i::new(ATLAS_TILE_W, ATLAS_TILE_H));
 
-        for col in 0..ATLAS_COLS {
+        for col in 0..actual_cols {
             atlas.create_tile(Vector2i::new(col, 0));
         }
 
         // TileSet — isometric mode
         let mut ts = TileSet::new_gd();
         ts.set_tile_shape(TileShape::ISOMETRIC);
-        // For isometric: tile_size is the cell size in world space (diamond footprint).
-        // With 64x64 source tiles displayed as isometric diamonds, use 64x32 (2:1 ratio).
-        ts.set_tile_size(Vector2i::new(ATLAS_TILE_PX, ATLAS_TILE_PX / 2));
+        ts.set_tile_layout(TileLayout::DIAMOND_RIGHT);
+        ts.set_tile_offset_axis(TileOffsetAxis::HORIZONTAL);
+        ts.set_tile_size(Vector2i::new(TILE_W as i32, TILE_H as i32));
 
         let source: Gd<TileSetSource> = atlas.upcast();
         ts.add_source_ex(&source).atlas_source_id_override(0).done();
@@ -128,5 +138,13 @@ impl MapNode {
         self.base()
             .get_node_or_null(&path)
             .and_then(|n| n.try_cast::<super::game_manager::GameManager>().ok())
+    }
+
+    fn atlas_cols() -> i32 {
+        rpg_engine::map::tile::Tiles::all().len() as i32
+    }
+
+    fn texture_cols(texture: &Gd<Texture2D>) -> i32 {
+        texture.get_width() / ATLAS_TILE_W
     }
 }
