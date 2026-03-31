@@ -83,10 +83,14 @@ Update status as work progresses.
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
 | 5.1 | Map generation on game start from seed input | Codex | DONE | `MainScene` стартует из `LineEdit`, кнопка `Generate` перезапускает сессию, старые hero nodes очищаются перед новой генерацией |
-| 5.2 | Hero placement on generated map start position | — | TODO | |
+| 5.2 | Hero placement on generated map start position | Codex | DONE | Добавлен `rpg-engine::spawn`: игрок стартует с приоритетом у `CityEntrance`, враг — на дальней проходимой клетке; `MainScene` больше не использует хардкод координат |
 | 5.3 | Enemy spawning driven by Lua rules | — | TODO | |
 | 5.4 | Win/loss conditions via score threshold | — | TODO | |
 | 5.5 | Save/load `GameState` (serde + JSON or binary) | — | TODO | |
+| 5.6 | Добавить циклическое переключение героев по `Tab` и ограничить камеру по краям карты | Codex | DONE | `Tab` циклически выбирает следующего живого player-hero и фокусирует камеру; clamp камеры переведён на ромб карты, regression с уехавшей допустимой областью исправлен сменой направления нормалей |
+| 5.7 | Добавить debug-панель камеры: seed, позиция курсора и ручной ввод центральной клетки | Codex | DONE | Добавлен правый debug-sidebar: current seed, tile под курсором и ввод `CenterX/CenterY` с ручным фокусом камеры для отладки bounds |
+| 5.8 | Временно отключить camera clamp для отладки системы координат | Codex | DONE | `CameraController::configure_map_bounds()` временно сбрасывает bounds в `None`, чтобы камера больше не ограничивалась экранным clamp во время отладки |
+| 5.9 | Синхронизировать координаты ввода/камеры с реальным `TileMapLayer` | Codex | DONE | Клик, курсор, highlight, позиции героев и фокус камеры переведены с ручных формул на `TileMapLayer.map_to_local/local_to_map`, чтобы логика использовала ту же систему координат, что и рендер |
 
 ---
 

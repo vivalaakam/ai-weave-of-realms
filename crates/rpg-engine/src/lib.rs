@@ -13,6 +13,7 @@
 //! - [`combat`]     — Auto-resolve combat between heroes
 //! - [`score`]      — [`score::ScoreBoard`] and [`score::ScoreEvent`]
 //! - [`game_state`] — [`game_state::GameState`] and turn manager
+//! - [`spawn`]      — Deterministic hero spawn selection on generated maps
 //! - [`error`]      — Crate-level error type
 
 pub mod combat;
@@ -23,6 +24,7 @@ pub mod map;
 pub mod movement;
 pub mod rng;
 pub mod score;
+pub mod spawn;
 
 #[cfg(test)]
 pub mod test_utils;

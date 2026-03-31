@@ -55,10 +55,55 @@ text = "default-seed"
 [node name="StartButton" type="Button" parent="UI/SeedPanel/MarginContainer/Controls"]
 text = "Generate"
 
-[node name="ScoreUI" type="ScoreUI" parent="UI"]
-anchors_preset = 1
-offset_left = -220.0
+[node name="DebugPanel" type="PanelContainer" parent="UI"]
+anchors_preset = 15
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -280.0
 offset_top = 10.0
 offset_right = -10.0
-offset_bottom = 40.0
+offset_bottom = -10.0
+
+[node name="MarginContainer" type="MarginContainer" parent="UI/DebugPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+
+[node name="Content" type="VBoxContainer" parent="UI/DebugPanel/MarginContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="PanelTitle" type="Label" parent="UI/DebugPanel/MarginContainer/Content"]
+text = "Debug"
+
+[node name="ScoreUI" type="ScoreUI" parent="UI/DebugPanel/MarginContainer/Content"]
 format = "Score: {score}"
+
+[node name="SeedValue" type="Label" parent="UI/DebugPanel/MarginContainer/Content"]
+text = "Seed: default-seed"
+
+[node name="CursorValue" type="Label" parent="UI/DebugPanel/MarginContainer/Content"]
+text = "Cursor: -, -"
+
+[node name="CenterTitle" type="Label" parent="UI/DebugPanel/MarginContainer/Content"]
+text = "Center Tile"
+
+[node name="CenterInputs" type="HBoxContainer" parent="UI/DebugPanel/MarginContainer/Content"]
+
+[node name="CenterX" type="LineEdit" parent="UI/DebugPanel/MarginContainer/Content/CenterInputs"]
+size_flags_horizontal = 3
+placeholder_text = "X"
+
+[node name="CenterY" type="LineEdit" parent="UI/DebugPanel/MarginContainer/Content/CenterInputs"]
+size_flags_horizontal = 3
+placeholder_text = "Y"
+
+[node name="CenterButton" type="Button" parent="UI/DebugPanel/MarginContainer/Content"]
+text = "Focus Tile"

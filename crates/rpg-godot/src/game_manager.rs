@@ -24,6 +24,7 @@ use rpg_engine::hero::{Faction, Hero};
 use rpg_engine::map::game_map::MapCoord;
 use rpg_engine::movement;
 use rpg_engine::rng::SeededRng;
+use rpg_engine::spawn;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
 
 // ─── GameManager ──────────────────────────────────────────────────────────────
@@ -318,5 +319,34 @@ impl GameManager {
             .find(|h| h.id == hero_id as u32)
             .map(|h| h.is_alive())
             .unwrap_or(false)
+    }
+
+    /// Returns the recommended player spawn tile, or `(-1, -1)` if unavailable.
+    #[func]
+    pub fn get_player_spawn(&self) -> Vector2i {
+        let Some(state) = &self.state else { return Vector2i::new(-1, -1) };
+        spawn::find_player_spawn(&state.map)
+            .map(|coord| Vector2i::new(coord.x as i32, coord.y as i32))
+            .unwrap_or(Vector2i::new(-1, -1))
+    }
+
+    /// Returns the recommended enemy spawn tile, or `(-1, -1)` if unavailable.
+    #[func]
+    pub fn get_enemy_spawn(&self) -> Vector2i {
+        let Some(state) = &self.state else { return Vector2i::new(-1, -1) };
+        spawn::find_spawn_positions(&state.map)
+            .map(|positions| Vector2i::new(positions.enemy.x as i32, positions.enemy.y as i32))
+            .unwrap_or(Vector2i::new(-1, -1))
+    }
+
+    /// Returns ids of all living player heroes in stable insertion order.
+    #[func]
+    pub fn get_living_player_hero_ids(&self) -> Array<i64> {
+        let Some(state) = &self.state else { return Array::new() };
+        let mut ids = Array::new();
+        for hero in state.heroes.iter().filter(|hero| hero.faction == Faction::Player && hero.is_alive()) {
+            ids.push(hero.id as i64);
+        }
+        ids
     }
 }

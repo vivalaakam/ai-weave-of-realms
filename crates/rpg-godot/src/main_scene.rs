@@ -3,13 +3,15 @@
 //! Set as the root node type in `main.tscn` (`type="MainScene"`).
 
 use godot::classes::{
-    Button, Camera2D, INode, InputEvent, InputEventMouseButton, LineEdit, Node, TileMapLayer,
+    Button, Camera2D, INode, InputEvent, InputEventKey, InputEventMouseButton, Label, LineEdit,
+    Node, TileMapLayer,
 };
-use godot::global::MouseButton;
+use godot::global::{Key, MouseButton};
 use godot::prelude::*;
 use tracing::{info, warn};
 
-use crate::coords::{tile_to_world, world_to_tile};
+use crate::camera_controller::CameraController;
+use crate::coords::TILE_W;
 use crate::game_manager::GameManager;
 use crate::hero_node::HeroNode;
 use crate::map_node::MapNode;
@@ -65,13 +67,40 @@ impl INode for MainScene {
             let cb_start_pressed = self.base().callable("_on_start_pressed");
             start_button.connect("pressed", &cb_start_pressed);
         }
+        if let Some(mut center_button) = self.center_button() {
+            let cb_center_pressed = self.base().callable("_on_center_button_pressed");
+            center_button.connect("pressed", &cb_center_pressed);
+        }
+        if let Some(mut center_x) = self.center_x_input() {
+            let cb_center_submit = self.base().callable("_on_center_inputs_submitted");
+            center_x.connect("text_submitted", &cb_center_submit);
+        }
+        if let Some(mut center_y) = self.center_y_input() {
+            let cb_center_submit = self.base().callable("_on_center_inputs_submitted");
+            center_y.connect("text_submitted", &cb_center_submit);
+        }
 
         // Defer startup so map_ready fires after ready() returns,
         // avoiding a double-borrow of MainScene.
         self.base_mut().call_deferred("_start_game_from_ui", &[]);
     }
 
+    fn process(&mut self, _delta: f64) {
+        self.update_cursor_debug();
+    }
+
     fn input(&mut self, event: Gd<InputEvent>) {
+        if let Ok(key) = event.clone().try_cast::<InputEventKey>() {
+            if key.is_pressed() && !key.is_echo() {
+                let physical = key.get_physical_keycode();
+                let logical = key.get_keycode();
+                if physical == Key::TAB || logical == Key::TAB {
+                    self.select_next_player_hero();
+                    return;
+                }
+            }
+        }
+
         if let Ok(mb) = event.clone().try_cast::<InputEventMouseButton>() {
             if mb.is_pressed()
                 && mb.get_button_index() == MouseButton::LEFT
@@ -113,9 +142,20 @@ impl MainScene {
         self.start_game_with_seed(Self::normalize_seed(seed.to_string()));
     }
 
+    #[func]
+    fn _on_center_button_pressed(&mut self) {
+        self.focus_camera_from_debug_inputs();
+    }
+
+    #[func]
+    fn _on_center_inputs_submitted(&mut self, _value: GString) {
+        self.focus_camera_from_debug_inputs();
+    }
+
     fn start_game_with_seed(&mut self, seed: String) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         self.selected_hero_id = -1;
+        self.update_seed_debug(&seed);
         let started = gm.bind_mut().new_game(
             GString::from(seed.as_str()),
             GString::from(GENERATOR_PATH),
@@ -136,8 +176,11 @@ impl MainScene {
         let tilemap: Gd<TileMapLayer> = self.base().get_node_as("World/TileMapLayer");
         let mut map_node: Gd<MapNode> = self.base().get_node_as("World/MapNode");
         map_node.bind_mut().populate_tilemap(tilemap.clone());
+        self.configure_camera_bounds();
         self.clear_hero_nodes();
         self.spawn_heroes();
+        self.set_center_debug_inputs(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+        self.select_first_player_hero();
         self.center_camera(tilemap);
     }
 
@@ -148,7 +191,9 @@ impl MainScene {
             if let Ok(mut hn) = child.try_cast::<HeroNode>() {
                 if hn.bind().hero_id == hero_id {
                     hn.bind_mut().on_hero_moved(hero_id, fx, fy, tx, ty);
-                    hn.set_position(tile_to_world(tx as i32, ty as i32));
+                    if let Some(world_pos) = self.map_tile_to_world(Vector2i::new(tx as i32, ty as i32)) {
+                        hn.set_position(world_pos);
+                    }
                     break;
                 }
             }
@@ -185,6 +230,9 @@ impl MainScene {
                 }
             }
         }
+        if self.selected_hero_id == hero_id {
+            self.select_next_player_hero();
+        }
     }
 
     #[func]
@@ -200,16 +248,43 @@ impl MainScene {
 
     #[func]
     fn _on_hero_selected(&mut self, hero_id: i64) {
-        self.selected_hero_id = hero_id;
+        self.set_selected_hero(hero_id, true);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     fn spawn_heroes(&mut self) {
-        self.add_game_hero(1, "Hero",  100, 20, 10, 15, 4,  5,  5, "player");
-        self.create_hero_node(1, "player", 5, 5);
-        self.add_game_hero(2, "Enemy",  40, 12,  6,  8, 3, 10, 10, "enemy");
-        self.create_hero_node(2, "enemy", 10, 10);
+        let Some((player_spawn, enemy_spawn)) = self.hero_spawn_positions() else {
+            warn!("skipping hero spawn because no valid start positions were found");
+            return;
+        };
+
+        self.add_game_hero(
+            1,
+            "Hero",
+            100,
+            20,
+            10,
+            15,
+            4,
+            i64::from(player_spawn.x),
+            i64::from(player_spawn.y),
+            "player",
+        );
+        self.create_hero_node(1, "player", player_spawn.x, player_spawn.y);
+        self.add_game_hero(
+            2,
+            "Enemy",
+            40,
+            12,
+            6,
+            8,
+            3,
+            i64::from(enemy_spawn.x),
+            i64::from(enemy_spawn.y),
+            "enemy",
+        );
+        self.create_hero_node(2, "enemy", enemy_spawn.x, enemy_spawn.y);
     }
 
     fn add_game_hero(
@@ -238,7 +313,9 @@ impl MainScene {
             b.selectable = faction == "player";
             b.set_tile_position(tx as i64, ty as i64);
         }
-        hero.set_position(tile_to_world(tx, ty));
+        if let Some(world_pos) = self.map_tile_to_world(Vector2i::new(tx, ty)) {
+            hero.set_position(world_pos);
+        }
 
         let cb_move = self.base().callable("_on_move_requested");
         let cb_sel  = self.base().callable("_on_hero_selected");
@@ -258,8 +335,13 @@ impl MainScene {
     }
 
     fn center_camera(&mut self, tilemap: Gd<TileMapLayer>) {
+        if self.selected_hero_id >= 0 {
+            self.focus_camera_on_hero(self.selected_hero_id);
+            return;
+        }
+
         let center = Self::tilemap_center(tilemap)
-            .unwrap_or_else(|| tile_to_world(MAP_WIDTH / 2, MAP_HEIGHT / 2));
+            .unwrap_or_else(|| Vector2::new(0.0, TILE_W * 0.5));
 
         if let Some(cam) = self.base().get_node_or_null("World/Camera2D") {
             if let Ok(mut cam2d) = cam.try_cast::<Camera2D>() {
@@ -278,19 +360,110 @@ impl MainScene {
     }
 
     fn mouse_to_tile(&self, mb: &InputEventMouseButton) -> Option<Vector2i> {
-        let vp     = self.base().get_viewport()?;
-        let camera = vp.get_camera_2d()?;
-        let center = camera.get_screen_center_position();
-        let half   = vp.get_visible_rect().size * 0.5;
-        let world  = center + mb.get_position() - half;
-        let tile   = world_to_tile(world);
-        (tile.x >= 0 && tile.y >= 0).then_some(tile)
+        self.screen_to_tile(mb.get_position())
     }
 
     fn current_seed(&self) -> String {
         self.seed_input()
             .map(|input| Self::normalize_seed(input.get_text().to_string()))
             .unwrap_or_else(|| DEFAULT_SEED.to_string())
+    }
+
+    fn update_seed_debug(&self, seed: &str) {
+        if let Some(mut label) = self.seed_value_label() {
+            label.set_text(&format!("Seed: {seed}"));
+        }
+    }
+
+    fn update_cursor_debug(&self) {
+        let Some(mut label) = self.cursor_value_label() else { return };
+        let Some(viewport) = self.base().get_viewport() else { return };
+        let mouse = viewport.get_mouse_position();
+        let text = match self.screen_to_tile(mouse) {
+            Some(tile) => format!("Cursor: {}, {}", tile.x, tile.y),
+            None => "Cursor: -, -".to_string(),
+        };
+        label.set_text(&text);
+    }
+
+    fn configure_camera_bounds(&self) {
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let width = gm.bind().get_map_width() as i32;
+        let height = gm.bind().get_map_height() as i32;
+        if let Some(mut camera) = self.camera_controller() {
+            camera.bind_mut().configure_map_bounds(width, height);
+        }
+    }
+
+    fn hero_spawn_positions(&self) -> Option<(Vector2i, Vector2i)> {
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let player = gm.bind().get_player_spawn();
+        let enemy = gm.bind().get_enemy_spawn();
+        (player.x >= 0 && player.y >= 0 && enemy.x >= 0 && enemy.y >= 0).then_some((player, enemy))
+    }
+
+    fn select_first_player_hero(&mut self) {
+        let heroes = self.player_hero_ids();
+        let Some(hero_id) = heroes.iter_shared().next() else {
+            self.selected_hero_id = -1;
+            return;
+        };
+        self.set_selected_hero(hero_id, false);
+    }
+
+    fn select_next_player_hero(&mut self) {
+        let heroes = self.player_hero_ids();
+        if heroes.is_empty() {
+            self.selected_hero_id = -1;
+            return;
+        }
+
+        let current_index = heroes
+            .iter_shared()
+            .position(|hero_id| hero_id == self.selected_hero_id);
+        let next_index = current_index.map(|index| (index + 1) % heroes.len()).unwrap_or(0);
+        let Some(next_id) = heroes.get(next_index) else {
+            return;
+        };
+        self.set_selected_hero(next_id, true);
+    }
+
+    fn set_selected_hero(&mut self, hero_id: i64, focus_camera: bool) {
+        self.selected_hero_id = hero_id;
+        if focus_camera {
+            self.focus_camera_on_hero(hero_id);
+        }
+    }
+
+    fn focus_camera_on_hero(&self, hero_id: i64) {
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let tile = gm.bind().get_hero_position(hero_id);
+        if tile.x < 0 || tile.y < 0 {
+            return;
+        }
+        self.set_center_debug_inputs(tile.x, tile.y);
+        if let Some(mut camera) = self.camera_controller() {
+            if let Some(world_pos) = self.map_tile_to_world(Vector2i::new(tile.x, tile.y)) {
+                camera.bind_mut().focus_on_world_position(world_pos);
+            }
+        }
+    }
+
+    fn focus_camera_from_debug_inputs(&self) {
+        let Some((x, y)) = self.debug_center_tile() else {
+            return;
+        };
+        if let Some(mut camera) = self.camera_controller() {
+            if let Some(world_pos) = self.map_tile_to_world(Vector2i::new(x, y)) {
+                camera.bind_mut().focus_on_world_position(world_pos);
+            }
+        }
+    }
+
+    fn player_hero_ids(&self) -> Array<i64> {
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let ids = gm.bind().get_living_player_hero_ids();
+        ids
     }
 
     fn normalize_seed(seed: String) -> String {
@@ -312,5 +485,91 @@ impl MainScene {
         self.base()
             .get_node_or_null("UI/SeedPanel/MarginContainer/Controls/StartButton")
             .and_then(|node| node.try_cast::<Button>().ok())
+    }
+
+    fn center_button(&self) -> Option<Gd<Button>> {
+        self.base()
+            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CenterButton")
+            .and_then(|node| node.try_cast::<Button>().ok())
+    }
+
+    fn center_x_input(&self) -> Option<Gd<LineEdit>> {
+        self.base()
+            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CenterInputs/CenterX")
+            .and_then(|node| node.try_cast::<LineEdit>().ok())
+    }
+
+    fn center_y_input(&self) -> Option<Gd<LineEdit>> {
+        self.base()
+            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CenterInputs/CenterY")
+            .and_then(|node| node.try_cast::<LineEdit>().ok())
+    }
+
+    fn seed_value_label(&self) -> Option<Gd<Label>> {
+        self.base()
+            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/SeedValue")
+            .and_then(|node| node.try_cast::<Label>().ok())
+    }
+
+    fn cursor_value_label(&self) -> Option<Gd<Label>> {
+        self.base()
+            .get_node_or_null("UI/DebugPanel/MarginContainer/Content/CursorValue")
+            .and_then(|node| node.try_cast::<Label>().ok())
+    }
+
+    fn camera_controller(&self) -> Option<Gd<CameraController>> {
+        self.base()
+            .get_node_or_null("World/Camera2D")
+            .and_then(|node| node.try_cast::<CameraController>().ok())
+    }
+
+    fn set_center_debug_inputs(&self, x: i32, y: i32) {
+        if let Some(mut input) = self.center_x_input() {
+            input.set_text(&x.to_string());
+        }
+        if let Some(mut input) = self.center_y_input() {
+            input.set_text(&y.to_string());
+        }
+    }
+
+    fn debug_center_tile(&self) -> Option<(i32, i32)> {
+        let x = self
+            .center_x_input()
+            .and_then(|input| input.get_text().to_string().trim().parse::<i32>().ok())?;
+        let y = self
+            .center_y_input()
+            .and_then(|input| input.get_text().to_string().trim().parse::<i32>().ok())?;
+        Some((x, y))
+    }
+
+    fn screen_to_tile(&self, screen_pos: Vector2) -> Option<Vector2i> {
+        let vp = self.base().get_viewport()?;
+        let camera = vp.get_camera_2d()?;
+        let center = camera.get_screen_center_position();
+        let half = vp.get_visible_rect().size * 0.5;
+        let world = center + screen_pos - half;
+        let tile = self.world_to_map_tile(world)?;
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let width = gm.bind().get_map_width() as i32;
+        let height = gm.bind().get_map_height() as i32;
+        (tile.x >= 0 && tile.y >= 0 && tile.x < width && tile.y < height).then_some(tile)
+    }
+
+    fn map_tile_to_world(&self, tile: Vector2i) -> Option<Vector2> {
+        let mut tilemap = self.tilemap_layer()?;
+        let local = tilemap.call("map_to_local", &[tile.to_variant()]).try_to::<Vector2>().ok()?;
+        Some(tilemap.to_global(local))
+    }
+
+    fn world_to_map_tile(&self, world: Vector2) -> Option<Vector2i> {
+        let mut tilemap = self.tilemap_layer()?;
+        let local = tilemap.to_local(world);
+        tilemap.call("local_to_map", &[local.to_variant()]).try_to::<Vector2i>().ok()
+    }
+
+    fn tilemap_layer(&self) -> Option<Gd<TileMapLayer>> {
+        self.base()
+            .get_node_or_null("World/TileMapLayer")
+            .and_then(|node| node.try_cast::<TileMapLayer>().ok())
     }
 }

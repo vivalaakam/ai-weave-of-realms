@@ -6,7 +6,7 @@
 use godot::classes::{INode2D, Node2D};
 use godot::prelude::*;
 
-use crate::coords::{tile_to_world, world_to_tile, TILE_H, TILE_W};
+use crate::coords::{TILE_H, TILE_W};
 
 // ─── TileHighlight ────────────────────────────────────────────────────────────
 
@@ -40,7 +40,9 @@ impl INode2D for TileHighlight {
             return;
         }
 
-        let origin = tile_to_world(tile.x, tile.y);
+        let Some(origin) = self.map_tile_to_world(tile) else {
+            return;
+        };
         let hw = TILE_W * 0.5; // 32
         let hh = TILE_H * 0.5; // 16
 
@@ -78,7 +80,26 @@ impl TileHighlight {
         let mouse  = vp.get_mouse_position();
         let half   = vp.get_visible_rect().size * 0.5;
         let world  = center + mouse - half;
-        let tile   = world_to_tile(world);
-        if tile.x >= 0 && tile.y >= 0 { tile } else { Vector2i::new(-1, -1) }
+        self.world_to_map_tile(world)
+            .filter(|tile| tile.x >= 0 && tile.y >= 0)
+            .unwrap_or(Vector2i::new(-1, -1))
+    }
+
+    fn map_tile_to_world(&self, tile: Vector2i) -> Option<Vector2> {
+        let mut tilemap = self.tilemap_layer()?;
+        let local = tilemap.call("map_to_local", &[tile.to_variant()]).try_to::<Vector2>().ok()?;
+        Some(tilemap.to_global(local))
+    }
+
+    fn world_to_map_tile(&self, world: Vector2) -> Option<Vector2i> {
+        let mut tilemap = self.tilemap_layer()?;
+        let local = tilemap.to_local(world);
+        tilemap.call("local_to_map", &[local.to_variant()]).try_to::<Vector2i>().ok()
+    }
+
+    fn tilemap_layer(&self) -> Option<Gd<godot::classes::TileMapLayer>> {
+        self.base()
+            .get_node_or_null("../TileMapLayer")
+            .and_then(|node| node.try_cast::<godot::classes::TileMapLayer>().ok())
     }
 }
