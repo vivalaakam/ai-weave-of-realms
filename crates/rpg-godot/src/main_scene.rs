@@ -43,6 +43,8 @@ pub struct MainScene {
     base: Base<Node>,
     selected_hero_id: i64,
     end_turn_dialog: Option<Gd<ConfirmationDialog>>,
+    hire_hero_dialog: Option<Gd<ConfirmationDialog>>,
+    hire_target_tile: Vector2i,
     left_stick_move_cooldown: f64,
     left_stick_direction_held: bool,
     cross_was_pressed: bool,
@@ -57,6 +59,8 @@ impl INode for MainScene {
             base,
             selected_hero_id: -1,
             end_turn_dialog: None,
+            hire_hero_dialog: None,
+            hire_target_tile: Vector2i::new(-1, -1),
             left_stick_move_cooldown: 0.0,
             left_stick_direction_held: false,
             cross_was_pressed: false,
@@ -130,6 +134,10 @@ impl INode for MainScene {
         self.base_mut()
             .call_deferred("_create_end_turn_dialog", &[]);
 
+        // Create the hire-hero dialog (hidden initially).
+        self.base_mut()
+            .call_deferred("_create_hire_hero_dialog", &[]);
+
         // Defer startup so map_ready fires after ready() returns,
         // avoiding a double-borrow of MainScene.
         self.base_mut().call_deferred("_start_game_from_ui", &[]);
@@ -145,8 +153,8 @@ impl INode for MainScene {
     }
 
     fn input(&mut self, event: Gd<InputEvent>) {
-        // Пока открыт диалог завершения хода — не обрабатываем собственные привязки.
-        if self.is_end_turn_dialog_visible() {
+        // Пока открыт любой диалог — не обрабатываем собственные привязки.
+        if self.is_any_dialog_visible() {
             return;
         }
 
@@ -203,30 +211,44 @@ impl INode for MainScene {
             if mb.is_pressed() && mb.get_button_index() == MouseButton::LEFT {
                 if let Some(tile) = self.mouse_to_tile(&mb) {
                     // Если на тайле стоит управляемый игроком герой — выбираем его.
+                    // Если тайл — город/вход и там нет героя — предлагаем нанять.
                     // Иначе — перемещаем текущего выбранного героя.
                     if let Some(hero_id) = self.player_hero_at_tile(tile) {
                         self.set_selected_hero(hero_id, false);
-                    } else if self.selected_hero_id >= 0 {
-                        let id = self.selected_hero_id;
-                        // Derive direction from hero position to clicked adjacent tile.
-                        // 0=North, 1=East, 2=South, 3=West. Non-adjacent clicks are ignored.
-                        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-                        let pos = gm.bind().get_hero_position(id);
-                        drop(gm);
-
-                        let dx = tile.x - pos.x;
-                        let dy = tile.y - pos.y;
-                        let direction: Option<i64> = match (dx, dy) {
-                            (0, -1) => Some(0), // North
-                            (1, 0) => Some(1),  // East
-                            (0, 1) => Some(2),  // South
-                            (-1, 0) => Some(3), // West
-                            _ => None,          // not adjacent — ignore
+                    } else {
+                        let is_city = {
+                            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                            let v = gm.bind().is_city_tile(tile.x as i64, tile.y as i64);
+                            v
                         };
+                        if is_city {
+                            self.show_hire_hero_dialog(tile);
+                        } else if self.selected_hero_id >= 0 {
+                            let id = self.selected_hero_id;
+                            // Derive direction from hero position to clicked adjacent tile.
+                            // 0=North, 1=East, 2=South, 3=West. Non-adjacent clicks are ignored.
+                            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                            let pos = gm.bind().get_hero_position(id);
+                            drop(gm);
 
-                        if let Some(dir) = direction {
-                            let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-                            gm.call_deferred("move_hero", &[id.to_variant(), dir.to_variant()]);
+                            let dx = tile.x - pos.x;
+                            let dy = tile.y - pos.y;
+                            let direction: Option<i64> = match (dx, dy) {
+                                (0, -1) => Some(0), // North
+                                (1, 0) => Some(1),  // East
+                                (0, 1) => Some(2),  // South
+                                (-1, 0) => Some(3), // West
+                                _ => None,          // not adjacent — ignore
+                            };
+
+                            if let Some(dir) = direction {
+                                let mut gm: Gd<GameManager> =
+                                    self.base().get_node_as("GameManager");
+                                gm.call_deferred(
+                                    "move_hero",
+                                    &[id.to_variant(), dir.to_variant()],
+                                );
+                            }
                         }
                     }
                 }
@@ -240,6 +262,17 @@ impl INode for MainScene {
                     self.select_next_player_hero();
                 } else if button == GAMEPAD_BTN_L1 {
                     self.show_end_turn_dialog();
+                } else if button == GAMEPAD_BTN_CROSS {
+                    // X: показать диалог найма, если курсор стоит на городе без героя игрока.
+                    let tile = self.gamepad_cursor_tile;
+                    if tile.x >= 0 && tile.y >= 0 {
+                        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                        let is_city = gm.bind().is_city_tile(tile.x as i64, tile.y as i64);
+                        drop(gm);
+                        if is_city && self.player_hero_at_tile(tile).is_none() {
+                            self.show_hire_hero_dialog(tile);
+                        }
+                    }
                 } else if self.selected_hero_id >= 0 {
                     let direction: Option<i64> = if button == GAMEPAD_BTN_DPAD_LEFT {
                         Some(3)
@@ -276,35 +309,64 @@ impl MainScene {
     }
 
     fn process_gamepad_dialog_buttons(&mut self) {
-        if !self.is_end_turn_dialog_visible() {
-            self.cross_was_pressed = false;
-            self.circle_was_pressed = false;
+        // Handle end-turn dialog first.
+        if self.is_end_turn_dialog_visible() {
+            let Some(device_id) = Self::connected_gamepad_device_id() else {
+                self.cross_was_pressed = false;
+                self.circle_was_pressed = false;
+                return;
+            };
+            let input = Input::singleton();
+            let cross_pressed = input.is_joy_button_pressed(device_id, GAMEPAD_BTN_CROSS);
+            let circle_pressed = input.is_joy_button_pressed(device_id, GAMEPAD_BTN_CIRCLE);
+
+            if cross_pressed && !self.cross_was_pressed {
+                self._on_end_turn_confirmed();
+                if let Some(mut dialog) = self.end_turn_dialog.clone() {
+                    dialog.hide();
+                }
+            } else if circle_pressed && !self.circle_was_pressed {
+                self._on_end_turn_cancelled();
+                if let Some(mut dialog) = self.end_turn_dialog.clone() {
+                    dialog.hide();
+                }
+            }
+
+            self.cross_was_pressed = cross_pressed;
+            self.circle_was_pressed = circle_pressed;
             return;
         }
 
-        let Some(device_id) = Self::connected_gamepad_device_id() else {
-            self.cross_was_pressed = false;
-            self.circle_was_pressed = false;
-            return;
-        };
-        let input = Input::singleton();
-        let cross_pressed = input.is_joy_button_pressed(device_id, GAMEPAD_BTN_CROSS);
-        let circle_pressed = input.is_joy_button_pressed(device_id, GAMEPAD_BTN_CIRCLE);
+        // Handle hire-hero dialog.
+        if self.is_hire_hero_dialog_visible() {
+            let Some(device_id) = Self::connected_gamepad_device_id() else {
+                self.cross_was_pressed = false;
+                self.circle_was_pressed = false;
+                return;
+            };
+            let input = Input::singleton();
+            let cross_pressed = input.is_joy_button_pressed(device_id, GAMEPAD_BTN_CROSS);
+            let circle_pressed = input.is_joy_button_pressed(device_id, GAMEPAD_BTN_CIRCLE);
 
-        if cross_pressed && !self.cross_was_pressed {
-            self._on_end_turn_confirmed();
-            if let Some(mut dialog) = self.end_turn_dialog.clone() {
-                dialog.hide();
+            if cross_pressed && !self.cross_was_pressed {
+                self._on_hire_hero_confirmed();
+                if let Some(mut dialog) = self.hire_hero_dialog.clone() {
+                    dialog.hide();
+                }
+            } else if circle_pressed && !self.circle_was_pressed {
+                self._on_hire_hero_cancelled();
+                if let Some(mut dialog) = self.hire_hero_dialog.clone() {
+                    dialog.hide();
+                }
             }
-        } else if circle_pressed && !self.circle_was_pressed {
-            self._on_end_turn_cancelled();
-            if let Some(mut dialog) = self.end_turn_dialog.clone() {
-                dialog.hide();
-            }
+
+            self.cross_was_pressed = cross_pressed;
+            self.circle_was_pressed = circle_pressed;
+            return;
         }
 
-        self.cross_was_pressed = cross_pressed;
-        self.circle_was_pressed = circle_pressed;
+        self.cross_was_pressed = false;
+        self.circle_was_pressed = false;
     }
 
     fn process_gamepad_left_stick_cursor(&mut self, delta: f64) {
@@ -898,6 +960,80 @@ impl MainScene {
     /// Вызывается при нажатии «Нет» или Esc в диалоге.
     #[func]
     fn _on_end_turn_cancelled(&mut self) {
+        // Диалог уже закрылся сам — дополнительных действий не требуется.
+    }
+
+    // ── Диалог найма героя ────────────────────────────────────────────────────
+
+    /// Создаёт диалог найма нового героя и скрывает его.
+    ///
+    /// Вызывается deferred из `ready()`.
+    #[func]
+    fn _create_hire_hero_dialog(&mut self) {
+        let mut dialog = ConfirmationDialog::new_alloc();
+        dialog.set_title("Нанять героя");
+        dialog.set_text("В городе нет героя. Нанять нового героя здесь?");
+        if let Some(mut btn) = dialog.get_ok_button() {
+            btn.set_text("Нанять");
+        }
+        if let Some(mut btn) = dialog.get_cancel_button() {
+            btn.set_text("Отмена");
+        }
+
+        let cb_confirmed = self.base().callable("_on_hire_hero_confirmed");
+        let cb_cancelled = self.base().callable("_on_hire_hero_cancelled");
+        dialog.connect("confirmed", &cb_confirmed);
+        dialog.connect("canceled", &cb_cancelled);
+
+        self.base_mut().add_child(&dialog.clone());
+        self.hire_hero_dialog = Some(dialog);
+    }
+
+    /// Показывает диалог найма героя для тайла `tile`.
+    fn show_hire_hero_dialog(&mut self, tile: Vector2i) {
+        self.hire_target_tile = tile;
+        if let Some(mut dialog) = self.hire_hero_dialog.clone() {
+            dialog.popup_centered();
+        }
+    }
+
+    /// Возвращает `true`, если диалог найма героя сейчас виден.
+    fn is_hire_hero_dialog_visible(&self) -> bool {
+        self.hire_hero_dialog
+            .as_ref()
+            .map(|d| d.is_visible())
+            .unwrap_or(false)
+    }
+
+    /// Возвращает `true`, если любой модальный диалог сейчас виден.
+    fn is_any_dialog_visible(&self) -> bool {
+        self.is_end_turn_dialog_visible() || self.is_hire_hero_dialog_visible()
+    }
+
+    /// Вызывается при нажатии «Нанять» в диалоге.
+    ///
+    /// Создаёт нового героя игрока на тайле города и добавляет его в сцену.
+    #[func]
+    fn _on_hire_hero_confirmed(&mut self) {
+        let tile = self.hire_target_tile;
+        if tile.x < 0 || tile.y < 0 {
+            return;
+        }
+        let new_id = {
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let v = gm.bind().get_next_hero_id();
+            v
+        };
+        let name = format!("Герой {new_id}");
+        self.add_game_hero(new_id, &name, 100, 20, 10, 15, tile.x as i64, tile.y as i64, "player", true);
+        self.create_hero_node(new_id, "player", true, tile.x, tile.y);
+        self.update_heroes_list();
+        info!(hero_id = new_id, x = tile.x, y = tile.y, "hired new hero at city");
+    }
+
+    /// Вызывается при нажатии «Отмена» или Esc в диалоге найма.
+    #[func]
+    fn _on_hire_hero_cancelled(&mut self) {
         // Диалог уже закрылся сам — дополнительных действий не требуется.
     }
 

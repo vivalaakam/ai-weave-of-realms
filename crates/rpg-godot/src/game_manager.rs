@@ -22,6 +22,7 @@ use tracing::{debug, error, warn};
 use rpg_engine::game_state::{GameState, TurnEvent};
 use rpg_engine::hero::{Hero, Team};
 use rpg_engine::map::game_map::MapCoord;
+use rpg_engine::map::tile::Tiles;
 use rpg_engine::movement;
 use rpg_engine::rng::SeededRng;
 use rpg_engine::spawn;
@@ -577,6 +578,34 @@ impl GameManager {
             ids.push(hero.id as i64);
         }
         ids
+    }
+
+    /// Returns the next available hero ID (maximum existing hero ID + 1, or 1 if no heroes exist).
+    ///
+    /// Use this to generate a unique ID before calling [`add_hero`](Self::add_hero).
+    #[func]
+    pub fn get_next_hero_id(&self) -> i64 {
+        let Some(state) = &self.state else { return 1 };
+        state
+            .heroes
+            .iter()
+            .map(|h| h.id as i64)
+            .max()
+            .unwrap_or(0)
+            + 1
+    }
+
+    /// Returns `true` if the tile at `(x, y)` is a [`Tiles::City`] or [`Tiles::CityEntrance`].
+    ///
+    /// Returns `false` for out-of-bounds coordinates or when no game session is active.
+    #[func]
+    pub fn is_city_tile(&self, x: i64, y: i64) -> bool {
+        let Some(state) = &self.state else { return false };
+        state
+            .map
+            .get_tile(MapCoord::new(x as u32, y as u32))
+            .map(|t| matches!(t.kind, Tiles::City | Tiles::CityEntrance))
+            .unwrap_or(false)
     }
 
     /// Returns ids of all living AI-controlled heroes in stable insertion order.

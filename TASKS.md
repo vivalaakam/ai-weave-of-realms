@@ -136,7 +136,23 @@ Update status as work progresses.
 - Added arrow keys movement for active hero (with borrow conflict fix)
 - Added highlight for selected hero in UI list (yellow modulate)
 
-## Phase 7 — Movement Refactor
+## Phase 8 — City Interaction & Hero Hiring
+
+| ID | Task | Assignee | Status | Notes |
+|----|------|----------|--------|-------|
+| 8.1 | Показывать диалог найма героя при клике/нажатии X на городе без героя игрока | Copilot | DONE | Мышь + gamepad X; `is_city_tile()` и `get_next_hero_id()` в GameManager; `_create_hire_hero_dialog` в MainScene |
+
+---
+
+**Latest Change (2026-04-01)**
+
+- Added `is_city_tile(x, y)` and `get_next_hero_id()` to `GameManager`
+- Added `hire_hero_dialog` and `hire_target_tile` fields to `MainScene`
+- Mouse click on City/CityEntrance tile (no player hero present) → shows hire dialog
+- Gamepad X button with cursor on City/CityEntrance tile (no player hero present) → shows hire dialog
+- Confirming dialog spawns a new player-controlled hero at the city tile
+- Gamepad Cross/Circle confirms/cancels the hire dialog (same pattern as end-turn dialog)
+- Input blocked for all dialogs via `is_any_dialog_visible()`
 
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
