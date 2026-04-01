@@ -4,7 +4,8 @@
 
 use godot::classes::{
     Button, Camera2D, ConfirmationDialog, INode, Input, InputEvent, InputEventJoypadButton,
-    InputEventKey, InputEventMouseButton, Label, LineEdit, Node, TileMapLayer, VBoxContainer,
+    InputEventKey, InputEventMouseButton, Label, LineEdit, Node, Node2D, ResourceLoader, Sprite2D,
+    TileMapLayer, Texture2D, VBoxContainer,
 };
 use godot::global::{JoyAxis, JoyButton, Key, MouseButton};
 use godot::prelude::*;
@@ -106,6 +107,8 @@ impl INode for MainScene {
         gm.connect("turn_advanced", &cb_turn_advanced);
         let cb_enemies_spawned = self.base().callable("_on_enemies_spawned");
         gm.connect("enemies_spawned", &cb_enemies_spawned);
+        let cb_city_changed = self.base().callable("_on_city_owner_changed");
+        gm.connect("city_owner_changed", &cb_city_changed);
 
         // score_changed → ScoreUI.on_score_changed
         if let Some(sui) = self.base().get_node_or_null("UI/ScoreUI") {
@@ -518,6 +521,7 @@ impl MainScene {
         self.configure_camera_bounds();
         self.clear_hero_nodes();
         self.spawn_heroes();
+        self.setup_city_markers();
         self.update_heroes_list();
         self.set_center_debug_inputs(MAP_WIDTH / 2, MAP_HEIGHT / 2);
         // Always start a new game from the first player team.
@@ -684,6 +688,101 @@ impl MainScene {
         self.update_heroes_list();
     }
 
+    // ── City ownership markers ────────────────────────────────────────────────
+
+    /// Creates or recreates `Sprite2D` ownership markers for every `City` (center)
+    /// tile on the map.  Markers are parented under `World/CityMarkers`.
+    fn setup_city_markers(&mut self) {
+        // Ensure the CityMarkers container exists.
+        if self.base().get_node_or_null("World/CityMarkers").is_none() {
+            let mut container = Node2D::new_alloc();
+            container.set_name(&StringName::from("CityMarkers"));
+            let mut world = self.base().get_node_as::<Node>("World");
+            world.add_child(&container.upcast::<Node>());
+        }
+
+        // Clear existing markers.
+        let children: Vec<Gd<Node>> = self
+            .base()
+            .get_node_as::<Node>("World/CityMarkers")
+            .get_children()
+            .iter_shared()
+            .collect();
+        for mut child in children {
+            let mut root = self.base().get_node_as::<Node>("World/CityMarkers");
+            root.remove_child(&child);
+            child.queue_free();
+        }
+
+        // Load the ownership icon texture.
+        let texture = match ResourceLoader::singleton()
+            .load("res://assets/owner.svg")
+            .and_then(|r| r.try_cast::<Texture2D>().ok())
+        {
+            Some(t) => t,
+            None => {
+                warn!("setup_city_markers: failed to load res://assets/owner.svg");
+                return;
+            }
+        };
+
+        // Query city center coordinates.
+        let city_coords: Vec<Vector2i> = {
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let v = gm.bind().get_city_center_coords().iter_shared().collect();
+            v
+        };
+
+        for coord in city_coords {
+            let owner = {
+                let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                let v = gm
+                    .bind()
+                    .get_city_owner(coord.x as i64, coord.y as i64)
+                    .to_string();
+                v
+            };
+
+            let mut sprite = Sprite2D::new_alloc();
+            sprite.set_texture(&texture);
+            sprite.set_centered(true);
+            sprite.set_scale(Vector2::new(0.5, 0.5));
+            // Float above the tile surface in isometric space.
+            sprite.set_offset(Vector2::new(0.0, -20.0));
+            sprite.set_z_index(50);
+            sprite.set_modulate(team_marker_color(&owner));
+
+            if let Some(world_pos) = self.map_tile_to_world(coord) {
+                sprite.set_position(world_pos);
+            }
+
+            sprite.set_name(&StringName::from(&format!(
+                "CityMarker_{}_{}",
+                coord.x, coord.y
+            )));
+
+            let mut markers = self.base().get_node_as::<Node>("World/CityMarkers");
+            markers.add_child(&sprite.upcast::<Node>());
+        }
+    }
+
+    /// Fired when `GameManager` emits `city_owner_changed`.
+    ///
+    /// Updates the colour of the ownership marker at `(x, y)` to reflect the new
+    /// `team_name`.  If the tile has no marker (e.g. it is a `CityEntrance`) the
+    /// call is a silent no-op.
+    #[func]
+    fn _on_city_owner_changed(&mut self, x: i64, y: i64, team_name: GString) {
+        let path = format!("World/CityMarkers/CityMarker_{}_{}", x, y);
+        let Some(node) = self.base().get_node_or_null(&path) else {
+            return; // entrance tile — no marker
+        };
+        let Ok(mut sprite) = node.try_cast::<Sprite2D>() else {
+            return;
+        };
+        sprite.set_modulate(team_marker_color(&team_name.to_string()));
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn add_game_hero(
         &mut self,
@@ -748,7 +847,13 @@ impl MainScene {
         let Some(root) = self.base().get_node_or_null("World/Heroes") else {
             return;
         };
-        for mut child in root.get_children().iter_shared() {
+        // Collect first to avoid modifying the parent while iterating.
+        let children: Vec<Gd<Node>> = root.get_children().iter_shared().collect();
+        for mut child in children {
+            // Detach immediately so _on_hero_moved cannot find stale nodes on this
+            // frame before queue_free actually destroys them.
+            let mut r = self.base().get_node_as::<Node>("World/Heroes");
+            r.remove_child(&child);
             child.queue_free();
         }
     }
@@ -1410,5 +1515,17 @@ fn team_display_name(team: &str) -> &'static str {
         "red"  => "Красных",
         "blue" => "Синих",
         _      => "Врагов",
+    }
+}
+
+/// Returns the `Color` used for city ownership markers of a given team.
+///
+/// Neutral (empty `team`) returns a dim grey; player teams use their signature
+/// colours with slight transparency so the underlying tile remains visible.
+fn team_marker_color(team: &str) -> Color {
+    match team {
+        "red"  => Color::from_rgba8(220, 50,  50,  210),
+        "blue" => Color::from_rgba8(50,  100, 220, 210),
+        _      => Color::from_rgba8(180, 180, 180, 120), // neutral / unknown
     }
 }

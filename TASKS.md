@@ -172,3 +172,15 @@ Update status as work progresses.
 - Added Sony gamepad controls in Godot bridge: Cross confirm, Circle cancel, R1 next hero, L1 end-turn dialog, left stick hero movement (deadzone + repeat), right stick camera pan
 - Fixed Sony confirm/cancel reliability in end-turn dialog: use connected-gamepad auto-detect and per-frame button polling with edge detection
 - Remapped controls: D-pad now moves selected hero; left stick now moves active grid cursor; `TileHighlight` supports forced active tile with stronger color to indicate gamepad focus
+
+---
+
+## Phase 9 — City Ownership Indicators & Ghost Sprite Fix
+
+| ID | Task | Assignee | Status | Notes |
+|----|------|----------|--------|-------|
+| 9.1 | Fix ghost sprite when hero exits city | — | DONE | `clear_hero_nodes` now calls `remove_child` before `queue_free` so stale nodes are detached immediately, preventing `_on_hero_moved` from finding them on the same frame |
+| 9.2 | BFS city ownership propagation | — | DONE | `set_city_owner` in `game_state.rs` now floods all connected `City`/`CityEntrance` tiles; returns changed coords; `move_hero` uses same flood logic |
+| 9.3 | `city_owner_changed(x,y,team)` signal | — | DONE | Added to `GameManager`; emitted from `move_hero` handler and `set_city_owner #[func]`; connected in `MainScene::ready` |
+| 9.4 | `get_city_center_coords()` | — | DONE | `#[func]` on `GameManager` returns all `City` (center-body, not entrance) tile coords |
+| 9.5 | City ownership markers (`owner.svg`) | — | DONE | `setup_city_markers()` creates `Sprite2D(owner.svg)` at each `City` tile; coloured by team (red/blue/neutral); `_on_city_owner_changed` updates colour live; `World/CityMarkers` node created in code |

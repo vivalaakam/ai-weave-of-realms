@@ -12,7 +12,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::combat::{self, CombatResult};
 use crate::error::Error;
@@ -111,11 +111,24 @@ impl GameState {
         self.city_owners.get(&coord).map(|s| s.as_str())
     }
 
-    /// Sets the owning team for the city at `coord`.
+    /// Sets the owning team for the city at `coord` and all connected city tiles.
     ///
-    /// Pass an empty string (or use `city_owners.remove`) to make a city neutral.
-    pub fn set_city_owner(&mut self, coord: MapCoord, team_name: String) {
-        self.city_owners.insert(coord, team_name);
+    /// Uses BFS to flood all adjacent `City` / `CityEntrance` tiles so that the
+    /// entire city complex is claimed at once.  Pass an empty string to make
+    /// the city neutral.
+    ///
+    /// # Returns
+    /// The full list of tile coordinates whose ownership was updated.
+    pub fn set_city_owner(&mut self, coord: MapCoord, team_name: String) -> Vec<MapCoord> {
+        let connected = flood_city(&self.map, coord);
+        for &c in &connected {
+            if team_name.is_empty() {
+                self.city_owners.remove(&c);
+            } else {
+                self.city_owners.insert(c, team_name.clone());
+            }
+        }
+        connected
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -214,21 +227,24 @@ impl GameState {
                 }
             }
 
-            // City ownership: any hero entering a City or CityEntrance claims it for
-            // their team.  Emit CityOwnerChanged only when the owner actually changes.
+            // City ownership: entering any City/CityEntrance tile claims the
+            // entire connected city complex for the hero's team.
+            // Emit CityOwnerChanged for every tile whose owner actually changes.
             if matches!(tile.kind, Tiles::City | Tiles::CityEntrance) {
                 let team_name = self.heroes[idx].team.name.clone();
-                let already_owned = self
-                    .city_owners
-                    .get(&target)
-                    .map(|o| o == &team_name)
-                    .unwrap_or(false);
-                if !already_owned {
-                    self.city_owners.insert(target, team_name.clone());
-                    events.push(TurnEvent::CityOwnerChanged {
-                        coord: target,
-                        team_name,
-                    });
+                for coord in flood_city(&self.map, target) {
+                    let already_owned = self
+                        .city_owners
+                        .get(&coord)
+                        .map(|o| o == &team_name)
+                        .unwrap_or(false);
+                    if !already_owned {
+                        self.city_owners.insert(coord, team_name.clone());
+                        events.push(TurnEvent::CityOwnerChanged {
+                            coord,
+                            team_name: team_name.clone(),
+                        });
+                    }
                 }
             }
         }
@@ -305,6 +321,57 @@ impl GameState {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Returns all tile coordinates that form a single connected city complex
+/// starting from `start`, using BFS over adjacent `City` / `CityEntrance` tiles.
+///
+/// If `start` is not a city tile, only `start` itself is returned so that callers
+/// can still record the single-tile ownership without triggering a full flood.
+fn flood_city(map: &GameMap, start: MapCoord) -> Vec<MapCoord> {
+    let is_city = map
+        .get_tile(start)
+        .map(|t| matches!(t.kind, Tiles::City | Tiles::CityEntrance))
+        .unwrap_or(false);
+
+    if !is_city {
+        return vec![start];
+    }
+
+    let w = map.tile_width();
+    let h = map.tile_height();
+    let mut visited: HashSet<MapCoord> = HashSet::new();
+    let mut queue: VecDeque<MapCoord> = VecDeque::new();
+    let mut result: Vec<MapCoord> = Vec::new();
+
+    visited.insert(start);
+    queue.push_back(start);
+
+    while let Some(coord) = queue.pop_front() {
+        result.push(coord);
+
+        for dir in [
+            Direction::North,
+            Direction::East,
+            Direction::South,
+            Direction::West,
+        ] {
+            if let Some(neighbor) = dir.apply(coord, w, h) {
+                if !visited.contains(&neighbor) {
+                    if map
+                        .get_tile(neighbor)
+                        .map(|t| matches!(t.kind, Tiles::City | Tiles::CityEntrance))
+                        .unwrap_or(false)
+                    {
+                        visited.insert(neighbor);
+                        queue.push_back(neighbor);
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
 
 /// Returns two mutable references into a slice at distinct indices `i` and `j`.
 ///

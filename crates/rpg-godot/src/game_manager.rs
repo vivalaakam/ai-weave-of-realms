@@ -85,6 +85,12 @@ impl GameManager {
     #[signal]
     fn enemies_spawned(count: i64);
 
+    /// Emitted when any tile in a city complex changes ownership.
+    ///
+    /// `team_name` is empty when the city becomes neutral.
+    #[signal]
+    fn city_owner_changed(x: i64, y: i64, team_name: GString);
+
     // ── Session setup ─────────────────────────────────────────────────────────
 
     /// Generates a map and initialises a new game session.
@@ -321,15 +327,28 @@ impl GameManager {
         };
 
         for ev in &events {
-            if let TurnEvent::HeroMoved { hero_id, to, .. } = ev {
-                self.base_mut().emit_signal(
-                    "hero_moved",
-                    &[
-                        (*hero_id as i64).to_variant(),
-                        (to.x as i64).to_variant(),
-                        (to.y as i64).to_variant(),
-                    ],
-                );
+            match ev {
+                TurnEvent::HeroMoved { hero_id, to, .. } => {
+                    self.base_mut().emit_signal(
+                        "hero_moved",
+                        &[
+                            (*hero_id as i64).to_variant(),
+                            (to.x as i64).to_variant(),
+                            (to.y as i64).to_variant(),
+                        ],
+                    );
+                }
+                TurnEvent::CityOwnerChanged { coord, team_name } => {
+                    self.base_mut().emit_signal(
+                        "city_owner_changed",
+                        &[
+                            (coord.x as i64).to_variant(),
+                            (coord.y as i64).to_variant(),
+                            GString::from(team_name).to_variant(),
+                        ],
+                    );
+                }
+                _ => {}
             }
         }
         true
@@ -625,13 +644,50 @@ impl GameManager {
 
     /// Assigns ownership of the city at `(x, y)` to `team_name`.
     ///
-    /// Pass an empty string to mark the city as neutral.
-    /// Typically called once at game-start when heroes are placed at their home cities.
+    /// BFS-floods all connected `City` / `CityEntrance` tiles so the entire
+    /// city complex is claimed at once.  Pass an empty string to mark neutral.
+    /// Emits `city_owner_changed` for every tile whose owner changed.
     #[func]
     pub fn set_city_owner(&mut self, x: i64, y: i64, team_name: GString) {
-        let Some(state) = &mut self.state else { return };
         let coord = MapCoord::new(x as u32, y as u32);
-        state.set_city_owner(coord, team_name.to_string());
+        let changed = {
+            let Some(state) = &mut self.state else { return };
+            state.set_city_owner(coord, team_name.to_string())
+        };
+        for c in changed {
+            self.base_mut().emit_signal(
+                "city_owner_changed",
+                &[
+                    (c.x as i64).to_variant(),
+                    (c.y as i64).to_variant(),
+                    team_name.clone().to_variant(),
+                ],
+            );
+        }
+    }
+
+    /// Returns the grid coordinates of every `City` (center body) tile on the map.
+    ///
+    /// City-entrance tiles are excluded — use this to place city-ownership markers
+    /// at the visual center of each city complex.
+    #[func]
+    pub fn get_city_center_coords(&self) -> Array<Vector2i> {
+        let Some(state) = &self.state else {
+            return Array::new();
+        };
+        let w = state.map.tile_width();
+        let h = state.map.tile_height();
+        let mut arr = Array::new();
+        for y in 0..h {
+            for x in 0..w {
+                if let Ok(tile) = state.map.get_tile(MapCoord::new(x, y)) {
+                    if tile.kind == Tiles::City {
+                        arr.push(Vector2i::new(x as i32, y as i32));
+                    }
+                }
+            }
+        }
+        arr
     }
 
     /// Returns up to `count` city-entrance spawn points spread across the map.
