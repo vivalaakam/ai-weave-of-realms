@@ -81,6 +81,12 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 size_flags_vertical = 3
 
+[node name="TurnValue" type="Label" parent="UI/RightPanel/MarginContainer/Content"]
+text = "Ход: 1"
+
+[node name="HeroMovValue" type="Label" parent="UI/RightPanel/MarginContainer/Content"]
+text = "Движение: —"
+
 [node name="PanelTitle" type="Label" parent="UI/RightPanel/MarginContainer/Content"]
 text = "Heroes & Enemies"
 

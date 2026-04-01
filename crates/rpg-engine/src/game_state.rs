@@ -241,11 +241,13 @@ mod tests {
     fn base_rng() -> SeededRng { SeededRng::new("test-session") }
 
     fn player(id: u32, pos: MapCoord) -> Hero {
-        Hero::new(id, "Player", 100, 20, 10, 10, 4, pos, Team::player(), base_rng().derive_for_hero(id))
+        // spd=10 → mov = 30
+        Hero::new(id, "Player", 100, 20, 10, 10, pos, Team::player(), base_rng().derive_for_hero(id))
     }
 
     fn enemy(id: u32, pos: MapCoord) -> Hero {
-        Hero::new(id, "Enemy", 30, 10, 5, 5, 3, pos, Team::enemy(), base_rng().derive_for_hero(id))
+        // spd=5 → mov = 25
+        Hero::new(id, "Enemy", 30, 10, 5, 5, pos, Team::enemy(), base_rng().derive_for_hero(id))
     }
 
     #[test]
@@ -256,16 +258,17 @@ mod tests {
 
         let events = state.move_hero(1, MapCoord::new(3, 0)).unwrap();
         assert_eq!(state.hero(1).unwrap().position, MapCoord::new(3, 0));
-        assert_eq!(state.hero(1).unwrap().mov_remaining, 1); // 4 - 3 = 1
+        assert_eq!(state.hero(1).unwrap().mov_remaining, 27); // 30 - 3 = 27
         assert!(events.iter().any(|e| matches!(e, TurnEvent::HeroMoved { .. })));
     }
 
     #[test]
-    fn move_hero_beyond_budget_returns_error() {
+    fn move_hero_with_zero_budget_returns_error() {
         let map = meadow_map(10, 10);
-        let h = player(1, MapCoord::new(0, 0));
+        let mut h = player(1, MapCoord::new(0, 0));
+        h.mov_remaining = 0;
         let mut state = GameState::new(map, vec![h]);
-        let result = state.move_hero(1, MapCoord::new(9, 0));
+        let result = state.move_hero(1, MapCoord::new(1, 0));
         assert!(matches!(result, Err(Error::UnreachableTile { .. })));
     }
 
@@ -277,7 +280,7 @@ mod tests {
         let mut state = GameState::new(map, vec![h]);
         state.advance_turn();
         assert_eq!(state.turn, 2);
-        assert_eq!(state.hero(1).unwrap().mov_remaining, 4);
+        assert_eq!(state.hero(1).unwrap().mov_remaining, 30); // spd=10 → mov=30
     }
 
     #[test]
@@ -298,8 +301,8 @@ mod tests {
         let map = meadow_map(5, 5);
         // Player with overwhelming stats, enemy with minimal hp
         let base = base_rng();
-        let p = Hero::new(1, "P", 100, 200, 0, 10, 4, MapCoord::new(0, 0), Team::player(), base.derive_for_hero(1));
-        let e = Hero::new(2, "E",   1,   1, 0,  1, 3, MapCoord::new(1, 0), Team::enemy(),  base.derive_for_hero(2));
+        let p = Hero::new(1, "P", 100, 200, 0, 10, MapCoord::new(0, 0), Team::player(), base.derive_for_hero(1));
+        let e = Hero::new(2, "E",   1,   1, 0,  1, MapCoord::new(1, 0), Team::enemy(),  base.derive_for_hero(2));
         let mut state = GameState::new(map, vec![p, e]);
         state.attack_hero(1, 2).unwrap();
         assert!(state.score.total() > 0);

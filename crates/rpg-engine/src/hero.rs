@@ -100,7 +100,16 @@ pub struct Hero {
 }
 
 impl Hero {
+    /// Computes the total movement points for a hero with the given speed.
+    ///
+    /// Formula: `20 + spd`
+    pub fn movement_for_spd(spd: u32) -> u32 {
+        20 + spd
+    }
+
     /// Creates a new hero with full HP and full movement points.
+    ///
+    /// Movement is derived automatically from `spd` via [`Hero::movement_for_spd`].
     ///
     /// `rng` should be derived from the session RNG via
     /// [`SeededRng::derive_for_hero`] so that each hero has an independent,
@@ -113,11 +122,11 @@ impl Hero {
         atk: u32,
         def: u32,
         spd: u32,
-        mov: u32,
         position: MapCoord,
         team: Team,
         rng: SeededRng,
     ) -> Self {
+        let mov = Self::movement_for_spd(spd);
         Self {
             id,
             name: name.into(),
@@ -158,7 +167,7 @@ mod tests {
 
     fn hero() -> Hero {
         let rng = SeededRng::new("test").derive_for_hero(1);
-        Hero::new(1, "Arthur", 100, 20, 10, 15, 4, MapCoord::new(0, 0), Team::player(), rng)
+        Hero::new(1, "Arthur", 100, 20, 10, 15, MapCoord::new(0, 0), Team::player(), rng)
     }
 
     #[test]
@@ -181,6 +190,14 @@ mod tests {
         h.take_damage(9999);
         assert_eq!(h.hp, 0);
         assert!(!h.is_alive());
+    }
+
+    #[test]
+    fn movement_derived_from_spd() {
+        let h = hero(); // spd = 15 → mov = 35
+        assert_eq!(h.mov, Hero::movement_for_spd(15));
+        assert_eq!(h.mov, 35);
+        assert_eq!(h.mov_remaining, 35);
     }
 
     #[test]

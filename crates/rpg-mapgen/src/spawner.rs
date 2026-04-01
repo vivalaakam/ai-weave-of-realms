@@ -7,7 +7,7 @@
 //!
 //! Each enemy descriptor is a table with fields:
 //! - `id`, `x`, `y` (tile position)
-//! - `hp`, `atk`, `def`, `spd`, `mov` (hero stats)
+//! - `hp`, `atk`, `def`, `spd` (hero stats; movement is derived as `20 + spd`)
 
 use std::path::Path;
 
@@ -35,11 +35,12 @@ pub struct EnemySpawn {
     pub atk: u32,
     pub def: u32,
     pub spd: u32,
-    pub mov: u32,
 }
 
 impl EnemySpawn {
     /// Converts this spawn descriptor into a [`Hero`].
+    ///
+    /// Movement points are derived from `spd` via `Hero::movement_for_spd`.
     ///
     /// `base_rng` is the session RNG; the hero's personal RNG is derived from
     /// it via [`SeededRng::derive_for_hero`] so the result is reproducible.
@@ -51,7 +52,6 @@ impl EnemySpawn {
             self.atk,
             self.def,
             self.spd,
-            self.mov,
             self.position,
             Team::enemy(),
             base_rng.derive_for_hero(self.id),
@@ -176,7 +176,6 @@ fn parse_enemy_entry(table: Table, index: u32) -> Result<Option<EnemySpawn>, Err
     let atk: u32 = table.get("atk").unwrap_or(10);
     let def: u32 = table.get("def").unwrap_or(5);
     let spd: u32 = table.get("spd").unwrap_or(5);
-    let mov: u32 = table.get("mov").unwrap_or(3);
 
     // Skip invalid positions
     if x < 0 || y < 0 {
@@ -190,7 +189,6 @@ fn parse_enemy_entry(table: Table, index: u32) -> Result<Option<EnemySpawn>, Err
         atk,
         def,
         spd,
-        mov,
     }))
 }
 

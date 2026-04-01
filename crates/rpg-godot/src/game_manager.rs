@@ -152,6 +152,8 @@ impl GameManager {
 
     /// Adds a hero to the current session.
     ///
+    /// Movement points are derived automatically from `spd` as `20 + spd`.
+    ///
     /// `team_name` is a human-readable team identifier (e.g. `"player"`, `"enemy"`).
     /// `player_controlled` indicates whether the human player commands this hero.
     #[func]
@@ -163,7 +165,6 @@ impl GameManager {
         atk: i64,
         def: i64,
         spd: i64,
-        mov: i64,
         x: i64,
         y: i64,
         team_name: GString,
@@ -177,7 +178,7 @@ impl GameManager {
         let hero = Hero::new(
             id as u32,
             name.to_string(),
-            hp as u32, atk as u32, def as u32, spd as u32, mov as u32,
+            hp as u32, atk as u32, def as u32, spd as u32,
             MapCoord::new(x as u32, y as u32),
             team,
             hero_rng,
@@ -342,6 +343,32 @@ impl GameManager {
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
+
+    /// Returns the current turn number (starts at 1).
+    #[func]
+    pub fn get_turn(&self) -> i64 {
+        self.state.as_ref().map(|s| s.turn as i64).unwrap_or(0)
+    }
+
+    /// Returns the movement points remaining for hero `hero_id`, or -1 if not found.
+    #[func]
+    pub fn get_hero_mov_remaining(&self, hero_id: i64) -> i64 {
+        let Some(state) = &self.state else { return -1 };
+        state.heroes.iter()
+            .find(|h| h.id == hero_id as u32)
+            .map(|h| h.mov_remaining as i64)
+            .unwrap_or(-1)
+    }
+
+    /// Returns the maximum movement points for hero `hero_id`, or -1 if not found.
+    #[func]
+    pub fn get_hero_mov_max(&self, hero_id: i64) -> i64 {
+        let Some(state) = &self.state else { return -1 };
+        state.heroes.iter()
+            .find(|h| h.id == hero_id as u32)
+            .map(|h| h.mov as i64)
+            .unwrap_or(-1)
+    }
 
     /// Returns the current total score.
     #[func]

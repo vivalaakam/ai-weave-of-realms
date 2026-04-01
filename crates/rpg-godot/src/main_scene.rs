@@ -112,6 +112,8 @@ impl INode for MainScene {
     fn process(&mut self, _delta: f64) {
         self.update_cursor_debug();
         self.update_zoom_debug();
+        self.update_turn_label();
+        self.update_hero_mov_label();
     }
 
     fn input(&mut self, event: Gd<InputEvent>) {
@@ -356,7 +358,7 @@ impl MainScene {
             return;
         };
 
-        // Spawn player hero
+        // Spawn player hero (spd=15 → mov = 35)
         self.add_game_hero(
             1,
             "Hero",
@@ -364,7 +366,6 @@ impl MainScene {
             20,
             10,
             15,
-            4,
             i64::from(player_spawn.x),
             i64::from(player_spawn.y),
             "player",
@@ -414,13 +415,13 @@ impl MainScene {
     fn add_game_hero(
         &mut self,
         id: i64, name: &str,
-        hp: i64, atk: i64, def: i64, spd: i64, mov: i64,
+        hp: i64, atk: i64, def: i64, spd: i64,
         x: i64, y: i64, team_name: &str, player_controlled: bool,
     ) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         gm.bind_mut().add_hero(
             id, GString::from(name),
-            hp, atk, def, spd, mov,
+            hp, atk, def, spd,
             x, y,
             GString::from(team_name), player_controlled,
         );
@@ -858,6 +859,41 @@ impl MainScene {
         self.base()
             .get_node_or_null("World/TileMapLayer")
             .and_then(|node| node.try_cast::<TileMapLayer>().ok())
+    }
+
+    fn turn_label(&self) -> Option<Gd<Label>> {
+        self.base()
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/TurnValue")
+            .and_then(|node| node.try_cast::<Label>().ok())
+    }
+
+    fn hero_mov_label(&self) -> Option<Gd<Label>> {
+        self.base()
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/HeroMovValue")
+            .and_then(|node| node.try_cast::<Label>().ok())
+    }
+
+    fn update_turn_label(&self) {
+        let Some(mut label) = self.turn_label() else { return };
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let turn = gm.bind().get_turn();
+        label.set_text(&format!("Ход: {turn}"));
+    }
+
+    fn update_hero_mov_label(&self) {
+        let Some(mut label) = self.hero_mov_label() else { return };
+        if self.selected_hero_id < 0 {
+            label.set_text("Движение: —");
+            return;
+        }
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let rem = gm.bind().get_hero_mov_remaining(self.selected_hero_id);
+        let max = gm.bind().get_hero_mov_max(self.selected_hero_id);
+        if rem >= 0 && max >= 0 {
+            label.set_text(&format!("Движение: {rem}/{max}"));
+        } else {
+            label.set_text("Движение: —");
+        }
     }
 
     fn version_label(&self) -> Option<Gd<Label>> {

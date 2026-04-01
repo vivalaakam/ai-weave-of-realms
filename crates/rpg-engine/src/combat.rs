@@ -99,7 +99,7 @@ mod tests {
 
     fn make_hero(id: u32, hp: u32, atk: u32, def: u32, spd: u32) -> Hero {
         let rng = SeededRng::new("combat-test").derive_for_hero(id);
-        Hero::new(id, "Hero", hp, atk, def, spd, 4, MapCoord::new(0, 0), Team::player(), rng)
+        Hero::new(id, "Hero", hp, atk, def, spd, MapCoord::new(0, 0), Team::player(), rng)
     }
 
     #[test]
