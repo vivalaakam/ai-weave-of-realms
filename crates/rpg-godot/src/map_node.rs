@@ -3,13 +3,13 @@
 //! `MapNode` is intentionally thin — it reads tile data from `GameManager`
 //! and writes GIDs to a `TileMapLayer`.  All game logic stays in `GameManager`.
 
+use crate::coords::{ATLAS_TILE_H, ATLAS_TILE_W, TILE_H, TILE_W};
 use godot::classes::tile_set::{TileLayout, TileOffsetAxis, TileShape};
 use godot::classes::{
-    INode, Image, ImageTexture, Node, ResourceLoader, Texture2D, TileMapLayer, TileSet, TileSetAtlasSource,
-    TileSetSource,
+    INode, Image, ImageTexture, Node, ResourceLoader, Texture2D, TileMapLayer, TileSet,
+    TileSetAtlasSource, TileSetSource,
 };
 use godot::prelude::*;
-use crate::coords::{ATLAS_TILE_H, ATLAS_TILE_W, TILE_H, TILE_W};
 
 // ─── MapNode ──────────────────────────────────────────────────────────────────
 
@@ -43,11 +43,14 @@ impl MapNode {
     pub fn populate_tilemap(&mut self, tilemap: Gd<TileMapLayer>) {
         let manager = self.resolve_manager();
         let Some(gm) = manager else {
-            godot_warn!("MapNode: GameManager not found at {:?}", self.game_manager_path);
+            godot_warn!(
+                "MapNode: GameManager not found at {:?}",
+                self.game_manager_path
+            );
             return;
         };
 
-        let width  = gm.bind().get_map_width();
+        let width = gm.bind().get_map_width();
         let height = gm.bind().get_map_height();
 
         let mut tm = tilemap;
@@ -62,10 +65,12 @@ impl MapNode {
         // ── Fill cells ────────────────────────────────────────────────────────
         for y in 0..height {
             for x in 0..width {
-                let gid  = gm.bind().get_tile_gid(x, y);
-                if gid <= 0 { continue; }
+                let gid = gm.bind().get_tile_gid(x, y);
+                if gid <= 0 {
+                    continue;
+                }
                 let atlas_cols = Self::atlas_cols();
-                let col  = ((gid - 1) as i32).clamp(0, atlas_cols - 1);
+                let col = ((gid - 1) as i32).clamp(0, atlas_cols - 1);
                 let cell = Vector2i::new(x as i32, y as i32);
                 tm.set_cell_ex(cell)
                     .source_id(0)
@@ -75,10 +80,10 @@ impl MapNode {
         }
         tm.update_internals();
 
-        self.base_mut().emit_signal("tilemap_populated", &[
-            width.to_variant(),
-            height.to_variant(),
-        ]);
+        self.base_mut().emit_signal(
+            "tilemap_populated",
+            &[width.to_variant(), height.to_variant()],
+        );
     }
 
     /// Returns the tile kind string at `(x, y)` from `GameManager`.

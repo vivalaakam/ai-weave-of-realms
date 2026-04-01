@@ -44,7 +44,10 @@ impl ScoreUI {
     /// Updates the label text using the configured `format` string.
     #[func]
     pub fn on_score_changed(&mut self, score: i64) {
-        let text = self.format.to_string().replace("{score}", &score.to_string());
+        let text = self
+            .format
+            .to_string()
+            .replace("{score}", &score.to_string());
         self.base_mut().set_text(&text);
     }
 

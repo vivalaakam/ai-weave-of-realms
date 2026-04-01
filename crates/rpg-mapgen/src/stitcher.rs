@@ -141,10 +141,7 @@ impl Stitcher {
         n
     }
 
-    fn enforce_chunk_edge_alignment(
-        map: &mut GameMap,
-        chunk_size: u32,
-    ) -> Result<(), EngineError> {
+    fn enforce_chunk_edge_alignment(map: &mut GameMap, chunk_size: u32) -> Result<(), EngineError> {
         let width = map.tile_width();
         let height = map.tile_height();
 
@@ -359,11 +356,26 @@ mod tests {
         let mut map = GameMap::new(width, height, tiles, [0u8; 32]).unwrap();
         Stitcher::stitch(&mut map, cs).unwrap();
 
-        assert_eq!(map.get_tile(MapCoord::new(0, 0)).unwrap().kind, Tiles::Meadow);
+        assert_eq!(
+            map.get_tile(MapCoord::new(0, 0)).unwrap().kind,
+            Tiles::Meadow
+        );
         assert_eq!(map.get_tile(MapCoord::new(1, 0)).unwrap().kind, Tiles::Road);
-        assert_eq!(map.get_tile(MapCoord::new(1, 31)).unwrap().kind, Tiles::Forest);
-        assert_eq!(map.get_tile(MapCoord::new(2, 31)).unwrap().kind, Tiles::Forest);
-        assert_eq!(map.get_tile(MapCoord::new(3, 31)).unwrap().kind, Tiles::Forest);
-        assert_eq!(map.get_tile(MapCoord::new(4, 31)).unwrap().kind, Tiles::Forest);
+        assert_eq!(
+            map.get_tile(MapCoord::new(1, 31)).unwrap().kind,
+            Tiles::Forest
+        );
+        assert_eq!(
+            map.get_tile(MapCoord::new(2, 31)).unwrap().kind,
+            Tiles::Forest
+        );
+        assert_eq!(
+            map.get_tile(MapCoord::new(3, 31)).unwrap().kind,
+            Tiles::Forest
+        );
+        assert_eq!(
+            map.get_tile(MapCoord::new(4, 31)).unwrap().kind,
+            Tiles::Forest
+        );
     }
 }

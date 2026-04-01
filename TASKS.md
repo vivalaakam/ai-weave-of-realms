@@ -132,3 +132,20 @@ Update status as work progresses.
 - Changed camera controls from arrow keys to WASD
 - Added arrow keys movement for active hero (with borrow conflict fix)
 - Added highlight for selected hero in UI list (yellow modulate)
+
+## Phase 7 — Movement Refactor
+
+| ID | Task | Assignee | Status | Notes |
+|----|------|----------|--------|-------|
+| 7.1 | Replace coordinate-based `move_hero` with direction-based single-step movement | — | DONE | Added `Direction` enum (N/E/S/W) in `map/game_map.rs`; `move_hero` now takes `Direction`, checks passability, occupancy, budget; errors: `ImpassableTile`, `NoMovementPoints`, `OutOfBounds` |
+
+---
+
+**Latest Change (2026-04-01)**
+
+- Added `Direction` enum (North/East/South/West) with `apply()` method to `rpg-engine::map::game_map`
+- Added `ImpassableTile` and `NoMovementPoints` error variants to `rpg-engine::error`
+- `GameState::move_hero` now accepts `Direction` instead of `MapCoord`; performs single-step adjacency move with passability and occupancy checks; no longer uses Dijkstra pathfinding
+- Updated Godot bridge `GameManager::move_hero(hero_id, direction: i64)` (0=N, 1=E, 2=S, 3=W)
+- Updated `HeroNode::move_requested` signal and `request_move` to pass direction int
+- Updated keyboard handler (arrow keys → direction) and mouse-click handler (adjacent tile → direction)

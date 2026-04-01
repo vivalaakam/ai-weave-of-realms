@@ -3,18 +3,18 @@
 //! Set as the root node type in `main.tscn` (`type="MainScene"`).
 
 use godot::classes::{
-    Button, Camera2D, ConfirmationDialog, INode, VBoxContainer, InputEvent, InputEventKey,
-    InputEventMouseButton, Label, LineEdit, Node, TileMapLayer,
+    Button, Camera2D, ConfirmationDialog, INode, InputEvent, InputEventKey, InputEventMouseButton,
+    Label, LineEdit, Node, TileMapLayer, VBoxContainer,
 };
 use godot::global::{Key, MouseButton};
 use godot::prelude::*;
 use tracing::{info, warn};
 
+use crate::build_info;
 use crate::camera_controller::CameraController;
 use crate::coords::TILE_W;
 use crate::game_manager::GameManager;
 use crate::hero_node::HeroNode;
-use crate::build_info;
 use crate::map_node::MapNode;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -37,7 +37,11 @@ pub struct MainScene {
 #[godot_api]
 impl INode for MainScene {
     fn init(base: Base<Node>) -> Self {
-        Self { base, selected_hero_id: -1, end_turn_dialog: None }
+        Self {
+            base,
+            selected_hero_id: -1,
+            end_turn_dialog: None,
+        }
     }
 
     fn ready(&mut self) {
@@ -54,16 +58,16 @@ impl INode for MainScene {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
 
         // Build callables before connecting (connect takes &Callable)
-        let cb_map_ready       = self.base().callable("_on_map_ready");
-        let cb_hero_moved      = self.base().callable("_on_hero_moved");
+        let cb_map_ready = self.base().callable("_on_map_ready");
+        let cb_hero_moved = self.base().callable("_on_hero_moved");
         let cb_combat_resolved = self.base().callable("_on_combat_resolved");
-        let cb_hero_defeated   = self.base().callable("_on_hero_defeated");
-        let cb_turn_advanced   = self.base().callable("_on_turn_advanced");
-        gm.connect("map_ready",       &cb_map_ready);
-        gm.connect("hero_moved",      &cb_hero_moved);
+        let cb_hero_defeated = self.base().callable("_on_hero_defeated");
+        let cb_turn_advanced = self.base().callable("_on_turn_advanced");
+        gm.connect("map_ready", &cb_map_ready);
+        gm.connect("hero_moved", &cb_hero_moved);
         gm.connect("combat_resolved", &cb_combat_resolved);
-        gm.connect("hero_defeated",   &cb_hero_defeated);
-        gm.connect("turn_advanced",   &cb_turn_advanced);
+        gm.connect("hero_defeated", &cb_hero_defeated);
+        gm.connect("turn_advanced", &cb_turn_advanced);
         let cb_enemies_spawned = self.base().callable("_on_enemies_spawned");
         gm.connect("enemies_spawned", &cb_enemies_spawned);
 
@@ -102,7 +106,8 @@ impl INode for MainScene {
         self.update_version_label();
 
         // Create the end-of-turn confirmation dialog (hidden initially).
-        self.base_mut().call_deferred("_create_end_turn_dialog", &[]);
+        self.base_mut()
+            .call_deferred("_create_end_turn_dialog", &[]);
 
         // Defer startup so map_ready fires after ready() returns,
         // avoiding a double-borrow of MainScene.
@@ -125,7 +130,7 @@ impl INode for MainScene {
         if let Ok(key) = event.clone().try_cast::<InputEventKey>() {
             if key.is_pressed() && !key.is_echo() {
                 let physical = key.get_physical_keycode();
-                let logical  = key.get_keycode();
+                let logical = key.get_keycode();
 
                 // Tab: переключить героя и пометить событие как обработанное,
                 // чтобы Godot не передавал его дальше как ui_focus_next.
@@ -148,39 +153,23 @@ impl INode for MainScene {
 
                 // Стрелки: переместить выбранного героя на одну клетку.
                 if self.selected_hero_id >= 0 {
-                    let mut dx: i32 = 0;
-                    let mut dy: i32 = 0;
-                    if physical == Key::LEFT  || logical == Key::LEFT  { dx = -1; }
-                    else if physical == Key::RIGHT || logical == Key::RIGHT { dx =  1; }
-                    else if physical == Key::UP    || logical == Key::UP    { dy = -1; }
-                    else if physical == Key::DOWN  || logical == Key::DOWN  { dy =  1; }
+                    // Encode Direction as i64: 0=North, 1=East, 2=South, 3=West
+                    let direction: Option<i64> = if physical == Key::LEFT || logical == Key::LEFT {
+                        Some(3)
+                    } else if physical == Key::RIGHT || logical == Key::RIGHT {
+                        Some(1)
+                    } else if physical == Key::UP || logical == Key::UP {
+                        Some(0)
+                    } else if physical == Key::DOWN || logical == Key::DOWN {
+                        Some(2)
+                    } else {
+                        None
+                    };
 
-                    if dx != 0 || dy != 0 {
+                    if let Some(dir) = direction {
                         let id = self.selected_hero_id;
-                        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-                        let (current, width, height) = {
-                            let bound = gm.bind();
-                            let pos = bound.get_hero_position(id);
-                            let w   = bound.get_map_width();
-                            let h   = bound.get_map_height();
-                            (pos, w, h)
-                        };
-                        drop(gm);
-
-                        if current.x >= 0 && current.y >= 0 {
-                            let new_x = current.x + dx;
-                            let new_y = current.y + dy;
-                            if new_x >= 0 && new_y >= 0
-                                && new_x < width as i32 && new_y < height as i32
-                            {
-                                let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-                                gm.call_deferred("move_hero", &[
-                                    id.to_variant(),
-                                    (new_x as i64).to_variant(),
-                                    (new_y as i64).to_variant(),
-                                ]);
-                            }
-                        }
+                        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                        gm.call_deferred("move_hero", &[id.to_variant(), dir.to_variant()]);
                         return;
                     }
                 }
@@ -196,12 +185,26 @@ impl INode for MainScene {
                         self.set_selected_hero(hero_id, false);
                     } else if self.selected_hero_id >= 0 {
                         let id = self.selected_hero_id;
-                        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-                        gm.call_deferred("move_hero", &[
-                            id.to_variant(),
-                            (tile.x as i64).to_variant(),
-                            (tile.y as i64).to_variant(),
-                        ]);
+                        // Derive direction from hero position to clicked adjacent tile.
+                        // 0=North, 1=East, 2=South, 3=West. Non-adjacent clicks are ignored.
+                        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                        let pos = gm.bind().get_hero_position(id);
+                        drop(gm);
+
+                        let dx = tile.x - pos.x;
+                        let dy = tile.y - pos.y;
+                        let direction: Option<i64> = match (dx, dy) {
+                            (0, -1) => Some(0), // North
+                            (1, 0) => Some(1),  // East
+                            (0, 1) => Some(2),  // South
+                            (-1, 0) => Some(3), // West
+                            _ => None,          // not adjacent — ignore
+                        };
+
+                        if let Some(dir) = direction {
+                            let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                            gm.call_deferred("move_hero", &[id.to_variant(), dir.to_variant()]);
+                        }
                     }
                 }
             }
@@ -282,13 +285,16 @@ impl MainScene {
     }
 
     #[func]
-    fn _on_hero_moved(&mut self, hero_id: i64, fx: i64, fy: i64, tx: i64, ty: i64) {
-        info!("_on_hero_moved {hero_id} fx:{fx} fy:{ty}");
-        let Some(root) = self.base().get_node_or_null("World/Heroes") else { return };
+    fn _on_hero_moved(&mut self, hero_id: i64, tx: i64, ty: i64) {
+        let Some(root) = self.base().get_node_or_null("World/Heroes") else {
+            return;
+        };
         for child in root.get_children().iter_shared() {
             if let Ok(mut hn) = child.try_cast::<HeroNode>() {
                 if hn.bind().hero_id == hero_id {
-                    if let Some(world_pos) = self.map_tile_to_world(Vector2i::new(tx as i32, ty as i32)) {
+                    if let Some(world_pos) =
+                        self.map_tile_to_world(Vector2i::new(tx as i32, ty as i32))
+                    {
                         hn.set_position(world_pos);
                     }
                     break;
@@ -318,7 +324,9 @@ impl MainScene {
 
     #[func]
     fn _on_hero_defeated(&mut self, hero_id: i64) {
-        let Some(root) = self.base().get_node_or_null("World/Heroes") else { return };
+        let Some(root) = self.base().get_node_or_null("World/Heroes") else {
+            return;
+        };
         for child in root.get_children().iter_shared() {
             if let Ok(mut hn) = child.try_cast::<HeroNode>() {
                 if hn.bind().hero_id == hero_id {
@@ -340,9 +348,9 @@ impl MainScene {
     }
 
     #[func]
-    fn _on_move_requested(&mut self, hero_id: i64, x: i64, y: i64) {
+    fn _on_move_requested(&mut self, hero_id: i64, direction: i64) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        gm.call_deferred("move_hero", &[hero_id.to_variant(), x.to_variant(), y.to_variant()]);
+        gm.call_deferred("move_hero", &[hero_id.to_variant(), direction.to_variant()]);
     }
 
     #[func]
@@ -379,7 +387,6 @@ impl MainScene {
         info!(count = enemy_count, "enemies spawned");
     }
 
-
     /// Called after enemies are spawned via Lua script.
     /// Creates visual hero nodes for all enemies.
     #[func]
@@ -414,27 +421,47 @@ impl MainScene {
 
     fn add_game_hero(
         &mut self,
-        id: i64, name: &str,
-        hp: i64, atk: i64, def: i64, spd: i64,
-        x: i64, y: i64, team_name: &str, player_controlled: bool,
+        id: i64,
+        name: &str,
+        hp: i64,
+        atk: i64,
+        def: i64,
+        spd: i64,
+        x: i64,
+        y: i64,
+        team_name: &str,
+        player_controlled: bool,
     ) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         gm.bind_mut().add_hero(
-            id, GString::from(name),
-            hp, atk, def, spd,
-            x, y,
-            GString::from(team_name), player_controlled,
+            id,
+            GString::from(name),
+            hp,
+            atk,
+            def,
+            spd,
+            x,
+            y,
+            GString::from(team_name),
+            player_controlled,
         );
     }
 
-    fn create_hero_node(&mut self, id: i64, team_name: &str, player_controlled: bool, tx: i32, ty: i32) {
+    fn create_hero_node(
+        &mut self,
+        id: i64,
+        team_name: &str,
+        player_controlled: bool,
+        tx: i32,
+        ty: i32,
+    ) {
         let mut hero = HeroNode::new_alloc();
         let name = StringName::from(&format!("Hero_{}", id));
         hero.set_name(&name);
         {
             let mut b = hero.bind_mut();
-            b.hero_id          = id;
-            b.team_name        = GString::from(team_name);
+            b.hero_id = id;
+            b.team_name = GString::from(team_name);
             b.player_controlled = player_controlled;
         }
         if let Some(world_pos) = self.map_tile_to_world(Vector2i::new(tx, ty)) {
@@ -442,9 +469,9 @@ impl MainScene {
         }
 
         let cb_move = self.base().callable("_on_move_requested");
-        let cb_sel  = self.base().callable("_on_hero_selected");
+        let cb_sel = self.base().callable("_on_hero_selected");
         hero.connect("move_requested", &cb_move);
-        hero.connect("selected",       &cb_sel);
+        hero.connect("selected", &cb_sel);
 
         let mut root = self.base().get_node_as::<Node>("World/Heroes");
         let hero_node: Gd<Node> = hero.upcast();
@@ -452,7 +479,9 @@ impl MainScene {
     }
 
     fn clear_hero_nodes(&mut self) {
-        let Some(root) = self.base().get_node_or_null("World/Heroes") else { return };
+        let Some(root) = self.base().get_node_or_null("World/Heroes") else {
+            return;
+        };
         for mut child in root.get_children().iter_shared() {
             child.queue_free();
         }
@@ -464,8 +493,8 @@ impl MainScene {
             return;
         }
 
-        let center = Self::tilemap_center(tilemap)
-            .unwrap_or_else(|| Vector2::new(0.0, TILE_W * 0.5));
+        let center =
+            Self::tilemap_center(tilemap).unwrap_or_else(|| Vector2::new(0.0, TILE_W * 0.5));
 
         if let Some(cam) = self.base().get_node_or_null("World/Camera2D") {
             if let Ok(mut cam2d) = cam.try_cast::<Camera2D>() {
@@ -500,8 +529,12 @@ impl MainScene {
     }
 
     fn update_cursor_debug(&self) {
-        let Some(mut label) = self.cursor_value_label() else { return };
-        let Some(viewport) = self.base().get_viewport() else { return };
+        let Some(mut label) = self.cursor_value_label() else {
+            return;
+        };
+        let Some(viewport) = self.base().get_viewport() else {
+            return;
+        };
         let mouse = viewport.get_mouse_position();
         let text = match self.screen_to_tile(mouse) {
             Some(tile) => format!("Cursor: {}, {}", tile.x, tile.y),
@@ -511,8 +544,12 @@ impl MainScene {
     }
 
     fn update_zoom_debug(&self) {
-        let Some(mut label) = self.zoom_value_label() else { return };
-        let Some(camera) = self.camera_controller() else { return };
+        let Some(mut label) = self.zoom_value_label() else {
+            return;
+        };
+        let Some(camera) = self.camera_controller() else {
+            return;
+        };
         let zoom = camera.bind().current_zoom();
         label.set_text(&format!("Zoom: {:.2}", zoom));
     }
@@ -570,26 +607,40 @@ impl MainScene {
         self.highlight_selected_hero_in_list();
     }
 
-    fn add_hero_to_list(&self, gm: &Gd<GameManager>, hero_id: i64, name_prefix: &str, mut list: Gd<VBoxContainer>) {
+    fn add_hero_to_list(
+        &self,
+        gm: &Gd<GameManager>,
+        hero_id: i64,
+        name_prefix: &str,
+        mut list: Gd<VBoxContainer>,
+    ) {
         let pos = gm.bind().get_hero_position(hero_id);
         let is_alive = gm.bind().is_hero_alive(hero_id);
-        
+
         let mut btn: Gd<Button> = Button::new_alloc();
         btn.set_name(&StringName::from(&format!("HeroBtn_{}", hero_id)));
-        btn.set_text(&format!("{} {} ({}:{})", name_prefix, hero_id, pos.x, pos.y));
+        btn.set_text(&format!(
+            "{} {} ({}:{})",
+            name_prefix, hero_id, pos.x, pos.y
+        ));
         btn.set_disabled(!is_alive);
-        
+
         // Connect with hero_id as argument
-        let cb = self.base().callable("_on_hero_list_clicked").bind(&[hero_id.to_variant()]);
+        let cb = self
+            .base()
+            .callable("_on_hero_list_clicked")
+            .bind(&[hero_id.to_variant()]);
         btn.connect("pressed", &cb);
-        
+
         list.add_child(&btn);
     }
 
     /// Highlights the selected hero button in the UI list.
     fn highlight_selected_hero_in_list(&self) {
-        let Some(list) = self.heroes_list() else { return };
-        
+        let Some(list) = self.heroes_list() else {
+            return;
+        };
+
         for child in list.get_children().iter_shared() {
             if let Ok(mut btn) = child.try_cast::<Button>() {
                 let btn_name = btn.get_name().to_string();
@@ -599,7 +650,7 @@ impl MainScene {
                     .and_then(|s| s.parse::<i64>().ok())
                     .map(|id| id == self.selected_hero_id)
                     .unwrap_or(false);
-                
+
                 if is_selected {
                     // Highlight selected hero with yellow color
                     btn.set_modulate(Color::from_rgba8(255, 255, 100, 255));
@@ -625,13 +676,17 @@ impl MainScene {
         let mut dialog = ConfirmationDialog::new_alloc();
         dialog.set_title("Завершить ход");
         dialog.set_text("Завершить ход и передать управление следующей команде?");
-        if let Some(mut btn) = dialog.get_ok_button() { btn.set_text("Да"); }
-        if let Some(mut btn) = dialog.get_cancel_button() { btn.set_text("Нет"); }
+        if let Some(mut btn) = dialog.get_ok_button() {
+            btn.set_text("Да");
+        }
+        if let Some(mut btn) = dialog.get_cancel_button() {
+            btn.set_text("Нет");
+        }
 
         let cb_confirmed = self.base().callable("_on_end_turn_confirmed");
         let cb_cancelled = self.base().callable("_on_end_turn_cancelled");
         dialog.connect("confirmed", &cb_confirmed);
-        dialog.connect("canceled",  &cb_cancelled);
+        dialog.connect("canceled", &cb_cancelled);
 
         self.base_mut().add_child(&dialog.clone());
         self.end_turn_dialog = Some(dialog);
@@ -673,7 +728,9 @@ impl MainScene {
     /// или `None` если такого нет.
     fn player_hero_at_tile(&self, tile: Vector2i) -> Option<i64> {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let hero_id = gm.bind().get_hero_id_at_position(tile.x as i64, tile.y as i64);
+        let hero_id = gm
+            .bind()
+            .get_hero_id_at_position(tile.x as i64, tile.y as i64);
         if hero_id >= 0 && gm.bind().is_hero_player_controlled(hero_id) {
             Some(hero_id)
         } else {
@@ -697,7 +754,9 @@ impl MainScene {
         let current_index = heroes
             .iter_shared()
             .position(|hero_id| hero_id == self.selected_hero_id);
-        let next_index = current_index.map(|index| (index + 1) % heroes.len()).unwrap_or(0);
+        let next_index = current_index
+            .map(|index| (index + 1) % heroes.len())
+            .unwrap_or(0);
         let Some(next_id) = heroes.get(next_index) else {
             return;
         };
@@ -846,14 +905,20 @@ impl MainScene {
 
     fn map_tile_to_world(&self, tile: Vector2i) -> Option<Vector2> {
         let mut tilemap = self.tilemap_layer()?;
-        let local = tilemap.call("map_to_local", &[tile.to_variant()]).try_to::<Vector2>().ok()?;
+        let local = tilemap
+            .call("map_to_local", &[tile.to_variant()])
+            .try_to::<Vector2>()
+            .ok()?;
         Some(tilemap.to_global(local))
     }
 
     fn world_to_map_tile(&self, world: Vector2) -> Option<Vector2i> {
         let mut tilemap = self.tilemap_layer()?;
         let local = tilemap.to_local(world);
-        tilemap.call("local_to_map", &[local.to_variant()]).try_to::<Vector2i>().ok()
+        tilemap
+            .call("local_to_map", &[local.to_variant()])
+            .try_to::<Vector2i>()
+            .ok()
     }
     fn tilemap_layer(&self) -> Option<Gd<TileMapLayer>> {
         self.base()
@@ -874,14 +939,18 @@ impl MainScene {
     }
 
     fn update_turn_label(&self) {
-        let Some(mut label) = self.turn_label() else { return };
+        let Some(mut label) = self.turn_label() else {
+            return;
+        };
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         let turn = gm.bind().get_turn();
         label.set_text(&format!("Ход: {turn}"));
     }
 
     fn update_hero_mov_label(&self) {
-        let Some(mut label) = self.hero_mov_label() else { return };
+        let Some(mut label) = self.hero_mov_label() else {
+            return;
+        };
         if self.selected_hero_id < 0 {
             label.set_text("Движение: —");
             return;

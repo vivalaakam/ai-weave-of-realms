@@ -16,6 +16,7 @@
 //! - [`spawn`]      — Deterministic hero spawn selection on generated maps
 //! - [`error`]      — Crate-level error type
 
+pub use map::game_map::Direction;
 pub mod combat;
 pub mod error;
 pub mod game_state;

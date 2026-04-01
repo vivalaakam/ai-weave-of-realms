@@ -99,13 +99,23 @@ mod tests {
 
     fn make_hero(id: u32, hp: u32, atk: u32, def: u32, spd: u32) -> Hero {
         let rng = SeededRng::new("combat-test").derive_for_hero(id);
-        Hero::new(id, "Hero", hp, atk, def, spd, MapCoord::new(0, 0), Team::player(), rng)
+        Hero::new(
+            id,
+            "Hero",
+            hp,
+            atk,
+            def,
+            spd,
+            MapCoord::new(0, 0),
+            Team::player(),
+            rng,
+        )
     }
 
     #[test]
     fn stronger_hero_wins_deterministically() {
         let mut strong = make_hero(1, 100, 50, 20, 20);
-        let mut weak   = make_hero(2,  20, 10,  5,  5);
+        let mut weak = make_hero(2, 20, 10, 5, 5);
         let result = resolve_combat(&mut strong, &mut weak);
         assert!(result.attacker_survived, "strong hero should survive");
         assert!(!result.defender_survived, "weak hero should be defeated");
@@ -115,7 +125,7 @@ mod tests {
     fn defender_with_high_defense_takes_min_damage() {
         // atk=5, def=100 → base = max(1, 5-100) = 1, damage always ≥ 1
         let mut attacker = make_hero(1, 50, 5, 0, 4);
-        let mut tank     = make_hero(2, 50, 5, 100, 4);
+        let mut tank = make_hero(2, 50, 5, 100, 4);
         let result = resolve_combat(&mut attacker, &mut tank);
         assert!(result.defender_damage >= 1);
     }
@@ -124,20 +134,23 @@ mod tests {
     fn faster_unit_attacks_first() {
         // fast is the defender but has higher spd → attacks first and kills slow
         let mut fast = make_hero(1, 100, 200, 0, 100); // lethal damage in one hit
-        let mut slow = make_hero(2,  10,   5, 0,   1);
+        let mut slow = make_hero(2, 10, 5, 0, 1);
         let result = resolve_combat(&mut slow, &mut fast);
         // slow (attacker) dies from fast's opening strike
         assert!(!result.attacker_survived, "slow attacker should die");
         // fast (defender) takes 0 damage — slow never got to counter-attack
-        assert_eq!(result.defender_damage, 0, "fast defender should take no damage");
+        assert_eq!(
+            result.defender_damage, 0,
+            "fast defender should take no damage"
+        );
     }
 
     #[test]
     fn same_seed_produces_same_result() {
         let mut a1 = make_hero(1, 50, 20, 10, 10);
-        let mut b1 = make_hero(2, 50, 18, 12,  8);
+        let mut b1 = make_hero(2, 50, 18, 12, 8);
         let mut a2 = make_hero(1, 50, 20, 10, 10);
-        let mut b2 = make_hero(2, 50, 18, 12,  8);
+        let mut b2 = make_hero(2, 50, 18, 12, 8);
         let result1 = resolve_combat(&mut a1, &mut b1);
         let result2 = resolve_combat(&mut a2, &mut b2);
         assert_eq!(result1.attacker_damage, result2.attacker_damage);

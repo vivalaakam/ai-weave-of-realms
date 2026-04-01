@@ -9,8 +9,8 @@
 
 use std::path::Path;
 
-use quick_xml::Reader;
 use quick_xml::events::Event;
+use quick_xml::Reader;
 
 use rpg_engine::map::game_map::GameMap;
 use rpg_engine::map::tile::{Tile, Tiles};
@@ -102,9 +102,7 @@ impl TmxParser {
             b"data" => {
                 // Only accept CSV encoding
                 for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"encoding"
-                        && attr.value.as_ref() == b"csv"
-                    {
+                    if attr.key.as_ref() == b"encoding" && attr.value.as_ref() == b"csv" {
                         self.in_csv_data = true;
                     }
                 }
@@ -124,11 +122,7 @@ impl TmxParser {
                     match attr.key.as_ref() {
                         b"name" if attr.value.as_ref() == b"seed" => is_seed = true,
                         b"value" => {
-                            value = Some(
-                                std::str::from_utf8(&attr.value)
-                                    .unwrap_or("")
-                                    .to_owned(),
-                            );
+                            value = Some(std::str::from_utf8(&attr.value).unwrap_or("").to_owned());
                         }
                         _ => {}
                     }
@@ -149,8 +143,12 @@ impl TmxParser {
     }
 
     fn into_game_map(self) -> Result<GameMap, Error> {
-        let width = self.width.ok_or_else(|| Error::MissingField("width".into()))?;
-        let height = self.height.ok_or_else(|| Error::MissingField("height".into()))?;
+        let width = self
+            .width
+            .ok_or_else(|| Error::MissingField("width".into()))?;
+        let height = self
+            .height
+            .ok_or_else(|| Error::MissingField("height".into()))?;
 
         let gids = parse_csv(&self.csv)?;
         let expected = (width * height) as usize;
@@ -278,12 +276,21 @@ mod tests {
     #[test]
     fn round_trip_mixed_tiles() {
         let kinds = [
-            Tiles::Meadow, Tiles::Water, Tiles::Forest, Tiles::Mountain,
-            Tiles::Road, Tiles::River, Tiles::City, Tiles::CityEntrance,
-            Tiles::Gold, Tiles::Resource,
+            Tiles::Meadow,
+            Tiles::Water,
+            Tiles::Forest,
+            Tiles::Mountain,
+            Tiles::Road,
+            Tiles::River,
+            Tiles::City,
+            Tiles::CityEntrance,
+            Tiles::Gold,
+            Tiles::Resource,
         ];
         let tiles: Vec<Tile> = (0..10)
-            .map(|i| Tile { kind: kinds[i % kinds.len()] })
+            .map(|i| Tile {
+                kind: kinds[i % kinds.len()],
+            })
             .collect();
         let map = GameMap::new(10, 1, tiles, [0u8; 32]).unwrap();
         let xml = export_tmx(&map, "t.tsx");

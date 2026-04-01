@@ -70,10 +70,10 @@ pub fn cost_to_reach(
     mov_budget: u32,
 ) -> Result<u32, Error> {
     let (costs, _) = dijkstra(map, start, mov_budget);
-    costs
-        .get(&target)
-        .copied()
-        .ok_or(Error::UnreachableTile { x: target.x, y: target.y })
+    costs.get(&target).copied().ok_or(Error::UnreachableTile {
+        x: target.x,
+        y: target.y,
+    })
 }
 
 // ─── Internals ────────────────────────────────────────────────────────────────
@@ -93,9 +93,17 @@ fn neighbours(map: &GameMap, coord: MapCoord) -> [Option<MapCoord>; 4] {
     let h = map.tile_height();
     [
         coord.x.checked_sub(1).map(|x| MapCoord::new(x, coord.y)),
-        if coord.x + 1 < w { Some(MapCoord::new(coord.x + 1, coord.y)) } else { None },
+        if coord.x + 1 < w {
+            Some(MapCoord::new(coord.x + 1, coord.y))
+        } else {
+            None
+        },
         coord.y.checked_sub(1).map(|y| MapCoord::new(coord.x, y)),
-        if coord.y + 1 < h { Some(MapCoord::new(coord.x, coord.y + 1)) } else { None },
+        if coord.y + 1 < h {
+            Some(MapCoord::new(coord.x, coord.y + 1))
+        } else {
+            None
+        },
     ]
 }
 
@@ -124,7 +132,9 @@ fn dijkstra(
 
         for maybe_nb in neighbours(map, coord) {
             let Some(nb) = maybe_nb else { continue };
-            let Some(step) = entry_cost(map, nb) else { continue };
+            let Some(step) = entry_cost(map, nb) else {
+                continue;
+            };
             let new_cost = cost + step;
             if new_cost > budget {
                 continue;
@@ -156,11 +166,17 @@ mod tests {
     fn mixed_map() -> GameMap {
         // 5×1 row: meadow, road, forest, water(blocked), meadow
         let tiles = vec![
-            Tile { kind: Tiles::Meadow },
+            Tile {
+                kind: Tiles::Meadow,
+            },
             Tile { kind: Tiles::Road },
-            Tile { kind: Tiles::Forest },
+            Tile {
+                kind: Tiles::Forest,
+            },
             Tile { kind: Tiles::Water },
-            Tile { kind: Tiles::Meadow },
+            Tile {
+                kind: Tiles::Meadow,
+            },
         ];
         GameMap::new(5, 1, tiles, [0u8; 32]).unwrap()
     }
@@ -219,6 +235,9 @@ mod tests {
     #[test]
     fn cost_to_reach_correct() {
         let map = flat_map(4, 1, Tiles::Meadow);
-        assert_eq!(cost_to_reach(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10).unwrap(), 3);
+        assert_eq!(
+            cost_to_reach(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10).unwrap(),
+            3
+        );
     }
 }

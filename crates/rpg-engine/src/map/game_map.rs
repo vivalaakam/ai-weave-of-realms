@@ -23,6 +23,55 @@ impl MapCoord {
     }
 }
 
+// ─── Direction ────────────────────────────────────────────────────────────────
+
+/// Cardinal direction used for single-step hero movement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Direction {
+    /// Move one tile up (decreasing Y).
+    North,
+    /// Move one tile right (increasing X).
+    East,
+    /// Move one tile down (increasing Y).
+    South,
+    /// Move one tile left (decreasing X).
+    West,
+}
+
+impl Direction {
+    /// Computes the target [`MapCoord`] one step in this direction from `coord`.
+    ///
+    /// # Arguments
+    /// * `coord`  - The starting tile coordinate.
+    /// * `width`  - Map width in tiles (used for East boundary check).
+    /// * `height` - Map height in tiles (used for South boundary check).
+    ///
+    /// # Returns
+    /// `Some(target)` if the step stays within map bounds, `None` otherwise.
+    pub fn apply(self, coord: MapCoord, width: u32, height: u32) -> Option<MapCoord> {
+        match self {
+            Direction::North => coord.y.checked_sub(1).map(|y| MapCoord::new(coord.x, y)),
+            Direction::East => {
+                let x = coord.x + 1;
+                if x < width {
+                    Some(MapCoord::new(x, coord.y))
+                } else {
+                    None
+                }
+            }
+            Direction::South => {
+                let y = coord.y + 1;
+                if y < height {
+                    Some(MapCoord::new(coord.x, y))
+                } else {
+                    None
+                }
+            }
+            Direction::West => coord.x.checked_sub(1).map(|x| MapCoord::new(x, coord.y)),
+        }
+    }
+}
+
 // ─── GameMap ──────────────────────────────────────────────────────────────────
 
 /// The full game map stored as a flat row-major tile array.

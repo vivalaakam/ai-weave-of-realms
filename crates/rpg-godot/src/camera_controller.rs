@@ -8,8 +8,10 @@
 //! | Pan | Middle-mouse drag **or** WASD keys |
 //! | Zoom | Scroll wheel or `-` / `=` |
 
-use godot::classes::{Camera2D, ICamera2D, Input, InputEvent, InputEventKey, InputEventMouseButton,
-                     InputEventMouseMotion};
+use godot::classes::{
+    Camera2D, ICamera2D, Input, InputEvent, InputEventKey, InputEventMouseButton,
+    InputEventMouseMotion,
+};
 use godot::global::{Key, MouseButton};
 use godot::prelude::*;
 
@@ -19,8 +21,8 @@ use crate::coords::{tile_to_world, TILE_H, TILE_W};
 
 const PAN_SPEED: f32 = 400.0; // pixels per second (keyboard)
 const ZOOM_STEP: f32 = 0.1;
-const ZOOM_MIN:  f32 = 0.25;
-const ZOOM_MAX:  f32 = 3.0;
+const ZOOM_MIN: f32 = 0.25;
+const ZOOM_MAX: f32 = 3.0;
 const MAX_VISIBLE_WIDTH: f32 = 1920.0;
 const MAX_VISIBLE_HEIGHT: f32 = 1080.0;
 const LEFT_MARGIN_TILES: f32 = 1.0;
@@ -82,10 +84,18 @@ impl ICamera2D for CameraController {
         let key_s = input.is_key_pressed(Key::S);
         let key_d = input.is_key_pressed(Key::D);
 
-        if key_a { dir.x -= 1.0; }
-        if key_d { dir.x += 1.0; }
-        if key_w { dir.y -= 1.0; }
-        if key_s { dir.y += 1.0; }
+        if key_a {
+            dir.x -= 1.0;
+        }
+        if key_d {
+            dir.x += 1.0;
+        }
+        if key_w {
+            dir.y -= 1.0;
+        }
+        if key_s {
+            dir.y += 1.0;
+        }
 
         if dir != Vector2::ZERO {
             let z = self.base().get_zoom().x;
@@ -127,7 +137,7 @@ impl ICamera2D for CameraController {
 
         if let Ok(mm) = event.try_cast::<InputEventMouseMotion>() {
             if self.dragging {
-                let z   = self.base().get_zoom().x;
+                let z = self.base().get_zoom().x;
                 let pos = self.base().get_position();
                 let clamped = self.clamp_position(pos - mm.get_relative() / z);
                 self.base_mut().set_position(clamped);

@@ -102,7 +102,9 @@ fn collect_rs_files(dir: &str) -> Vec<std::path::PathBuf> {
 }
 
 fn collect_rs_recursive(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {

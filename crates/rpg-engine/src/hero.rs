@@ -37,7 +37,10 @@ pub struct Team {
 impl Team {
     /// Creates a team with the given name and `player_controlled` flag.
     pub fn new(name: impl Into<String>, player_controlled: bool) -> Self {
-        Self { name: name.into(), player_controlled }
+        Self {
+            name: name.into(),
+            player_controlled,
+        }
     }
 
     /// Convenience constructor for the human player's team.
@@ -167,7 +170,17 @@ mod tests {
 
     fn hero() -> Hero {
         let rng = SeededRng::new("test").derive_for_hero(1);
-        Hero::new(1, "Arthur", 100, 20, 10, 15, MapCoord::new(0, 0), Team::player(), rng)
+        Hero::new(
+            1,
+            "Arthur",
+            100,
+            20,
+            10,
+            15,
+            MapCoord::new(0, 0),
+            Team::player(),
+            rng,
+        )
     }
 
     #[test]

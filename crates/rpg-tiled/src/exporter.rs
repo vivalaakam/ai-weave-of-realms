@@ -74,10 +74,7 @@ fn tile_csv(map: &GameMap) -> String {
         let mut gids: Vec<String> = Vec::with_capacity(map.tile_width() as usize);
         for tx in 0..map.tile_width() {
             let coord = MapCoord::new(tx, ty);
-            let gid = map
-                .get_tile(coord)
-                .map(|t| t.kind.to_gid())
-                .unwrap_or(0);
+            let gid = map.get_tile(coord).map(|t| t.kind.to_gid()).unwrap_or(0);
             gids.push(gid.to_string());
         }
         rows.push(format!("      {}", gids.join(",")));
@@ -108,7 +105,12 @@ mod tests {
     use rpg_engine::map::tile::{Tile, Tiles};
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
-        let tiles = vec![Tile { kind: Tiles::Meadow }; (w * h) as usize];
+        let tiles = vec![
+            Tile {
+                kind: Tiles::Meadow
+            };
+            (w * h) as usize
+        ];
         GameMap::new(w, h, tiles, [0u8; 32]).unwrap()
     }
 
@@ -130,7 +132,12 @@ mod tests {
     #[test]
     fn export_contains_seed_property() {
         let seed = [0xabu8; 32];
-        let tiles = vec![Tile { kind: Tiles::Meadow }; 4];
+        let tiles = vec![
+            Tile {
+                kind: Tiles::Meadow
+            };
+            4
+        ];
         let map = GameMap::new(2, 2, tiles, seed).unwrap();
         let xml = export_tmx(&map, "t.tsx");
         let expected_hex = "ab".repeat(32);

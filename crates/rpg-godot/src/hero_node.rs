@@ -50,7 +50,7 @@ impl INode2D for HeroNode {
 #[godot_api]
 impl HeroNode {
     #[signal]
-    fn move_requested(hero_id: i64, target_x: i64, target_y: i64);
+    fn move_requested(hero_id: i64, direction: i64);
 
     #[signal]
     fn selected(hero_id: i64);
@@ -90,7 +90,11 @@ impl HeroNode {
             sprite.set_modulate(Color::from_rgba8(255, 100, 100, 255));
         }
 
-        let sprite_name = if self.player_controlled { "HeroSprite" } else { "EnemySprite" };
+        let sprite_name = if self.player_controlled {
+            "HeroSprite"
+        } else {
+            "EnemySprite"
+        };
         self.base_mut().add_child(&sprite.clone());
         sprite.set_name(&StringName::from(sprite_name));
     }
@@ -107,16 +111,16 @@ impl HeroNode {
 
     // ── Input ─────────────────────────────────────────────────────────────────
 
-    /// Emits `move_requested` toward `(x, y)`.
+    /// Emits `move_requested` in the given direction.
+    ///
+    /// `direction` encoding: 0=North, 1=East, 2=South, 3=West.
     /// Only works if this hero is player-controlled.
     #[func]
-    pub fn request_move(&mut self, x: i64, y: i64) {
+    pub fn request_move(&mut self, direction: i64) {
         if self.player_controlled {
             let id = self.hero_id;
-            self.base_mut().emit_signal(
-                "move_requested",
-                &[id.to_variant(), x.to_variant(), y.to_variant()],
-            );
+            self.base_mut()
+                .emit_signal("move_requested", &[id.to_variant(), direction.to_variant()]);
         }
     }
 

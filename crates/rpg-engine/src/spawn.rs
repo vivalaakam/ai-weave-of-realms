@@ -102,9 +102,8 @@ fn find_best_tile(
         }
     });
 
-    best.map(|(coord, _, _)| coord).ok_or_else(|| {
-        Error::OutOfBounds("map does not contain any valid spawn tiles".to_string())
-    })
+    best.map(|(coord, _, _)| coord)
+        .ok_or_else(|| Error::OutOfBounds("map does not contain any valid spawn tiles".to_string()))
 }
 
 fn player_priority(coord: MapCoord, kind: Tiles, center_x: u32, center_y: u32) -> Option<i32> {
@@ -195,7 +194,12 @@ mod tests {
     #[test]
     fn enemy_prefers_far_passable_non_poi_tile() {
         let map = map_from_rows(&[
-            &[Tiles::CityEntrance, Tiles::Road, Tiles::Meadow, Tiles::Meadow],
+            &[
+                Tiles::CityEntrance,
+                Tiles::Road,
+                Tiles::Meadow,
+                Tiles::Meadow,
+            ],
             &[Tiles::Meadow, Tiles::Water, Tiles::Gold, Tiles::Meadow],
             &[Tiles::Meadow, Tiles::Forest, Tiles::Meadow, Tiles::Meadow],
         ]);

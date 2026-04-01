@@ -33,11 +33,11 @@ impl ScoreEvent {
     /// Returns the point value awarded for this event.
     pub fn points(&self) -> i32 {
         match self {
-            ScoreEvent::CityCapture { .. }       => CITY_CAPTURE_POINTS,
-            ScoreEvent::EnemyDefeated { .. }     => ENEMY_DEFEATED_POINTS,
+            ScoreEvent::CityCapture { .. } => CITY_CAPTURE_POINTS,
+            ScoreEvent::EnemyDefeated { .. } => ENEMY_DEFEATED_POINTS,
             ScoreEvent::ResourceCollected { .. } => RESOURCE_COLLECTED_POINTS,
-            ScoreEvent::GoldCollected { .. }     => GOLD_COLLECTED_POINTS,
-            ScoreEvent::TurnSurvived             => TURN_SURVIVED_POINTS,
+            ScoreEvent::GoldCollected { .. } => GOLD_COLLECTED_POINTS,
+            ScoreEvent::TurnSurvived => TURN_SURVIVED_POINTS,
         }
     }
 }
@@ -100,14 +100,20 @@ mod tests {
     #[test]
     fn city_capture_awards_correct_points() {
         let mut board = ScoreBoard::new();
-        board.record(ScoreEvent::CityCapture { city: MapCoord::new(5, 5) });
+        board.record(ScoreEvent::CityCapture {
+            city: MapCoord::new(5, 5),
+        });
         assert_eq!(board.total(), CITY_CAPTURE_POINTS);
     }
 
     #[test]
     fn gold_awards_more_than_resource() {
-        let gold = ScoreEvent::GoldCollected { coord: MapCoord::new(0, 0) };
-        let res  = ScoreEvent::ResourceCollected { coord: MapCoord::new(0, 0) };
+        let gold = ScoreEvent::GoldCollected {
+            coord: MapCoord::new(0, 0),
+        };
+        let res = ScoreEvent::ResourceCollected {
+            coord: MapCoord::new(0, 0),
+        };
         assert!(gold.points() > res.points());
     }
 }
