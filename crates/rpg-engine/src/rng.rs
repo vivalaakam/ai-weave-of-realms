@@ -7,6 +7,7 @@
 //! Helper functions [`keccak256`] and [`derive_seed`] allow constructing
 //! child seeds for independent sub-systems (e.g. one seed per map chunk).
 
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 
 // ─── SeededRng ────────────────────────────────────────────────────────────────
@@ -16,7 +17,7 @@ use sha3::{Digest, Keccak256};
 /// The internal state is a 32-byte array that is rehashed every time all bytes
 /// have been consumed.  Two instances created with the same seed will always
 /// produce the same sequence of values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeededRng {
     state: [u8; 32],
     position: usize,
@@ -46,6 +47,14 @@ impl SeededRng {
             state: new_state,
             position: 0,
         }
+    }
+
+    /// Derives a child [`SeededRng`] bound to a specific hero.
+    ///
+    /// Given the same base state and `hero_id`, this always returns the same
+    /// child generator — useful for giving each hero a reproducible personal RNG.
+    pub fn derive_for_hero(&self, hero_id: u32) -> Self {
+        self.update(&format!("hero_{hero_id}"))
     }
 
     /// Creates a [`SeededRng`] directly from a raw 32-byte seed.

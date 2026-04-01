@@ -3,8 +3,8 @@
 //! Set as the root node type in `main.tscn` (`type="MainScene"`).
 
 use godot::classes::{
-    Button, Camera2D, INode, VBoxContainer, InputEvent, InputEventKey, InputEventMouseButton, Label, LineEdit,
-    Node, TileMapLayer,
+    Button, Camera2D, ConfirmationDialog, INode, VBoxContainer, InputEvent, InputEventKey,
+    InputEventMouseButton, Label, LineEdit, Node, TileMapLayer,
 };
 use godot::global::{Key, MouseButton};
 use godot::prelude::*;
@@ -31,12 +31,13 @@ const MAP_HEIGHT: i32 = 96;
 pub struct MainScene {
     base: Base<Node>,
     selected_hero_id: i64,
+    end_turn_dialog: Option<Gd<ConfirmationDialog>>,
 }
 
 #[godot_api]
 impl INode for MainScene {
     fn init(base: Base<Node>) -> Self {
-        Self { base, selected_hero_id: -1 }
+        Self { base, selected_hero_id: -1, end_turn_dialog: None }
     }
 
     fn ready(&mut self) {
@@ -100,6 +101,9 @@ impl INode for MainScene {
         // Update version label in UI
         self.update_version_label();
 
+        // Create the end-of-turn confirmation dialog (hidden initially).
+        self.base_mut().call_deferred("_create_end_turn_dialog", &[]);
+
         // Defer startup so map_ready fires after ready() returns,
         // avoiding a double-borrow of MainScene.
         self.base_mut().call_deferred("_start_game_from_ui", &[]);
@@ -111,47 +115,62 @@ impl INode for MainScene {
     }
 
     fn input(&mut self, event: Gd<InputEvent>) {
+        // Пока открыт диалог завершения хода — не обрабатываем собственные привязки.
+        if self.is_end_turn_dialog_visible() {
+            return;
+        }
+
         if let Ok(key) = event.clone().try_cast::<InputEventKey>() {
             if key.is_pressed() && !key.is_echo() {
                 let physical = key.get_physical_keycode();
-                let logical = key.get_keycode();
+                let logical  = key.get_keycode();
+
+                // Tab: переключить героя и пометить событие как обработанное,
+                // чтобы Godot не передавал его дальше как ui_focus_next.
                 if physical == Key::TAB || logical == Key::TAB {
                     self.select_next_player_hero();
+                    if let Some(mut vp) = self.base().get_viewport() {
+                        vp.set_input_as_handled();
+                    }
                     return;
                 }
 
-                // Arrow keys movement for active hero
+                // Space: показать диалог подтверждения завершения хода.
+                if physical == Key::SPACE || logical == Key::SPACE {
+                    self.show_end_turn_dialog();
+                    if let Some(mut vp) = self.base().get_viewport() {
+                        vp.set_input_as_handled();
+                    }
+                    return;
+                }
+
+                // Стрелки: переместить выбранного героя на одну клетку.
                 if self.selected_hero_id >= 0 {
                     let mut dx: i32 = 0;
                     let mut dy: i32 = 0;
-                    if physical == Key::LEFT || logical == Key::LEFT {
-                        dx = -1;
-                    } else if physical == Key::RIGHT || logical == Key::RIGHT {
-                        dx = 1;
-                    } else if physical == Key::UP || logical == Key::UP {
-                        dy = -1;
-                    } else if physical == Key::DOWN || logical == Key::DOWN {
-                        dy = 1;
-                    }
+                    if physical == Key::LEFT  || logical == Key::LEFT  { dx = -1; }
+                    else if physical == Key::RIGHT || logical == Key::RIGHT { dx =  1; }
+                    else if physical == Key::UP    || logical == Key::UP    { dy = -1; }
+                    else if physical == Key::DOWN  || logical == Key::DOWN  { dy =  1; }
 
                     if dx != 0 || dy != 0 {
                         let id = self.selected_hero_id;
-                        // Get all data before mutation to avoid borrow conflicts
                         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
                         let (current, width, height) = {
                             let bound = gm.bind();
                             let pos = bound.get_hero_position(id);
-                            let w = bound.get_map_width();
-                            let h = bound.get_map_height();
+                            let w   = bound.get_map_width();
+                            let h   = bound.get_map_height();
                             (pos, w, h)
                         };
-                        // Drop the borrow before mutation
                         drop(gm);
-                        
+
                         if current.x >= 0 && current.y >= 0 {
                             let new_x = current.x + dx;
                             let new_y = current.y + dy;
-                            if new_x >= 0 && new_y >= 0 && new_x < width as i32 && new_y < height as i32 {
+                            if new_x >= 0 && new_y >= 0
+                                && new_x < width as i32 && new_y < height as i32
+                            {
                                 let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
                                 gm.call_deferred("move_hero", &[
                                     id.to_variant(),
@@ -167,25 +186,23 @@ impl INode for MainScene {
         }
 
         if let Ok(mb) = event.clone().try_cast::<InputEventMouseButton>() {
-            if mb.is_pressed()
-                && mb.get_button_index() == MouseButton::LEFT
-                && self.selected_hero_id >= 0
-            {
+            if mb.is_pressed() && mb.get_button_index() == MouseButton::LEFT {
                 if let Some(tile) = self.mouse_to_tile(&mb) {
-                    let id = self.selected_hero_id;
-                    let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-                    gm.call_deferred("move_hero", &[
-                        id.to_variant(),
-                        (tile.x as i64).to_variant(),
-                        (tile.y as i64).to_variant(),
-                    ]);
+                    // Если на тайле стоит управляемый игроком герой — выбираем его.
+                    // Иначе — перемещаем текущего выбранного героя.
+                    if let Some(hero_id) = self.player_hero_at_tile(tile) {
+                        self.set_selected_hero(hero_id, false);
+                    } else if self.selected_hero_id >= 0 {
+                        let id = self.selected_hero_id;
+                        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                        gm.call_deferred("move_hero", &[
+                            id.to_variant(),
+                            (tile.x as i64).to_variant(),
+                            (tile.y as i64).to_variant(),
+                        ]);
+                    }
                 }
             }
-        }
-
-        if event.is_action_pressed("ui_accept") {
-            let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            gm.call_deferred("advance_turn", &[]);
         }
     }
 }
@@ -317,6 +334,7 @@ impl MainScene {
     #[func]
     fn _on_turn_advanced(&mut self, turn: i64) {
         info!(turn, "turn advanced");
+        self.update_heroes_list();
     }
 
     #[func]
@@ -595,6 +613,71 @@ impl MainScene {
     #[func]
     fn _on_hero_list_clicked(&mut self, hero_id: i64) {
         self.set_selected_hero(hero_id, true);
+    }
+
+    // ── Диалог завершения хода ────────────────────────────────────────────────
+
+    /// Создаёт диалог подтверждения завершения хода и скрывает его.
+    /// Вызывается deferred из ready(), чтобы сцена была готова к добавлению дочерних узлов.
+    #[func]
+    fn _create_end_turn_dialog(&mut self) {
+        let mut dialog = ConfirmationDialog::new_alloc();
+        dialog.set_title("Завершить ход");
+        dialog.set_text("Завершить ход и передать управление следующей команде?");
+        if let Some(mut btn) = dialog.get_ok_button() { btn.set_text("Да"); }
+        if let Some(mut btn) = dialog.get_cancel_button() { btn.set_text("Нет"); }
+
+        let cb_confirmed = self.base().callable("_on_end_turn_confirmed");
+        let cb_cancelled = self.base().callable("_on_end_turn_cancelled");
+        dialog.connect("confirmed", &cb_confirmed);
+        dialog.connect("canceled",  &cb_cancelled);
+
+        self.base_mut().add_child(&dialog.clone());
+        self.end_turn_dialog = Some(dialog);
+    }
+
+    /// Показывает диалог подтверждения завершения хода.
+    fn show_end_turn_dialog(&mut self) {
+        if let Some(mut dialog) = self.end_turn_dialog.clone() {
+            dialog.popup_centered();
+        }
+    }
+
+    /// Возвращает `true`, если диалог завершения хода сейчас виден.
+    fn is_end_turn_dialog_visible(&self) -> bool {
+        self.end_turn_dialog
+            .as_ref()
+            .map(|d| d.is_visible())
+            .unwrap_or(false)
+    }
+
+    /// Вызывается при нажатии «Да» в диалоге.
+    /// Завершает ход и возвращает управление первому герою игрока.
+    #[func]
+    fn _on_end_turn_confirmed(&mut self) {
+        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        gm.call_deferred("advance_turn", &[]);
+        // После advance_turn движение сброшено у всех; выбираем первого героя игрока.
+        self.select_first_player_hero();
+        self.update_heroes_list();
+    }
+
+    /// Вызывается при нажатии «Нет» или Esc в диалоге.
+    #[func]
+    fn _on_end_turn_cancelled(&mut self) {
+        // Диалог уже закрылся сам — дополнительных действий не требуется.
+    }
+
+    /// Возвращает id управляемого игроком героя, стоящего на тайле `tile`,
+    /// или `None` если такого нет.
+    fn player_hero_at_tile(&self, tile: Vector2i) -> Option<i64> {
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let hero_id = gm.bind().get_hero_id_at_position(tile.x as i64, tile.y as i64);
+        if hero_id >= 0 && gm.bind().is_hero_player_controlled(hero_id) {
+            Some(hero_id)
+        } else {
+            None
+        }
     }
 
     fn heroes_list(&self) -> Option<Gd<VBoxContainer>> {

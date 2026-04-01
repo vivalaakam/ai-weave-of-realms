@@ -171,12 +171,16 @@ impl GameManager {
     ) -> bool {
         let Some(state) = &mut self.state else { return false };
         let team = Team::new(team_name.to_string(), player_controlled);
+        let hero_rng = self.rng.as_ref()
+            .map(|r| r.derive_for_hero(id as u32))
+            .unwrap_or_else(|| rpg_engine::rng::SeededRng::new(&format!("hero_{id}")));
         let hero = Hero::new(
             id as u32,
             name.to_string(),
             hp as u32, atk as u32, def as u32, spd as u32, mov as u32,
             MapCoord::new(x as u32, y as u32),
             team,
+            hero_rng,
         );
         state.heroes.push(hero);
         true
@@ -200,9 +204,11 @@ impl GameManager {
                     return 0;
                 }
 
-                // Add enemies to game state
-                for spawn in &spawns {
-                    let hero: Hero = spawn.into();
+                // Add enemies to game state, giving each a derived RNG
+                let base_rng = self.rng.as_ref().cloned()
+                    .unwrap_or_else(|| rpg_engine::rng::SeededRng::new("fallback-spawn"));
+                for spawn in spawns {
+                    let hero = spawn.into_hero(&base_rng);
                     if let Some(state) = &mut self.state {
                         state.heroes.push(hero);
                     }
@@ -283,14 +289,14 @@ impl GameManager {
     #[func]
     pub fn attack_hero(&mut self, attacker_id: i64, defender_id: i64) -> bool {
         let events = {
-            match (&mut self.state, &mut self.rng) {
-                (Some(state), Some(rng)) => {
-                    match state.attack_hero(attacker_id as u32, defender_id as u32, rng) {
+            match &mut self.state {
+                Some(state) => {
+                    match state.attack_hero(attacker_id as u32, defender_id as u32) {
                         Ok(ev)  => ev,
                         Err(e)  => { warn!("attack_hero failed: {e}"); return false; }
                     }
                 }
-                _ => return false,
+                None => return false,
             }
         };
 
@@ -388,6 +394,16 @@ impl GameManager {
             arr.push(Vector2i::new(c.x as i32, c.y as i32));
         }
         arr
+    }
+
+    /// Returns the id of the living hero at tile `(x, y)`, or -1 if none.
+    #[func]
+    pub fn get_hero_id_at_position(&self, x: i64, y: i64) -> i64 {
+        let Some(state) = &self.state else { return -1 };
+        let coord = MapCoord::new(x as u32, y as u32);
+        state.hero_at(coord)
+            .map(|h| h.id as i64)
+            .unwrap_or(-1)
     }
 
     /// Returns the current position of hero `hero_id`, or `(-1, -1)` if not found.

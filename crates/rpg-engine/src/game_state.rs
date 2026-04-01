@@ -19,7 +19,6 @@ use crate::hero::{Hero, Team};
 use crate::map::game_map::{GameMap, MapCoord};
 use crate::map::tile::Tiles;
 use crate::movement;
-use crate::rng::SeededRng;
 use crate::score::{ScoreBoard, ScoreEvent};
 
 // ─── TurnEvent ────────────────────────────────────────────────────────────────
@@ -117,7 +116,7 @@ impl GameState {
         let cost: u32 = path.windows(2)
             .map(|w| {
                 let tile = self.map.get_tile(w[1]).unwrap();
-                (1i32 + tile.kind.movement_cost_modifier()).max(0) as u32
+                (1i32 + tile.kind.movement_cost_modifier()).max(1) as u32
             })
             .sum();
 
@@ -150,6 +149,9 @@ impl GameState {
 
     /// Initiates combat between hero `attacker_id` and hero `defender_id`.
     ///
+    /// Each hero's personal RNG (stored on the hero itself) is consumed to
+    /// compute their attack roll — no external RNG is required.
+    ///
     /// Applies damage to both heroes.  Defeated heroes remain in the list
     /// but `is_alive()` returns `false`.
     ///
@@ -159,12 +161,12 @@ impl GameState {
         &mut self,
         attacker_id: u32,
         defender_id: u32,
-        rng: &mut SeededRng,
     ) -> Result<Vec<TurnEvent>, Error> {
         let att_idx = self.hero_index(attacker_id)?;
         let def_idx = self.hero_index(defender_id)?;
 
-        let result = combat::resolve_combat(&self.heroes[att_idx], &self.heroes[def_idx], rng);
+        let (attacker, defender) = two_mut(&mut self.heroes, att_idx, def_idx);
+        let result = combat::resolve_combat(attacker, defender);
 
         self.heroes[att_idx].take_damage(result.attacker_damage);
         self.heroes[def_idx].take_damage(result.defender_damage);
@@ -207,24 +209,43 @@ impl GameState {
     }
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Returns two mutable references into a slice at distinct indices `i` and `j`.
+///
+/// Panics if `i == j`.
+fn two_mut<T>(slice: &mut [T], i: usize, j: usize) -> (&mut T, &mut T) {
+    assert!(i != j, "two_mut: indices must be distinct");
+    if i < j {
+        let (left, right) = slice.split_at_mut(j);
+        (&mut left[i], &mut right[0])
+    } else {
+        let (left, right) = slice.split_at_mut(i);
+        (&mut right[0], &mut left[j])
+    }
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::map::tile::Tile;
+    use crate::rng::SeededRng;
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
         let tiles = vec![Tile { kind: Tiles::Meadow }; (w * h) as usize];
         GameMap::new(w, h, tiles, [0u8; 32]).unwrap()
     }
 
+    fn base_rng() -> SeededRng { SeededRng::new("test-session") }
+
     fn player(id: u32, pos: MapCoord) -> Hero {
-        Hero::new(id, "Player", 100, 20, 10, 10, 4, pos, Team::player())
+        Hero::new(id, "Player", 100, 20, 10, 10, 4, pos, Team::player(), base_rng().derive_for_hero(id))
     }
 
     fn enemy(id: u32, pos: MapCoord) -> Hero {
-        Hero::new(id, "Enemy", 30, 10, 5, 5, 3, pos, Team::enemy())
+        Hero::new(id, "Enemy", 30, 10, 5, 5, 3, pos, Team::enemy(), base_rng().derive_for_hero(id))
     }
 
     #[test]
@@ -267,8 +288,7 @@ mod tests {
             enemy(2, MapCoord::new(1, 0)),
         ];
         let mut state = GameState::new(map, heroes);
-        let mut rng = SeededRng::new("fight");
-        state.attack_hero(1, 2, &mut rng).unwrap();
+        state.attack_hero(1, 2).unwrap();
         // Enemy should have taken damage (strong player vs weak enemy)
         assert!(state.hero(2).unwrap().hp < 30);
     }
@@ -277,11 +297,11 @@ mod tests {
     fn defeated_enemy_awards_score() {
         let map = meadow_map(5, 5);
         // Player with overwhelming stats, enemy with minimal hp
-        let p = Hero::new(1, "P", 100, 200, 0, 10, 4, MapCoord::new(0, 0), Team::player());
-        let e = Hero::new(2, "E",   1,   1, 0,  1, 3, MapCoord::new(1, 0), Team::enemy());
+        let base = base_rng();
+        let p = Hero::new(1, "P", 100, 200, 0, 10, 4, MapCoord::new(0, 0), Team::player(), base.derive_for_hero(1));
+        let e = Hero::new(2, "E",   1,   1, 0,  1, 3, MapCoord::new(1, 0), Team::enemy(),  base.derive_for_hero(2));
         let mut state = GameState::new(map, vec![p, e]);
-        let mut rng = SeededRng::new("kill");
-        state.attack_hero(1, 2, &mut rng).unwrap();
+        state.attack_hero(1, 2).unwrap();
         assert!(state.score.total() > 0);
     }
 

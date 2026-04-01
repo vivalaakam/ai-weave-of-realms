@@ -7,7 +7,7 @@
 //! |----------|------|
 //! | Meadow   | 1    |
 //! | Forest   | 2    |
-//! | Road     | 0    |
+//! | Road     | 1    |
 //! | Impassable (water, mountain, river) | blocked |
 //! | All others | 1  |
 //!
@@ -84,7 +84,7 @@ fn entry_cost(map: &GameMap, coord: MapCoord) -> Option<u32> {
     if !tile.kind.is_passable() {
         return None;
     }
-    Some((1i32 + tile.kind.movement_cost_modifier()).max(0) as u32)
+    Some((1i32 + tile.kind.movement_cost_modifier()).max(1) as u32)
 }
 
 /// Returns 4-directional in-bounds neighbours of `coord`.

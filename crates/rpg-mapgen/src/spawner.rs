@@ -16,6 +16,7 @@ use tracing::{debug, instrument};
 
 use rpg_engine::hero::{Hero, Team};
 use rpg_engine::map::game_map::{GameMap, MapCoord};
+use rpg_engine::rng::SeededRng;
 
 use crate::error::Error;
 use crate::map_table::game_map_to_lua_table;
@@ -37,18 +38,23 @@ pub struct EnemySpawn {
     pub mov: u32,
 }
 
-impl From<&EnemySpawn> for Hero {
-    fn from(spawn: &EnemySpawn) -> Self {
+impl EnemySpawn {
+    /// Converts this spawn descriptor into a [`Hero`].
+    ///
+    /// `base_rng` is the session RNG; the hero's personal RNG is derived from
+    /// it via [`SeededRng::derive_for_hero`] so the result is reproducible.
+    pub fn into_hero(self, base_rng: &SeededRng) -> Hero {
         Hero::new(
-            spawn.id,
-            format!("Enemy {}", spawn.id),
-            spawn.hp,
-            spawn.atk,
-            spawn.def,
-            spawn.spd,
-            spawn.mov,
-            spawn.position,
+            self.id,
+            format!("Enemy {}", self.id),
+            self.hp,
+            self.atk,
+            self.def,
+            self.spd,
+            self.mov,
+            self.position,
             Team::enemy(),
+            base_rng.derive_for_hero(self.id),
         )
     }
 }
@@ -275,7 +281,8 @@ mod tests {
             "#,
         );
         let spawns = spawner.spawn(&make_map()).unwrap();
-        let hero: Hero = (&spawns[0]).into();
+        let base_rng = SeededRng::new("test-session");
+        let hero = spawns.into_iter().next().unwrap().into_hero(&base_rng);
         assert_eq!(hero.hp, 50);
         assert_eq!(hero.atk, 15);
     }

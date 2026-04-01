@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::map::game_map::MapCoord;
+use crate::rng::SeededRng;
 
 // ─── Team ─────────────────────────────────────────────────────────────────────
 
@@ -91,10 +92,19 @@ pub struct Hero {
     pub position: MapCoord,
     /// The team this hero belongs to.
     pub team: Team,
+    /// Personal RNG for this hero, derived from the session seed.
+    ///
+    /// Used during combat to compute this hero's attack rolls.
+    /// Derive with [`SeededRng::derive_for_hero`] from the session RNG.
+    pub rng: SeededRng,
 }
 
 impl Hero {
     /// Creates a new hero with full HP and full movement points.
+    ///
+    /// `rng` should be derived from the session RNG via
+    /// [`SeededRng::derive_for_hero`] so that each hero has an independent,
+    /// reproducible random stream tied to the session seed.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: u32,
@@ -106,6 +116,7 @@ impl Hero {
         mov: u32,
         position: MapCoord,
         team: Team,
+        rng: SeededRng,
     ) -> Self {
         Self {
             id,
@@ -119,6 +130,7 @@ impl Hero {
             mov_remaining: mov,
             position,
             team,
+            rng,
         }
     }
 
@@ -145,7 +157,8 @@ mod tests {
     use super::*;
 
     fn hero() -> Hero {
-        Hero::new(1, "Arthur", 100, 20, 10, 15, 4, MapCoord::new(0, 0), Team::player())
+        let rng = SeededRng::new("test").derive_for_hero(1);
+        Hero::new(1, "Arthur", 100, 20, 10, 15, 4, MapCoord::new(0, 0), Team::player(), rng)
     }
 
     #[test]
