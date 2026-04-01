@@ -48,7 +48,6 @@ const PLAYER_TEAMS: &[&str] = &["red", "blue"];
 #[class(base=Node)]
 pub struct MainScene {
     base: Base<Node>,
-    selected_hero_id: i64,
     /// The team whose heroes the player may currently select and move.
     active_team: String,
     end_turn_dialog: Option<Gd<ConfirmationDialog>>,
@@ -68,7 +67,6 @@ impl INode for MainScene {
     fn init(base: Base<Node>) -> Self {
         Self {
             base,
-            selected_hero_id: -1,
             active_team: PLAYER_TEAMS[0].to_string(),
             end_turn_dialog: None,
             hire_hero_dialog: None,
@@ -198,7 +196,7 @@ impl INode for MainScene {
                 }
 
                 // Стрелки: переместить выбранного героя на одну клетку.
-                if self.selected_hero_id >= 0 {
+                if let Some(id) = self.get_selected_hero_id() {
                     // Encode Direction as i64: 0=North, 1=East, 2=South, 3=West
                     let direction: Option<i64> = if physical == Key::LEFT || logical == Key::LEFT {
                         Some(3)
@@ -213,7 +211,6 @@ impl INode for MainScene {
                     };
 
                     if let Some(dir) = direction {
-                        let id = self.selected_hero_id;
                         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
                         gm.call_deferred("move_hero", &[id.to_variant(), dir.to_variant()]);
                         return;
@@ -238,8 +235,7 @@ impl INode for MainScene {
                         };
                         if is_city {
                             self.show_hire_hero_dialog(tile);
-                        } else if self.selected_hero_id >= 0 {
-                            let id = self.selected_hero_id;
+                        } else if let Some(id) = self.get_selected_hero_id() {
                             // Derive direction from hero position to clicked adjacent tile.
                             // 0=North, 1=East, 2=South, 3=West. Non-adjacent clicks are ignored.
                             let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
@@ -285,7 +281,7 @@ impl INode for MainScene {
                             self.show_hire_hero_dialog(tile);
                         }
                     }
-                } else if self.selected_hero_id >= 0 {
+                } else if let Some(id) = self.get_selected_hero_id() {
                     let direction: Option<i64> = if button == GAMEPAD_BTN_DPAD_LEFT {
                         Some(3)
                     } else if button == GAMEPAD_BTN_DPAD_RIGHT {
@@ -298,7 +294,6 @@ impl INode for MainScene {
                         None
                     };
                     if let Some(dir) = direction {
-                        let id = self.selected_hero_id;
                         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
                         gm.call_deferred("move_hero", &[id.to_variant(), dir.to_variant()]);
                     }
@@ -427,9 +422,8 @@ impl MainScene {
         }
 
         if self.gamepad_cursor_tile.x < 0 || self.gamepad_cursor_tile.y < 0 {
-            if self.selected_hero_id >= 0 {
-                let hero_tile = gm.bind().get_hero_position(self.selected_hero_id);
-                self.gamepad_cursor_tile = Vector2i::new(hero_tile.x, hero_tile.y);
+            if let Some(id) = self.get_selected_hero_id() {
+                self.gamepad_cursor_tile = gm.bind().get_hero_position(id);
             } else {
                 self.gamepad_cursor_tile = Vector2i::new(width / 2, height / 2);
             }
@@ -495,7 +489,7 @@ impl MainScene {
 
     fn start_game_with_seed(&mut self, seed: String) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        self.selected_hero_id = -1;
+        gm.bind_mut().clear_active_heroes();
         self.update_seed_debug(&seed);
         let started = gm.bind_mut().new_game(
             GString::from(seed.as_str()),
@@ -582,7 +576,7 @@ impl MainScene {
                 }
             }
         }
-        if self.selected_hero_id == hero_id {
+        if self.get_selected_hero_id() == Some(hero_id) {
             self.select_next_player_hero();
         }
         self.update_heroes_list();
@@ -874,8 +868,8 @@ impl MainScene {
     }
 
     fn center_camera(&mut self, tilemap: Gd<TileMapLayer>) {
-        if self.selected_hero_id >= 0 {
-            self.focus_camera_on_hero(self.selected_hero_id);
+        if let Some(id) = self.get_selected_hero_id() {
+            self.focus_camera_on_hero(id);
             return;
         }
 
@@ -1024,6 +1018,7 @@ impl MainScene {
         let Some(list) = self.heroes_list() else {
             return;
         };
+        let selected_id = self.get_selected_hero_id();
 
         for child in list.get_children().iter_shared() {
             if let Ok(mut btn) = child.try_cast::<Button>() {
@@ -1032,7 +1027,7 @@ impl MainScene {
                 let hero_id_str = btn_name.strip_prefix("HeroBtn_");
                 let is_selected = hero_id_str
                     .and_then(|s| s.parse::<i64>().ok())
-                    .map(|id| id == self.selected_hero_id)
+                    .map(|id| Some(id) == selected_id)
                     .unwrap_or(false);
 
                 if is_selected {
@@ -1240,30 +1235,27 @@ impl MainScene {
     }
 
     fn select_next_player_hero(&mut self) {
-        let heroes = self.active_team_hero_ids();
-        if heroes.is_empty() {
-            self.selected_hero_id = -1;
-            return;
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let next_id = gm.bind().get_next_hero(GString::from(&self.active_team));
+        if next_id >= 0 {
+            self.set_selected_hero(next_id, true);
         }
-
-        let current_index = heroes
-            .iter_shared()
-            .position(|hero_id| hero_id == self.selected_hero_id);
-        let next_index = current_index
-            .map(|index| (index + 1) % heroes.len())
-            .unwrap_or(0);
-        let Some(next_id) = heroes.get(next_index) else {
-            return;
-        };
-        self.set_selected_hero(next_id, true);
     }
 
     fn set_selected_hero(&mut self, hero_id: i64, focus_camera: bool) {
-        self.selected_hero_id = hero_id;
+        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        gm.bind_mut().set_active_hero(GString::from(&self.active_team), hero_id);
         self.highlight_selected_hero_in_list();
         if focus_camera {
             self.focus_camera_on_hero(hero_id);
         }
+    }
+
+    /// Returns the currently selected hero ID for the active team, or None if none selected.
+    fn get_selected_hero_id(&self) -> Option<i64> {
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let id = gm.bind().get_active_hero(GString::from(&self.active_team));
+        if id >= 0 { Some(id) } else { None }
     }
 
     fn focus_camera_on_hero(&self, hero_id: i64) {
@@ -1291,26 +1283,12 @@ impl MainScene {
         }
     }
 
-    /// Returns living hero IDs that belong to the currently active team.
-    fn active_team_hero_ids(&self) -> Array<i64> {
-        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let all_player = gm.bind().get_living_player_hero_ids();
-        let mut result: Array<i64> = Array::new();
-        for id in all_player.iter_shared() {
-            let team = gm.bind().get_hero_team_name(id).to_string();
-            if team == self.active_team {
-                result.push(id);
-            }
-        }
-        result
-    }
-
     /// Selects the first living hero of the active team, if any.
     fn select_first_active_team_hero(&mut self) {
-        let ids = self.active_team_hero_ids();
-        match ids.iter_shared().next() {
-            Some(id) => self.set_selected_hero(id, true),
-            None => self.selected_hero_id = -1,
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let next_id = gm.bind().get_next_hero(GString::from(&self.active_team));
+        if next_id >= 0 {
+            self.set_selected_hero(next_id, true);
         }
     }
 
@@ -1335,8 +1313,15 @@ impl MainScene {
             self.active_team = PLAYER_TEAMS[0].to_string();
         }
 
-        self.selected_hero_id = -1;
-        self.select_first_active_team_hero();
+        // Try to restore the last active hero for the new team.
+        // If none set or hero is dead, select the first living hero.
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let last_id = gm.bind().get_active_hero(GString::from(&self.active_team));
+        if last_id >= 0 && gm.bind().is_hero_alive(last_id) {
+            self.set_selected_hero(last_id, true);
+        } else {
+            self.select_first_active_team_hero();
+        }
         info!(active_team = %self.active_team, "team turn started");
     }
 
@@ -1496,13 +1481,13 @@ impl MainScene {
         let Some(mut label) = self.hero_mov_label() else {
             return;
         };
-        if self.selected_hero_id < 0 {
+        let Some(hero_id) = self.get_selected_hero_id() else {
             label.set_text("Движение: —");
             return;
-        }
+        };
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let rem = gm.bind().get_hero_mov_remaining(self.selected_hero_id);
-        let max = gm.bind().get_hero_mov_max(self.selected_hero_id);
+        let rem = gm.bind().get_hero_mov_remaining(hero_id);
+        let max = gm.bind().get_hero_mov_max(hero_id);
         if rem >= 0 && max >= 0 {
             label.set_text(&format!("Движение: {rem}/{max}"));
         } else {

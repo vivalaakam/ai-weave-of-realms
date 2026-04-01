@@ -718,4 +718,33 @@ impl GameManager {
         }
         ids
     }
+
+    /// Returns the last active hero ID for `team_name`, or -1 if not set.
+    #[func]
+    pub fn get_active_hero(&self, team_name: GString) -> i64 {
+        let Some(state) = &self.state else { return -1 };
+        state.get_active_hero(&team_name.to_string()).map(|id| id as i64).unwrap_or(-1)
+    }
+
+    /// Sets the active hero for `team_name`.
+    #[func]
+    pub fn set_active_hero(&mut self, team_name: GString, hero_id: i64) {
+        let Some(state) = &mut self.state else { return };
+        let id = if hero_id >= 0 { Some(hero_id as u32) } else { None };
+        state.set_active_hero(&team_name.to_string(), id);
+    }
+
+    /// Returns the next hero for `team_name`, or -1 if none available.
+    #[func]
+    pub fn get_next_hero(&self, team_name: GString) -> i64 {
+        let Some(state) = &self.state else { return -1 };
+        state.get_next_hero(&team_name.to_string()).map(|id| id as i64).unwrap_or(-1)
+    }
+
+    /// Clears all active hero selections.
+    #[func]
+    pub fn clear_active_heroes(&mut self) {
+        let Some(state) = &mut self.state else { return };
+        state.clear_active_heroes();
+    }
 }

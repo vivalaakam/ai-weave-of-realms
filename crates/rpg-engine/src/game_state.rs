@@ -64,6 +64,8 @@ pub struct GameState {
     /// City tile ownership: maps each occupied city [`MapCoord`] to the owning
     /// team name.  Absence from the map means the city is neutral.
     pub city_owners: HashMap<MapCoord, String>,
+    /// Last active hero for each team. Used to restore selection when switching teams.
+    active_hero: HashMap<String, Option<u32>>,
 }
 
 impl GameState {
@@ -75,6 +77,7 @@ impl GameState {
             turn: 1,
             score: ScoreBoard::new(),
             city_owners: HashMap::new(),
+            active_hero: HashMap::new(),
         }
     }
 
@@ -109,6 +112,50 @@ impl GameState {
     /// Returns the team name that owns the city at `coord`, or `None` if neutral.
     pub fn city_owner(&self, coord: MapCoord) -> Option<&str> {
         self.city_owners.get(&coord).map(|s| s.as_str())
+    }
+
+    /// Returns the last active hero ID for `team_name`, or `None` if not set.
+    pub fn get_active_hero(&self, team_name: &str) -> Option<u32> {
+        self.active_hero.get(team_name).copied().flatten()
+    }
+
+    /// Sets the active hero for `team_name`.
+    pub fn set_active_hero(&mut self, team_name: &str, hero_id: Option<u32>) {
+        self.active_hero.insert(team_name.to_string(), hero_id);
+    }
+
+    /// Returns the next hero for `team_name` after the current active one.
+    ///
+    /// If no active hero is set or the active hero is dead/wrong team,
+    /// returns the first living hero of the team.
+    /// Returns `None` if the team has no living heroes.
+    pub fn get_next_hero(&self, team_name: &str) -> Option<u32> {
+        let team_heroes: Vec<u32> = self
+            .heroes
+            .iter()
+            .filter(|h| h.team.name == team_name && h.is_alive())
+            .map(|h| h.id)
+            .collect();
+
+        if team_heroes.is_empty() {
+            return None;
+        }
+
+        let current = self.get_active_hero(team_name);
+        let current_idx = current.and_then(|id| {
+            team_heroes.iter().position(|&hid| hid == id)
+        });
+
+        let next_idx = current_idx
+            .map(|idx| (idx + 1) % team_heroes.len())
+            .unwrap_or(0);
+
+        team_heroes.get(next_idx).copied()
+    }
+
+    /// Clears all active hero selections.
+    pub fn clear_active_heroes(&mut self) {
+        self.active_hero.clear();
     }
 
     /// Sets the owning team for the city at `coord` and all connected city tiles.
