@@ -92,11 +92,11 @@ fn calc_damage(source: &Hero, target: &Hero, rng: &mut SeededRng) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hero::Faction;
+    use crate::hero::Team;
     use crate::map::game_map::MapCoord;
 
     fn make_hero(id: u32, hp: u32, atk: u32, def: u32, spd: u32) -> Hero {
-        Hero::new(id, "Hero", hp, atk, def, spd, 4, MapCoord::new(0, 0), Faction::Player)
+        Hero::new(id, "Hero", hp, atk, def, spd, 4, MapCoord::new(0, 0), Team::player())
     }
 
     #[test]

@@ -20,7 +20,7 @@ use godot::prelude::*;
 use tracing::{debug, error, warn};
 
 use rpg_engine::game_state::{GameState, TurnEvent};
-use rpg_engine::hero::{Faction, Hero};
+use rpg_engine::hero::{Hero, Team};
 use rpg_engine::map::game_map::MapCoord;
 use rpg_engine::movement;
 use rpg_engine::rng::SeededRng;
@@ -152,7 +152,8 @@ impl GameManager {
 
     /// Adds a hero to the current session.
     ///
-    /// `faction`: `"player"` or `"enemy"`.
+    /// `team_name` is a human-readable team identifier (e.g. `"player"`, `"enemy"`).
+    /// `player_controlled` indicates whether the human player commands this hero.
     #[func]
     pub fn add_hero(
         &mut self,
@@ -165,16 +166,17 @@ impl GameManager {
         mov: i64,
         x: i64,
         y: i64,
-        faction: GString,
+        team_name: GString,
+        player_controlled: bool,
     ) -> bool {
         let Some(state) = &mut self.state else { return false };
-        let f = if faction.to_string() == "player" { Faction::Player } else { Faction::Enemy };
+        let team = Team::new(team_name.to_string(), player_controlled);
         let hero = Hero::new(
             id as u32,
             name.to_string(),
             hp as u32, atk as u32, def as u32, spd as u32, mov as u32,
             MapCoord::new(x as u32, y as u32),
-            f,
+            team,
         );
         state.heroes.push(hero);
         true
@@ -217,11 +219,31 @@ impl GameManager {
         }
     }
 
-    /// Returns the number of living enemies on the map.
+    /// Returns the number of living AI-controlled heroes on the map.
     #[func]
     pub fn get_enemy_count(&self) -> i64 {
         let Some(state) = &self.state else { return 0 };
-        state.living_heroes(Faction::Enemy).len() as i64
+        state.living_heroes(false).len() as i64
+    }
+
+    /// Returns the team name of hero `hero_id`, or empty string if not found.
+    #[func]
+    pub fn get_hero_team_name(&self, hero_id: i64) -> GString {
+        let Some(state) = &self.state else { return GString::default() };
+        state.heroes.iter()
+            .find(|h| h.id == hero_id as u32)
+            .map(|h| GString::from(h.team.name.as_str()))
+            .unwrap_or_default()
+    }
+
+    /// Returns whether hero `hero_id` belongs to a player-controlled team.
+    #[func]
+    pub fn is_hero_player_controlled(&self, hero_id: i64) -> bool {
+        let Some(state) = &self.state else { return false };
+        state.heroes.iter()
+            .find(|h| h.id == hero_id as u32)
+            .map(|h| h.team.player_controlled)
+            .unwrap_or(false)
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -406,23 +428,23 @@ impl GameManager {
             .unwrap_or(Vector2i::new(-1, -1))
     }
 
-    /// Returns ids of all living player heroes in stable insertion order.
+    /// Returns ids of all living player-controlled heroes in stable insertion order.
     #[func]
     pub fn get_living_player_hero_ids(&self) -> Array<i64> {
         let Some(state) = &self.state else { return Array::new() };
         let mut ids = Array::new();
-        for hero in state.heroes.iter().filter(|hero| hero.faction == Faction::Player && hero.is_alive()) {
+        for hero in state.heroes.iter().filter(|h| h.team.player_controlled && h.is_alive()) {
             ids.push(hero.id as i64);
         }
         ids
     }
 
-    /// Returns ids of all living enemy heroes in stable insertion order.
+    /// Returns ids of all living AI-controlled heroes in stable insertion order.
     #[func]
     pub fn get_living_enemy_hero_ids(&self) -> Array<i64> {
         let Some(state) = &self.state else { return Array::new() };
         let mut ids = Array::new();
-        for hero in state.heroes.iter().filter(|hero| hero.faction == Faction::Enemy && hero.is_alive()) {
+        for hero in state.heroes.iter().filter(|h| !h.team.player_controlled && h.is_alive()) {
             ids.push(hero.id as i64);
         }
         ids

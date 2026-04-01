@@ -8,7 +8,7 @@
 //! ## Modules
 //! - [`rng`]        — Keccak256-based deterministic [`rng::SeededRng`]
 //! - [`map`]        — Map types: tiles, chunks, [`map::game_map::GameMap`]
-//! - [`hero`]       — [`hero::Hero`] entity and [`hero::Faction`]
+//! - [`hero`]       — [`hero::Hero`] entity and [`hero::Team`]
 //! - [`movement`]   — Reachable tiles and pathfinding (Dijkstra)
 //! - [`combat`]     — Auto-resolve combat between heroes
 //! - [`score`]      — [`score::ScoreBoard`] and [`score::ScoreEvent`]

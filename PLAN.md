@@ -254,3 +254,32 @@ end
 | `def` | Defense |
 | `spd` | Speed (combat priority) |
 | `mov` | Movement points per turn |
+
+---
+
+## Teams
+
+All units — player heroes and enemies — are `Hero` instances.  What
+distinguishes them is the `Team` they belong to.
+
+```rust
+pub struct Team {
+    pub name: String,             // e.g. "player", "enemy", "bandits"
+    pub player_controlled: bool,  // true → human commands this team
+}
+```
+
+### Rules
+- `player_controlled = true` — the human player can select and move these heroes.
+- `player_controlled = false` — AI-controlled; the player cannot issue commands.
+- There is no hard limit on the number of teams; future scenarios may have
+  multiple distinct enemy factions (e.g. `"undead"`, `"bandits"`, `"neutral"`).
+- `Team::player()` and `Team::enemy()` are convenience constructors for the
+  two built-in teams.
+
+### Data ownership
+`Team` (and all other mutable hero state) lives in **`rpg-engine::GameState`**.
+The visual layer (`HeroNode` in `rpg-godot`) stores only identity fields
+(`hero_id`, `team_name`, `player_controlled`) that are set once at spawn and
+never change.  Position, HP, and movement points must always be queried from
+`GameManager` rather than cached in the visual node.

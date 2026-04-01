@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::combat::{self, CombatResult};
 use crate::error::Error;
-use crate::hero::{Faction, Hero};
+use crate::hero::{Hero, Team};
 use crate::map::game_map::{GameMap, MapCoord};
 use crate::map::tile::Tiles;
 use crate::movement;
@@ -61,11 +61,13 @@ impl GameState {
 
     // ── Queries ───────────────────────────────────────────────────────────────
 
-    /// Returns living heroes belonging to `faction`.
-    pub fn living_heroes(&self, faction: Faction) -> Vec<&Hero> {
+    /// Returns living heroes whose team has the given `player_controlled` value.
+    ///
+    /// Pass `true` to get all player-controlled heroes, `false` for AI-controlled ones.
+    pub fn living_heroes(&self, player_controlled: bool) -> Vec<&Hero> {
         self.heroes
             .iter()
-            .filter(|h| h.faction == faction && h.is_alive())
+            .filter(|h| h.team.player_controlled == player_controlled && h.is_alive())
             .collect()
     }
 
@@ -218,11 +220,11 @@ mod tests {
     }
 
     fn player(id: u32, pos: MapCoord) -> Hero {
-        Hero::new(id, "Player", 100, 20, 10, 10, 4, pos, Faction::Player)
+        Hero::new(id, "Player", 100, 20, 10, 10, 4, pos, Team::player())
     }
 
     fn enemy(id: u32, pos: MapCoord) -> Hero {
-        Hero::new(id, "Enemy", 30, 10, 5, 5, 3, pos, Faction::Enemy)
+        Hero::new(id, "Enemy", 30, 10, 5, 5, 3, pos, Team::enemy())
     }
 
     #[test]
@@ -275,8 +277,8 @@ mod tests {
     fn defeated_enemy_awards_score() {
         let map = meadow_map(5, 5);
         // Player with overwhelming stats, enemy with minimal hp
-        let p = Hero::new(1, "P", 100, 200, 0, 10, 4, MapCoord::new(0, 0), Faction::Player);
-        let e = Hero::new(2, "E",   1,   1, 0,  1, 3, MapCoord::new(1, 0), Faction::Enemy);
+        let p = Hero::new(1, "P", 100, 200, 0, 10, 4, MapCoord::new(0, 0), Team::player());
+        let e = Hero::new(2, "E",   1,   1, 0,  1, 3, MapCoord::new(1, 0), Team::enemy());
         let mut state = GameState::new(map, vec![p, e]);
         let mut rng = SeededRng::new("kill");
         state.attack_hero(1, 2, &mut rng).unwrap();
@@ -289,7 +291,7 @@ mod tests {
         let mut e = enemy(2, MapCoord::new(1, 0));
         e.take_damage(30); // kill
         let state = GameState::new(map, vec![player(1, MapCoord::new(0, 0)), e]);
-        assert_eq!(state.living_heroes(Faction::Enemy).len(), 0);
-        assert_eq!(state.living_heroes(Faction::Player).len(), 1);
+        assert_eq!(state.living_heroes(false).len(), 0);
+        assert_eq!(state.living_heroes(true).len(), 1);
     }
 }

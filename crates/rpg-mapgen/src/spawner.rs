@@ -14,7 +14,7 @@ use std::path::Path;
 use mlua::{Function, Lua, Table, Value};
 use tracing::{debug, instrument};
 
-use rpg_engine::hero::Hero;
+use rpg_engine::hero::{Hero, Team};
 use rpg_engine::map::game_map::{GameMap, MapCoord};
 
 use crate::error::Error;
@@ -48,7 +48,7 @@ impl From<&EnemySpawn> for Hero {
             spawn.spd,
             spawn.mov,
             spawn.position,
-            rpg_engine::hero::Faction::Enemy,
+            Team::enemy(),
         )
     }
 }

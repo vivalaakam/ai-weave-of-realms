@@ -269,7 +269,6 @@ impl MainScene {
         for child in root.get_children().iter_shared() {
             if let Ok(mut hn) = child.try_cast::<HeroNode>() {
                 if hn.bind().hero_id == hero_id {
-                    hn.bind_mut().on_hero_moved(hero_id, fx, fy, tx, ty);
                     if let Some(world_pos) = self.map_tile_to_world(Vector2i::new(tx as i32, ty as i32)) {
                         hn.set_position(world_pos);
                     }
@@ -351,8 +350,9 @@ impl MainScene {
             i64::from(player_spawn.x),
             i64::from(player_spawn.y),
             "player",
+            true,
         );
-        self.create_hero_node(1, "player", player_spawn.x, player_spawn.y);
+        self.create_hero_node(1, "player", true, player_spawn.x, player_spawn.y);
 
         // Spawn enemies via Lua-driven spawner
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
@@ -369,22 +369,25 @@ impl MainScene {
             return;
         }
 
-        // Collect enemy data first (immutable borrow)
-        let mut enemy_data: Vec<(i64, i32, i32)> = Vec::new();
+        // Collect enemy data first (immutable borrow).
+        // Query team info from engine — HeroNode does not cache mutable state.
+        let mut enemy_data: Vec<(i64, String, bool, i32, i32)> = Vec::new();
         {
             let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
             let enemy_ids = gm.bind().get_living_enemy_hero_ids();
             for id in enemy_ids.iter_shared() {
                 let pos = gm.bind().get_hero_position(id);
                 if pos.x >= 0 && pos.y >= 0 {
-                    enemy_data.push((id, pos.x, pos.y));
+                    let team_name = gm.bind().get_hero_team_name(id).to_string();
+                    let player_controlled = gm.bind().is_hero_player_controlled(id);
+                    enemy_data.push((id, team_name, player_controlled, pos.x, pos.y));
                 }
             }
         }
 
-        // Now create hero nodes (mutable borrow)
-        for (hero_id, x, y) in enemy_data {
-            self.create_hero_node(hero_id, "enemy", x, y);
+        // Now create hero nodes (mutable borrow).
+        for (hero_id, team_name, player_controlled, x, y) in enemy_data {
+            self.create_hero_node(hero_id, &team_name, player_controlled, x, y);
         }
 
         self.update_heroes_list();
@@ -394,27 +397,26 @@ impl MainScene {
         &mut self,
         id: i64, name: &str,
         hp: i64, atk: i64, def: i64, spd: i64, mov: i64,
-        x: i64, y: i64, faction: &str,
+        x: i64, y: i64, team_name: &str, player_controlled: bool,
     ) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         gm.bind_mut().add_hero(
             id, GString::from(name),
             hp, atk, def, spd, mov,
             x, y,
-            GString::from(faction),
+            GString::from(team_name), player_controlled,
         );
     }
 
-    fn create_hero_node(&mut self, id: i64, faction: &str, tx: i32, ty: i32) {
+    fn create_hero_node(&mut self, id: i64, team_name: &str, player_controlled: bool, tx: i32, ty: i32) {
         let mut hero = HeroNode::new_alloc();
         let name = StringName::from(&format!("Hero_{}", id));
         hero.set_name(&name);
         {
             let mut b = hero.bind_mut();
-            b.hero_id   = id;
-            b.faction   = GString::from(faction);
-            b.selectable = faction == "player";
-            b.set_tile_position(tx as i64, ty as i64);
+            b.hero_id          = id;
+            b.team_name        = GString::from(team_name);
+            b.player_controlled = player_controlled;
         }
         if let Some(world_pos) = self.map_tile_to_world(Vector2i::new(tx, ty)) {
             hero.set_position(world_pos);

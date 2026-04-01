@@ -1,16 +1,53 @@
-//! Hero entity — represents a player or enemy unit on the map.
+//! Hero entity — represents a unit on the map belonging to any team.
 
 use serde::{Deserialize, Serialize};
 
 use crate::map::game_map::MapCoord;
 
-// ─── Faction ──────────────────────────────────────────────────────────────────
+// ─── Team ─────────────────────────────────────────────────────────────────────
 
-/// Which side a hero belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Faction {
-    Player,
-    Enemy,
+/// The team a hero belongs to.
+///
+/// All units — player heroes and enemies alike — are heroes in a `Team`.
+/// The `player_controlled` flag is the only thing that distinguishes a team the
+/// human commands from one driven by AI.
+///
+/// # Examples
+/// ```
+/// use rpg_engine::hero::Team;
+///
+/// let player_team = Team::player();
+/// assert!(player_team.player_controlled);
+///
+/// let enemy_team = Team::enemy();
+/// assert!(!enemy_team.player_controlled);
+///
+/// let bandit_team = Team::new("bandits", false);
+/// assert_eq!(bandit_team.name, "bandits");
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Team {
+    /// Human-readable team identifier (e.g. `"player"`, `"enemy"`).
+    pub name: String,
+    /// `true` if the human player can select and command heroes on this team.
+    pub player_controlled: bool,
+}
+
+impl Team {
+    /// Creates a team with the given name and `player_controlled` flag.
+    pub fn new(name: impl Into<String>, player_controlled: bool) -> Self {
+        Self { name: name.into(), player_controlled }
+    }
+
+    /// Convenience constructor for the human player's team.
+    pub fn player() -> Self {
+        Self::new("player", true)
+    }
+
+    /// Convenience constructor for a standard AI-controlled enemy team.
+    pub fn enemy() -> Self {
+        Self::new("enemy", false)
+    }
 }
 
 // ─── Hero ─────────────────────────────────────────────────────────────────────
@@ -23,6 +60,10 @@ pub enum Faction {
 /// - `def` — defence rating (reduces incoming damage)
 /// - `spd` — speed (determines combat initiative)
 /// - `mov` — movement points per turn
+///
+/// Identity:
+/// - `team` — which team this hero belongs to, and whether that team is
+///   player-controlled
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hero {
     /// Unique identifier within the game session.
@@ -44,9 +85,12 @@ pub struct Hero {
     /// Movement points remaining this turn.
     pub mov_remaining: u32,
     /// Current tile position on the map.
+    ///
+    /// This is the **authoritative** position.  Visual layers must query the
+    /// engine for position rather than caching it themselves.
     pub position: MapCoord,
-    /// Player or enemy.
-    pub faction: Faction,
+    /// The team this hero belongs to.
+    pub team: Team,
 }
 
 impl Hero {
@@ -61,7 +105,7 @@ impl Hero {
         spd: u32,
         mov: u32,
         position: MapCoord,
-        faction: Faction,
+        team: Team,
     ) -> Self {
         Self {
             id,
@@ -74,7 +118,7 @@ impl Hero {
             mov,
             mov_remaining: mov,
             position,
-            faction,
+            team,
         }
     }
 
@@ -101,7 +145,7 @@ mod tests {
     use super::*;
 
     fn hero() -> Hero {
-        Hero::new(1, "Arthur", 100, 20, 10, 15, 4, MapCoord::new(0, 0), Faction::Player)
+        Hero::new(1, "Arthur", 100, 20, 10, 15, 4, MapCoord::new(0, 0), Team::player())
     }
 
     #[test]
@@ -132,5 +176,14 @@ mod tests {
         h.mov_remaining = 0;
         h.reset_movement();
         assert_eq!(h.mov_remaining, h.mov);
+    }
+
+    #[test]
+    fn team_player_controlled_flag() {
+        assert!(Team::player().player_controlled);
+        assert!(!Team::enemy().player_controlled);
+        let bandits = Team::new("bandits", false);
+        assert_eq!(bandits.name, "bandits");
+        assert!(!bandits.player_controlled);
     }
 }
