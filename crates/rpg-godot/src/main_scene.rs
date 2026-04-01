@@ -37,19 +37,12 @@ const LEFT_STICK_DEADZONE: f32 = 0.50;
 const LEFT_STICK_REPEAT_INTERVAL: f64 = 0.14;
 const CITY_MARKER_SIZE_PIXELS: f32 = 16.0;
 
-/// Ordered list of player-controlled team names.
-/// The game cycles through them each round; after the last team the global
-/// turn advances and movement resets for all heroes.
-const PLAYER_TEAMS: &[&str] = &["red", "blue"];
-
 // ─── MainScene ────────────────────────────────────────────────────────────────
 
 #[derive(GodotClass)]
 #[class(base=Node)]
 pub struct MainScene {
     base: Base<Node>,
-    /// The team whose heroes the player may currently select and move.
-    active_team: String,
     end_turn_dialog: Option<Gd<ConfirmationDialog>>,
     hire_hero_dialog: Option<Gd<ConfirmationDialog>>,
     hire_target_tile: Vector2i,
@@ -67,7 +60,6 @@ impl INode for MainScene {
     fn init(base: Base<Node>) -> Self {
         Self {
             base,
-            active_team: PLAYER_TEAMS[0].to_string(),
             end_turn_dialog: None,
             hire_hero_dialog: None,
             hire_target_tile: Vector2i::new(-1, -1),
@@ -517,8 +509,11 @@ impl MainScene {
         self.setup_city_markers();
         self.update_heroes_list();
         self.set_center_debug_inputs(MAP_WIDTH / 2, MAP_HEIGHT / 2);
-        // Always start a new game from the first player team.
-        self.active_team = PLAYER_TEAMS[0].to_string();
+        // Start with the first player team.
+        {
+            let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            gm.bind_mut().reset_active_team();
+        }
         self.select_first_active_team_hero();
         self.gamepad_cursor_tile = Vector2i::new(MAP_WIDTH / 2, MAP_HEIGHT / 2);
         self.apply_gamepad_cursor_highlight();
@@ -623,7 +618,7 @@ impl MainScene {
             }
         });
 
-        // Spawn Red hero (id = 1).
+        // Spawn Red hero (id = 1, team_id = 0).
         self.add_game_hero(1, "Красный", 100, 20, 10, 15, red_spawn, "red", true);
         self.create_hero_node(1, "red", true, red_spawn);
         {
@@ -633,12 +628,12 @@ impl MainScene {
                 &[
                     i64::from(red_spawn.x).to_variant(),
                     i64::from(red_spawn.y).to_variant(),
-                    GString::from("red").to_variant(),
+                    0i64.to_variant(), // TeamId 0 = Red
                 ],
             );
         }
 
-        // Spawn Blue hero (id = 2).
+        // Spawn Blue hero (id = 2, team_id = 1).
         self.add_game_hero(2, "Синий", 100, 20, 10, 15, blue_spawn, "blue", true);
         self.create_hero_node(2, "blue", true, blue_spawn);
         {
@@ -648,7 +643,7 @@ impl MainScene {
                 &[
                     i64::from(blue_spawn.x).to_variant(),
                     i64::from(blue_spawn.y).to_variant(),
-                    GString::from("blue").to_variant(),
+                    1i64.to_variant(), // TeamId 1 = Blue
                 ],
             );
         }
@@ -1074,7 +1069,8 @@ impl MainScene {
     /// Показывает диалог подтверждения завершения хода текущей команды.
     fn show_end_turn_dialog(&mut self) {
         if let Some(mut dialog) = self.end_turn_dialog.clone() {
-            let team = team_display_name(&self.active_team);
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let team = team_display_name(&gm.bind().get_active_team().to_string());
             dialog.set_text(&format!(
                 "Завершить ход команды {}?\nПосле этого ход перейдёт к следующей команде.",
                 team
@@ -1150,7 +1146,12 @@ impl MainScene {
         };
 
         // Hiring is only allowed at cities owned by the currently active player team.
-        if owner != self.active_team {
+        let active_team: String = {
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let x = gm.bind().get_active_team().to_string();
+            x
+        };
+        if owner != active_team {
             return;
         }
 
@@ -1221,7 +1222,8 @@ impl MainScene {
         }
         let controlled = gm.bind().is_hero_player_controlled(hero_id);
         let team = gm.bind().get_hero_team_name(hero_id).to_string();
-        if controlled && team == self.active_team {
+        let active_team = gm.bind().get_active_team().to_string();
+        if controlled && team == active_team {
             Some(hero_id)
         } else {
             None
@@ -1236,7 +1238,8 @@ impl MainScene {
 
     fn select_next_player_hero(&mut self) {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let next_id = gm.bind().get_next_hero(GString::from(&self.active_team));
+        let team_id = gm.bind().get_active_team_id();
+        let next_id = gm.bind().get_next_hero(team_id);
         if next_id >= 0 {
             self.set_selected_hero(next_id, true);
         }
@@ -1244,7 +1247,8 @@ impl MainScene {
 
     fn set_selected_hero(&mut self, hero_id: i64, focus_camera: bool) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        gm.bind_mut().set_active_hero(GString::from(&self.active_team), hero_id);
+        let team_id = gm.bind().get_active_team_id();
+        gm.bind_mut().set_active_hero(team_id, hero_id);
         self.highlight_selected_hero_in_list();
         if focus_camera {
             self.focus_camera_on_hero(hero_id);
@@ -1254,7 +1258,8 @@ impl MainScene {
     /// Returns the currently selected hero ID for the active team, or None if none selected.
     fn get_selected_hero_id(&self) -> Option<i64> {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let id = gm.bind().get_active_hero(GString::from(&self.active_team));
+        let team_id = gm.bind().get_active_team_id();
+        let id = gm.bind().get_active_hero(team_id);
         if id >= 0 { Some(id) } else { None }
     }
 
@@ -1286,7 +1291,8 @@ impl MainScene {
     /// Selects the first living hero of the active team, if any.
     fn select_first_active_team_hero(&mut self) {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let next_id = gm.bind().get_next_hero(GString::from(&self.active_team));
+        let team_id = gm.bind().get_active_team_id();
+        let next_id = gm.bind().get_next_hero(team_id);
         if next_id >= 0 {
             self.set_selected_hero(next_id, true);
         }
@@ -1296,33 +1302,24 @@ impl MainScene {
     /// moved — calls `advance_turn` (global turn counter + movement reset) and
     /// returns to the first player team.
     fn advance_active_team(&mut self) {
-        let current_idx = PLAYER_TEAMS
-            .iter()
-            .position(|&t| t == self.active_team.as_str())
-            .unwrap_or(0);
-        let next_idx = current_idx + 1;
-
-        if next_idx < PLAYER_TEAMS.len() {
-            // Still more player teams to go this round.
-            self.active_team = PLAYER_TEAMS[next_idx].to_string();
-        } else {
-            // All player teams are done — trigger the engine turn advance,
-            // which resets movement for every hero and increments the counter.
-            let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let should_advance_turn = gm.bind_mut().get_next_active_team();
+        if should_advance_turn {
             gm.call_deferred("advance_turn", &[]);
-            self.active_team = PLAYER_TEAMS[0].to_string();
         }
+        drop(gm);
 
         // Try to restore the last active hero for the new team.
         // If none set or hero is dead, select the first living hero.
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let last_id = gm.bind().get_active_hero(GString::from(&self.active_team));
+        let team_id = gm.bind().get_active_team_id();
+        let last_id = gm.bind().get_active_hero(team_id);
         if last_id >= 0 && gm.bind().is_hero_alive(last_id) {
             self.set_selected_hero(last_id, true);
         } else {
             self.select_first_active_team_hero();
         }
-        info!(active_team = %self.active_team, "team turn started");
+        info!(active_team = %gm.bind().get_active_team().to_string(), "team turn started");
     }
 
     fn normalize_seed(seed: String) -> String {
@@ -1473,7 +1470,7 @@ impl MainScene {
         };
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         let turn = gm.bind().get_turn();
-        let team = team_display_name(&self.active_team);
+        let team = team_display_name(&gm.bind().get_active_team().to_string());
         label.set_text(&format!("Ход: {turn} · {team}"));
     }
 

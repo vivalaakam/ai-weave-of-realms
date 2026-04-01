@@ -5,38 +5,61 @@ use serde::{Deserialize, Serialize};
 use crate::map::game_map::MapCoord;
 use crate::rng::SeededRng;
 
-// ─── Team ─────────────────────────────────────────────────────────────────────
+// ─── TeamId ───────────────────────────────────────────────────────────────────
 
-/// The team a hero belongs to.
+/// Numeric identifier for a team (0-8, allowing up to 9 teams).
+pub type TeamId = u8;
+
+// ─── TeamInfo ─────────────────────────────────────────────────────────────────
+
+/// Team configuration: identity, display name, and color.
 ///
-/// All units — player heroes and enemies alike — are heroes in a `Team`.
-/// The `player_controlled` flag distinguishes teams the human commands from AI-driven ones.
-/// The display colour (used for hero markers) is derived from the team name via [`Team::color`].
+/// Used to define player and AI teams in the game.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamInfo {
+    /// Unique numeric identifier (0-8).
+    pub id: TeamId,
+    /// Human-readable team name (e.g. "Red", "Blue").
+    pub name: String,
+    /// Display color as RGB tuple.
+    pub color: (u8, u8, u8),
+    /// `true` if the human player can select and command heroes on this team.
+    pub player_controlled: bool,
+}
+
+impl TeamInfo {
+    /// Creates a new team with the given properties.
+    pub fn new(id: TeamId, name: impl Into<String>, color: (u8, u8, u8), player_controlled: bool) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            color,
+            player_controlled,
+        }
+    }
+
+    /// Creates a default Red player team.
+    pub fn red() -> Self {
+        Self::new(0, "Red", (220, 50, 50), true)
+    }
+
+    /// Creates a default Blue player team.
+    pub fn blue() -> Self {
+        Self::new(1, "Blue", (50, 100, 220), true)
+    }
+
+    /// Creates a default AI-controlled enemy team.
+    pub fn enemy() -> Self {
+        Self::new(2, "Enemy", (150, 80, 200), false)
+    }
+}
+
+// ─── Team (legacy) ─────────────────────────────────────────────────────────────
+
+/// The team a hero belongs to (legacy inline representation).
 ///
-/// ## Built-in teams
-/// | Name      | Controlled | Colour |
-/// |-----------|------------|--------|
-/// | `"red"`   | player     | red    |
-/// | `"blue"`  | player     | blue   |
-/// | `"enemy"` | AI         | purple |
-///
-/// # Examples
-/// ```
-/// use rpg_engine::hero::Team;
-///
-/// let red = Team::red();
-/// assert!(red.player_controlled);
-/// assert_eq!(red.color(), (220, 50, 50));
-///
-/// let blue = Team::blue();
-/// assert!(blue.player_controlled);
-///
-/// let enemies = Team::enemies();
-/// assert!(!enemies.player_controlled);
-///
-/// let bandit_team = Team::new("bandits", false);
-/// assert_eq!(bandit_team.name, "bandits");
-/// ```
+/// For new code, prefer storing `team_id: TeamId` in heroes and
+/// looking up `TeamInfo` from `GameState::teams`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
     /// Human-readable team identifier (e.g. `"red"`, `"blue"`, `"enemy"`).

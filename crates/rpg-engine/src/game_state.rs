@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::combat::{self, CombatResult};
 use crate::error::Error;
 #[allow(unused_imports)] // Team is re-exported for tests via `use super::*`
-use crate::hero::{Hero, Team};
+use crate::hero::{Hero, Team, TeamId, TeamInfo};
 use crate::map::game_map::{Direction, GameMap, MapCoord};
 use crate::map::tile::Tiles;
 use crate::score::{ScoreBoard, ScoreEvent};
@@ -35,8 +35,8 @@ pub enum TurnEvent {
     },
     /// A hero visited a point of interest and triggered a score event.
     PoiVisited { hero_id: u32, coord: MapCoord },
-    /// City ownership changed: `team_name` is empty when the city becomes neutral.
-    CityOwnerChanged { coord: MapCoord, team_name: String },
+    /// City ownership changed: `team_id` is None when the city becomes neutral.
+    CityOwnerChanged { coord: MapCoord, team_id: Option<TeamId> },
     /// A hero engaged and resolved combat with an enemy.
     CombatResolved {
         attacker_id: u32,
@@ -62,14 +62,18 @@ pub struct GameState {
     /// Accumulated score.
     pub score: ScoreBoard,
     /// City tile ownership: maps each occupied city [`MapCoord`] to the owning
-    /// team name.  Absence from the map means the city is neutral.
-    pub city_owners: HashMap<MapCoord, String>,
+    /// team id.  Absence from the map means the city is neutral.
+    pub city_owners: HashMap<MapCoord, TeamId>,
+    /// All teams in the game (player-controlled and AI).
+    pub teams: Vec<TeamInfo>,
     /// Last active hero for each team. Used to restore selection when switching teams.
-    active_hero: HashMap<String, Option<u32>>,
+    active_hero: HashMap<TeamId, Option<u32>>,
+    /// The team whose turn it is to act (index into `teams`).
+    active_team_idx: usize,
 }
 
 impl GameState {
-    /// Creates a new game session at turn 1.
+    /// Creates a new game session at turn 1 with default teams (Red, Blue, Enemy).
     pub fn new(map: GameMap, heroes: Vec<Hero>) -> Self {
         Self {
             map,
@@ -77,12 +81,91 @@ impl GameState {
             turn: 1,
             score: ScoreBoard::new(),
             city_owners: HashMap::new(),
+            teams: vec![TeamInfo::red(), TeamInfo::blue()],
             active_hero: HashMap::new(),
+            active_team_idx: 0,
+        }
+    }
+
+    /// Creates a new game session with custom teams.
+    pub fn with_teams(map: GameMap, heroes: Vec<Hero>, teams: Vec<TeamInfo>) -> Self {
+        Self {
+            map,
+            heroes,
+            turn: 1,
+            score: ScoreBoard::new(),
+            city_owners: HashMap::new(),
+            teams,
+            active_hero: HashMap::new(),
+            active_team_idx: 0,
         }
     }
 
     pub fn get_turn(&self) -> u32 {
         self.turn
+    }
+
+    /// Returns the currently active team info.
+    pub fn get_active_team(&self) -> &TeamInfo {
+        &self.teams[self.active_team_idx]
+    }
+
+    /// Returns the currently active team id.
+    pub fn get_active_team_id(&self) -> TeamId {
+        self.teams[self.active_team_idx].id
+    }
+
+    /// Returns all player-controlled teams.
+    pub fn player_teams(&self) -> impl Iterator<Item = &TeamInfo> {
+        self.teams.iter().filter(|t| t.player_controlled)
+    }
+
+    /// Returns team info by id.
+    pub fn get_team(&self, id: TeamId) -> Option<&TeamInfo> {
+        self.teams.iter().find(|t| t.id == id)
+    }
+
+    /// Advances to the next player team.
+    ///
+    /// Returns `true` if the global turn advanced (all player teams completed their turns).
+    pub fn get_next_active_team(&mut self) -> bool {
+        // Find next player-controlled team
+        let start_idx = self.active_team_idx;
+        loop {
+            self.active_team_idx = (self.active_team_idx + 1) % self.teams.len();
+            if self.teams[self.active_team_idx].player_controlled {
+                break;
+            }
+            if self.active_team_idx == start_idx {
+                // Wrapped around - advance global turn
+                break;
+            }
+        }
+
+        // Check if we've cycled through all player teams
+        let player_teams: Vec<usize> = self.teams.iter()
+            .enumerate()
+            .filter(|(_, t)| t.player_controlled)
+            .map(|(i, _)| i)
+            .collect();
+
+        if self.active_team_idx == player_teams[0] {
+            // We're back at the first player team - advance global turn
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Resets to the first player-controlled team.
+    pub fn reset_active_team(&mut self) {
+        for (i, team) in self.teams.iter().enumerate() {
+            if team.player_controlled {
+                self.active_team_idx = i;
+                return;
+            }
+        }
+        self.active_team_idx = 0;
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -109,31 +192,35 @@ impl GameState {
             .find(|h| h.is_alive() && h.position == pos)
     }
 
-    /// Returns the team name that owns the city at `coord`, or `None` if neutral.
-    pub fn city_owner(&self, coord: MapCoord) -> Option<&str> {
-        self.city_owners.get(&coord).map(|s| s.as_str())
+    /// Returns the team id that owns the city at `coord`, or `None` if neutral.
+    pub fn city_owner(&self, coord: MapCoord) -> Option<TeamId> {
+        self.city_owners.get(&coord).copied()
     }
 
-    /// Returns the last active hero ID for `team_name`, or `None` if not set.
-    pub fn get_active_hero(&self, team_name: &str) -> Option<u32> {
-        self.active_hero.get(team_name).copied().flatten()
+    /// Returns the last active hero ID for `team_id`, or `None` if not set.
+    pub fn get_active_hero(&self, team_id: TeamId) -> Option<u32> {
+        self.active_hero.get(&team_id).copied().flatten()
     }
 
-    /// Sets the active hero for `team_name`.
-    pub fn set_active_hero(&mut self, team_name: &str, hero_id: Option<u32>) {
-        self.active_hero.insert(team_name.to_string(), hero_id);
+    /// Sets the active hero for `team_id`.
+    pub fn set_active_hero(&mut self, team_id: TeamId, hero_id: Option<u32>) {
+        self.active_hero.insert(team_id, hero_id);
     }
 
-    /// Returns the next hero for `team_name` after the current active one.
+    /// Returns the next hero for `team_id` after the current active one.
     ///
     /// If no active hero is set or the active hero is dead/wrong team,
     /// returns the first living hero of the team.
     /// Returns `None` if the team has no living heroes.
-    pub fn get_next_hero(&self, team_name: &str) -> Option<u32> {
+    pub fn get_next_hero(&self, team_id: TeamId) -> Option<u32> {
         let team_heroes: Vec<u32> = self
             .heroes
             .iter()
-            .filter(|h| h.team.name == team_name && h.is_alive())
+            .filter(|h| {
+                // For now, match by team name until Hero stores TeamId
+                self.teams.iter().any(|t| t.id == team_id && t.name.to_lowercase() == h.team.name)
+                    && h.is_alive()
+            })
             .map(|h| h.id)
             .collect();
 
@@ -141,7 +228,7 @@ impl GameState {
             return None;
         }
 
-        let current = self.get_active_hero(team_name);
+        let current = self.get_active_hero(team_id);
         let current_idx = current.and_then(|id| {
             team_heroes.iter().position(|&hid| hid == id)
         });
@@ -161,21 +248,34 @@ impl GameState {
     /// Sets the owning team for the city at `coord` and all connected city tiles.
     ///
     /// Uses BFS to flood all adjacent `City` / `CityEntrance` tiles so that the
-    /// entire city complex is claimed at once.  Pass an empty string to make
-    /// the city neutral.
+    /// entire city complex is claimed at once.  Pass `None` to make the city neutral.
     ///
     /// # Returns
     /// The full list of tile coordinates whose ownership was updated.
-    pub fn set_city_owner(&mut self, coord: MapCoord, team_name: String) -> Vec<MapCoord> {
+    pub fn set_city_owner(&mut self, coord: MapCoord, team_id: Option<TeamId>) -> Vec<MapCoord> {
         let connected = flood_city(&self.map, coord);
         for &c in &connected {
-            if team_name.is_empty() {
-                self.city_owners.remove(&c);
-            } else {
-                self.city_owners.insert(c, team_name.clone());
-            }
+            match team_id {
+                Some(id) => self.city_owners.insert(c, id),
+                None => self.city_owners.remove(&c),
+            };
         }
         connected
+    }
+
+    /// Finds TeamId by team name (case-insensitive). Returns None if not found.
+    pub fn team_id_by_name(&self, name: &str) -> Option<TeamId> {
+        let name_lower = name.to_lowercase();
+        self.teams.iter()
+            .find(|t| t.name.to_lowercase() == name_lower)
+            .map(|t| t.id)
+    }
+
+    /// Finds team name by TeamId. Returns None if not found.
+    pub fn team_name_by_id(&self, id: TeamId) -> Option<&str> {
+        self.teams.iter()
+            .find(|t| t.id == id)
+            .map(|t| t.name.as_str())
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -278,19 +378,22 @@ impl GameState {
             // entire connected city complex for the hero's team.
             // Emit CityOwnerChanged for every tile whose owner actually changes.
             if matches!(tile.kind, Tiles::City | Tiles::CityEntrance) {
-                let team_name = self.heroes[idx].team.name.clone();
-                for coord in flood_city(&self.map, target) {
-                    let already_owned = self
-                        .city_owners
-                        .get(&coord)
-                        .map(|o| o == &team_name)
-                        .unwrap_or(false);
-                    if !already_owned {
-                        self.city_owners.insert(coord, team_name.clone());
-                        events.push(TurnEvent::CityOwnerChanged {
-                            coord,
-                            team_name: team_name.clone(),
-                        });
+                // Find TeamId by hero's team name
+                let team_id = self.team_id_by_name(&self.heroes[idx].team.name);
+                if let Some(tid) = team_id {
+                    for coord in flood_city(&self.map, target) {
+                        let already_owned = self
+                            .city_owners
+                            .get(&coord)
+                            .map(|&o| o == tid)
+                            .unwrap_or(false);
+                        if !already_owned {
+                            self.city_owners.insert(coord, tid);
+                            events.push(TurnEvent::CityOwnerChanged {
+                                coord,
+                                team_id: Some(tid),
+                            });
+                        }
                     }
                 }
             }

@@ -337,13 +337,20 @@ impl GameManager {
                         ],
                     );
                 }
-                TurnEvent::CityOwnerChanged { coord, team_name } => {
+                TurnEvent::CityOwnerChanged { coord, team_id } => {
+                    let team_name = match team_id {
+                        Some(id) => self.state.as_ref()
+                            .and_then(|s| s.team_name_by_id(*id))
+                            .unwrap_or("")
+                            .to_string(),
+                        None => String::new(),
+                    };
                     self.base_mut().emit_signal(
                         "city_owner_changed",
                         &[
                             (coord.x as i64).to_variant(),
                             (coord.y as i64).to_variant(),
-                            GString::from(team_name).to_variant(),
+                            GString::from(team_name.as_str()).to_variant(),
                         ],
                     );
                 }
@@ -632,22 +639,30 @@ impl GameManager {
         let coord = MapCoord::new(x as u32, y as u32);
         state
             .city_owner(coord)
-            .filter(|s| !s.is_empty())
+            .and_then(|id| state.team_name_by_id(id))
             .map(GString::from)
             .unwrap_or_default()
     }
 
-    /// Assigns ownership of the city at `(x, y)` to `team_name`.
+    /// Assigns ownership of the city at `(x, y)` to `team_id`.
     ///
     /// BFS-floods all connected `City` / `CityEntrance` tiles so the entire
-    /// city complex is claimed at once.  Pass an empty string to mark neutral.
+    /// city complex is claimed at once.  Pass -1 to mark neutral.
     /// Emits `city_owner_changed` for every tile whose owner changed.
     #[func]
-    pub fn set_city_owner(&mut self, x: i64, y: i64, team_name: GString) {
+    pub fn set_city_owner(&mut self, x: i64, y: i64, team_id: i64) {
         let coord = MapCoord::new(x as u32, y as u32);
+        let tid = if team_id >= 0 { Some(team_id as u8) } else { None };
         let changed = {
             let Some(state) = &mut self.state else { return };
-            state.set_city_owner(coord, team_name.to_string())
+            state.set_city_owner(coord, tid)
+        };
+        let team_name = match tid {
+            Some(id) => self.state.as_ref()
+                .and_then(|s| s.team_name_by_id(id))
+                .unwrap_or("")
+                .to_string(),
+            None => String::new(),
         };
         for c in changed {
             self.base_mut().emit_signal(
@@ -655,7 +670,7 @@ impl GameManager {
                 &[
                     (c.x as i64).to_variant(),
                     (c.y as i64).to_variant(),
-                    team_name.clone().to_variant(),
+                    GString::from(team_name.as_str()).to_variant(),
                 ],
             );
         }
@@ -719,26 +734,26 @@ impl GameManager {
         ids
     }
 
-    /// Returns the last active hero ID for `team_name`, or -1 if not set.
+    /// Returns the last active hero ID for `team_id`, or -1 if not set.
     #[func]
-    pub fn get_active_hero(&self, team_name: GString) -> i64 {
+    pub fn get_active_hero(&self, team_id: i64) -> i64 {
         let Some(state) = &self.state else { return -1 };
-        state.get_active_hero(&team_name.to_string()).map(|id| id as i64).unwrap_or(-1)
+        state.get_active_hero(team_id as u8).map(|id| id as i64).unwrap_or(-1)
     }
 
-    /// Sets the active hero for `team_name`.
+    /// Sets the active hero for `team_id`.
     #[func]
-    pub fn set_active_hero(&mut self, team_name: GString, hero_id: i64) {
+    pub fn set_active_hero(&mut self, team_id: i64, hero_id: i64) {
         let Some(state) = &mut self.state else { return };
         let id = if hero_id >= 0 { Some(hero_id as u32) } else { None };
-        state.set_active_hero(&team_name.to_string(), id);
+        state.set_active_hero(team_id as u8, id);
     }
 
-    /// Returns the next hero for `team_name`, or -1 if none available.
+    /// Returns the next hero for `team_id`, or -1 if none available.
     #[func]
-    pub fn get_next_hero(&self, team_name: GString) -> i64 {
+    pub fn get_next_hero(&self, team_id: i64) -> i64 {
         let Some(state) = &self.state else { return -1 };
-        state.get_next_hero(&team_name.to_string()).map(|id| id as i64).unwrap_or(-1)
+        state.get_next_hero(team_id as u8).map(|id| id as i64).unwrap_or(-1)
     }
 
     /// Clears all active hero selections.
@@ -746,5 +761,75 @@ impl GameManager {
     pub fn clear_active_heroes(&mut self) {
         let Some(state) = &mut self.state else { return };
         state.clear_active_heroes();
+    }
+
+    /// Returns the currently active team id.
+    #[func]
+    pub fn get_active_team_id(&self) -> i64 {
+        let Some(state) = &self.state else { return -1 };
+        state.get_active_team_id() as i64
+    }
+
+    /// Returns the currently active team name.
+    #[func]
+    pub fn get_active_team(&self) -> GString {
+        let Some(state) = &self.state else { return GString::new() };
+        GString::from(state.get_active_team().name.as_str())
+    }
+
+    /// Returns the number of teams.
+    #[func]
+    pub fn get_team_count(&self) -> i64 {
+        let Some(state) = &self.state else { return 0 };
+        state.teams.len() as i64
+    }
+
+    /// Returns team id by index.
+    #[func]
+    pub fn get_team_id(&self, index: i64) -> i64 {
+        let Some(state) = &self.state else { return -1 };
+        state.teams.get(index as usize).map(|t| t.id as i64).unwrap_or(-1)
+    }
+
+    /// Returns team name by id.
+    #[func]
+    pub fn get_team_name(&self, team_id: i64) -> GString {
+        let Some(state) = &self.state else { return GString::new() };
+        state.get_team(team_id as u8)
+            .map(|t| GString::from(t.name.as_str()))
+            .unwrap_or_default()
+    }
+
+    /// Returns team color as RGB tuple packed into i64 (R << 16 | G << 8 | B).
+    #[func]
+    pub fn get_team_color(&self, team_id: i64) -> i64 {
+        let Some(state) = &self.state else { return 0 };
+        state.get_team(team_id as u8)
+            .map(|t| ((t.color.0 as i64) << 16) | ((t.color.1 as i64) << 8) | (t.color.2 as i64))
+            .unwrap_or(0)
+    }
+
+    /// Returns whether team is player-controlled.
+    #[func]
+    pub fn is_team_player_controlled(&self, team_id: i64) -> bool {
+        let Some(state) = &self.state else { return false };
+        state.get_team(team_id as u8)
+            .map(|t| t.player_controlled)
+            .unwrap_or(false)
+    }
+
+    /// Advances to the next player team.
+    /// Returns true if the global turn should advance.
+    #[func]
+    pub fn get_next_active_team(&mut self) -> bool {
+        let Some(state) = &mut self.state else { return false };
+        state.get_next_active_team()
+    }
+
+    /// Resets to the first player team.
+    #[func]
+    pub fn reset_active_team(&mut self) {
+        let Some(state) = &mut self.state else { return };
+        state.reset_active_team();
     }
 }
