@@ -88,9 +88,9 @@ impl HeroNode {
 
         // Colorise the marker by team name so each faction is visually distinct.
         let modulate = match self.team_name.to_string().as_str() {
-            "red"  => Color::from_rgba8(220, 50,  50,  255),
-            "blue" => Color::from_rgba8(50,  100, 220, 255),
-            _      => Color::from_rgba8(150, 80,  200, 255), // enemy / other
+            "red" => Color::from_rgba8(220, 50, 50, 255),
+            "blue" => Color::from_rgba8(50, 100, 220, 255),
+            _ => Color::from_rgba8(150, 80, 200, 255), // enemy / other
         };
         sprite.set_modulate(modulate);
 

@@ -605,13 +605,7 @@ impl GameManager {
     #[func]
     pub fn get_next_hero_id(&self) -> i64 {
         let Some(state) = &self.state else { return 1 };
-        state
-            .heroes
-            .iter()
-            .map(|h| h.id as i64)
-            .max()
-            .unwrap_or(0)
-            + 1
+        state.heroes.iter().map(|h| h.id as i64).max().unwrap_or(0) + 1
     }
 
     /// Returns `true` if the tile at `(x, y)` is a [`Tiles::City`] or [`Tiles::CityEntrance`].
@@ -619,7 +613,9 @@ impl GameManager {
     /// Returns `false` for out-of-bounds coordinates or when no game session is active.
     #[func]
     pub fn is_city_tile(&self, x: i64, y: i64) -> bool {
-        let Some(state) = &self.state else { return false };
+        let Some(state) = &self.state else {
+            return false;
+        };
         state
             .map
             .get_tile(MapCoord::new(x as u32, y as u32))

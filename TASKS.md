@@ -184,3 +184,4 @@ Update status as work progresses.
 | 9.3 | `city_owner_changed(x,y,team)` signal | — | DONE | Added to `GameManager`; emitted from `move_hero` handler and `set_city_owner #[func]`; connected in `MainScene::ready` |
 | 9.4 | `get_city_center_coords()` | — | DONE | `#[func]` on `GameManager` returns all `City` (center-body, not entrance) tile coords |
 | 9.5 | City ownership markers (`owner.svg`) | — | DONE | `setup_city_markers()` creates `Sprite2D(owner.svg)` at each `City` tile; coloured by team (red/blue/neutral); `_on_city_owner_changed` updates colour live; `World/CityMarkers` node created in code |
+| 9.6 | Fix `city_owner_changed` runtime panic and resize city ownership marker to 16x16 | Codex | DONE | Initial city ownership assignment now uses deferred `set_city_owner` calls to avoid reentrant `MainScene` mutable borrows; marker size is clamped to 16x16 and `owner.svg` width/height normalized |

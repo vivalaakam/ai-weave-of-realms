@@ -5,7 +5,7 @@
 use godot::classes::{
     Button, Camera2D, ConfirmationDialog, INode, Input, InputEvent, InputEventJoypadButton,
     InputEventKey, InputEventMouseButton, Label, LineEdit, Node, Node2D, ResourceLoader, Sprite2D,
-    Texture2D, TileMapLayer, VBoxContainer,
+    TileMapLayer, Texture2D, VBoxContainer,
 };
 use godot::global::{JoyAxis, JoyButton, Key, MouseButton};
 use godot::prelude::*;
@@ -35,7 +35,6 @@ const GAMEPAD_BTN_DPAD_DOWN: JoyButton = JoyButton::DPAD_DOWN;
 const GAMEPAD_BTN_DPAD_LEFT: JoyButton = JoyButton::DPAD_LEFT;
 const LEFT_STICK_DEADZONE: f32 = 0.50;
 const LEFT_STICK_REPEAT_INTERVAL: f64 = 0.14;
-const CITY_MARKER_SIZE_PIXELS: f32 = 16.0;
 
 /// Ordered list of player-controlled team names.
 /// The game cycles through them each round; after the last team the global
@@ -259,7 +258,10 @@ impl INode for MainScene {
                             if let Some(dir) = direction {
                                 let mut gm: Gd<GameManager> =
                                     self.base().get_node_as("GameManager");
-                                gm.call_deferred("move_hero", &[id.to_variant(), dir.to_variant()]);
+                                gm.call_deferred(
+                                    "move_hero",
+                                    &[id.to_variant(), dir.to_variant()],
+                                );
                             }
                         }
                     }
@@ -451,8 +453,7 @@ impl MainScene {
 
     fn apply_gamepad_cursor_highlight(&mut self) {
         if let Some(mut hl) = self.tile_highlight() {
-            hl.bind_mut()
-                .set_forced_active_tile(self.gamepad_cursor_tile);
+            hl.bind_mut().set_forced_active_tile(self.gamepad_cursor_tile);
         }
     }
 
@@ -622,62 +623,30 @@ impl MainScene {
             // No second city: pick the point farthest from red_spawn on the map.
             let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
             let ep = gm.bind().get_enemy_spawn();
-            if ep.x >= 0 {
-                ep
-            } else {
-                fallback
-            }
+            if ep.x >= 0 { ep } else { fallback }
         });
 
         // Spawn Red hero (id = 1).
-        self.add_game_hero(
-            1,
-            "Красный",
-            100,
-            20,
-            10,
-            15,
-            i64::from(red_spawn.x),
-            i64::from(red_spawn.y),
-            "red",
-            true,
-        );
-        self.create_hero_node(1, "red", true, red_spawn);
+        self.add_game_hero(1, "Красный", 100, 20, 10, 15,
+            i64::from(red_spawn.x), i64::from(red_spawn.y), "red", true);
+        self.create_hero_node(1, "red", true, red_spawn.x, red_spawn.y);
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            gm.call_deferred(
-                "set_city_owner",
-                &[
-                    i64::from(red_spawn.x).to_variant(),
-                    i64::from(red_spawn.y).to_variant(),
-                    GString::from("red").to_variant(),
-                ],
+            gm.bind_mut().set_city_owner(
+                i64::from(red_spawn.x), i64::from(red_spawn.y),
+                GString::from("red"),
             );
         }
 
         // Spawn Blue hero (id = 2).
-        self.add_game_hero(
-            2,
-            "Синий",
-            100,
-            20,
-            10,
-            15,
-            i64::from(blue_spawn.x),
-            i64::from(blue_spawn.y),
-            "blue",
-            true,
-        );
-        self.create_hero_node(2, "blue", true, blue_spawn);
+        self.add_game_hero(2, "Синий", 100, 20, 10, 15,
+            i64::from(blue_spawn.x), i64::from(blue_spawn.y), "blue", true);
+        self.create_hero_node(2, "blue", true, blue_spawn.x, blue_spawn.y);
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            gm.call_deferred(
-                "set_city_owner",
-                &[
-                    i64::from(blue_spawn.x).to_variant(),
-                    i64::from(blue_spawn.y).to_variant(),
-                    GString::from("blue").to_variant(),
-                ],
+            gm.bind_mut().set_city_owner(
+                i64::from(blue_spawn.x), i64::from(blue_spawn.y),
+                GString::from("blue"),
             );
         }
 
@@ -697,7 +666,7 @@ impl MainScene {
 
         // Collect enemy data first (immutable borrow).
         // Query team info from engine — HeroNode does not cache mutable state.
-        let mut enemy_data: Vec<(i64, String, bool, Vector2i)> = Vec::new();
+        let mut enemy_data: Vec<(i64, String, bool, i32, i32)> = Vec::new();
         {
             let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
             let enemy_ids = gm.bind().get_living_enemy_hero_ids();
@@ -706,14 +675,14 @@ impl MainScene {
                 if pos.x >= 0 && pos.y >= 0 {
                     let team_name = gm.bind().get_hero_team_name(id).to_string();
                     let player_controlled = gm.bind().is_hero_player_controlled(id);
-                    enemy_data.push((id, team_name, player_controlled, pos));
+                    enemy_data.push((id, team_name, player_controlled, pos.x, pos.y));
                 }
             }
         }
 
         // Now create hero nodes (mutable borrow).
-        for (hero_id, team_name, player_controlled, pos) in enemy_data {
-            self.create_hero_node(hero_id, &team_name, player_controlled, pos);
+        for (hero_id, team_name, player_controlled, x, y) in enemy_data {
+            self.create_hero_node(hero_id, &team_name, player_controlled, x, y);
         }
 
         self.update_heroes_list();
@@ -746,34 +715,14 @@ impl MainScene {
         }
 
         // Load the ownership icon texture.
-        let texture = match ResourceLoader::singleton()
-            .load("res://assets/owner.svg")
-            .and_then(|r| r.try_cast::<Texture2D>().ok())
-        {
-            Some(t) => t,
-            None => {
-                warn!("setup_city_markers: failed to load res://assets/owner.svg");
-                return;
-            }
-        };
-        let texture_size = texture.get_size();
-        if texture_size.x <= 0.0 || texture_size.y <= 0.0 {
-            warn!("setup_city_markers: owner texture has invalid size");
-            return;
-        }
-        let marker_scale = Vector2::new(
-            CITY_MARKER_SIZE_PIXELS / texture_size.x,
-            CITY_MARKER_SIZE_PIXELS / texture_size.y,
-        );
+        let texture = ResourceLoader::singleton()
+              .load("res://assets/owner.svg")
+              .and_then(|r| r.try_cast::<Texture2D>().ok())
+              .unwrap_or_else(|| {
+                 warn!("setup_city_markers: owner.svg not found, using default");
+                 Texture2D::new().into_gd()
+              });
 
-        // Query city center coordinates.
-        let city_coords: Vec<Vector2i> = {
-            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            let v = gm.bind().get_city_center_coords().iter_shared().collect();
-            v
-        };
-
-        for coord in city_coords {
             let owner = {
                 let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
                 let v = gm
@@ -786,7 +735,7 @@ impl MainScene {
             let mut sprite = Sprite2D::new_alloc();
             sprite.set_texture(&texture);
             sprite.set_centered(true);
-            sprite.set_scale(marker_scale);
+            sprite.set_scale(Vector2::new(0.5, 0.5));
             // Float above the tile surface in isometric space.
             sprite.set_offset(Vector2::new(0.0, -20.0));
             sprite.set_z_index(50);
@@ -812,29 +761,20 @@ impl MainScene {
     /// `team_name`.  If the tile has no marker (e.g. it is a `CityEntrance`) the
     /// call is a silent no-op.
     #[func]
-    fn _on_city_owner_changed(&mut self, x: i64, y: i64, team_name: GString) {
-        let path = format!("World/CityMarkers/CityMarker_{}_{}", x, y);
-        let Some(node) = self.base().get_node_or_null(&path) else {
-            return; // entrance tile — no marker
-        };
-        let Ok(mut sprite) = node.try_cast::<Sprite2D>() else {
+     fn _on_city_owner_changed(&mut self, x: i64, y: i64, team_name: GString) {
+         let path = format!("World/CityMarkers/CityMarker_{}_{}", x, y);
+         let Some(city_node) = self.base_mut().get_node_or_null(&path) else {
             return;
-        };
-        sprite.set_modulate(team_marker_color(&team_name.to_string()));
-    }
+            }
 
-    #[allow(clippy::too_many_arguments)]
+         }
+
     fn add_game_hero(
-        &mut self,
+         &mut self,
         id: i64,
         name: &str,
         hp: i64,
         atk: i64,
-        def: i64,
-        spd: i64,
-        x: i64,
-        y: i64,
-        team_name: &str,
         player_controlled: bool,
     ) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
@@ -857,7 +797,8 @@ impl MainScene {
         id: i64,
         team_name: &str,
         player_controlled: bool,
-        pos: Vector2i,
+        tx: i32,
+        ty: i32,
     ) {
         let mut hero = HeroNode::new_alloc();
         let name = StringName::from(&format!("Hero_{}", id));
@@ -868,7 +809,7 @@ impl MainScene {
             b.team_name = GString::from(team_name);
             b.player_controlled = player_controlled;
         }
-        if let Some(world_pos) = self.map_tile_to_world(pos) {
+        if let Some(world_pos) = self.map_tile_to_world(Vector2i::new(tx, ty)) {
             hero.set_position(world_pos);
         }
 
@@ -985,6 +926,7 @@ impl MainScene {
         let player = gm.bind().get_player_spawn();
         (player.x >= 0 && player.y >= 0).then_some(player)
     }
+
 
     /// Updates the heroes list in the UI panel.
     fn update_heroes_list(&mut self) {
@@ -1171,10 +1113,7 @@ impl MainScene {
         // Determine which team owns this city.
         let owner = {
             let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            let v = gm
-                .bind()
-                .get_city_owner(tile.x as i64, tile.y as i64)
-                .to_string();
+            let v = gm.bind().get_city_owner(tile.x as i64, tile.y as i64).to_string();
             v
         };
 
@@ -1226,19 +1165,9 @@ impl MainScene {
             v
         };
         let name = format!("Герой {new_id}");
-        self.add_game_hero(
-            new_id,
-            &name,
-            100,
-            20,
-            10,
-            15,
-            tile.x as i64,
-            tile.y as i64,
-            &team,
-            true,
-        );
-        self.create_hero_node(new_id, &team, true, tile);
+        self.add_game_hero(new_id, &name, 100, 20, 10, 15,
+            tile.x as i64, tile.y as i64, &team, true);
+        self.create_hero_node(new_id, &team, true, tile.x, tile.y);
         self.update_heroes_list();
         info!(hero_id = new_id, team = %team, x = tile.x, y = tile.y, "hired new hero at city");
     }
@@ -1563,9 +1492,9 @@ impl MainScene {
 /// Returns a human-readable Russian display name for a team identifier.
 fn team_display_name(team: &str) -> &'static str {
     match team {
-        "red" => "Красных",
+        "red"  => "Красных",
         "blue" => "Синих",
-        _ => "Врагов",
+        _      => "Врагов",
     }
 }
 
@@ -1575,8 +1504,8 @@ fn team_display_name(team: &str) -> &'static str {
 /// colours with slight transparency so the underlying tile remains visible.
 fn team_marker_color(team: &str) -> Color {
     match team {
-        "red" => Color::from_rgba8(220, 50, 50, 210),
-        "blue" => Color::from_rgba8(50, 100, 220, 210),
-        _ => Color::from_rgba8(180, 180, 180, 120), // neutral / unknown
+        "red"  => Color::from_rgba8(220, 50,  50,  210),
+        "blue" => Color::from_rgba8(50,  100, 220, 210),
+        _      => Color::from_rgba8(180, 180, 180, 120), // neutral / unknown
     }
 }

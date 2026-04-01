@@ -164,8 +164,6 @@ impl Tiles {
         }
     }
 
-
-
     /// Returns the TMX GID for this tile (1-based; GID 0 is reserved by Tiled for "empty").
     ///
     /// Assumes a single tileset whose first GID is 1.
