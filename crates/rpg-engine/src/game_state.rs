@@ -74,6 +74,13 @@ impl GameState {
         self.heroes.iter().find(|h| h.id == id)
     }
 
+    /// Returns a reference to the living hero at `pos`, or `None`.
+    pub fn hero_at(&self, pos: MapCoord) -> Option<&Hero> {
+        self.heroes
+            .iter()
+            .find(|h| h.is_alive() && h.position == pos)
+    }
+
     // ── Actions ───────────────────────────────────────────────────────────────
 
     /// Moves hero `hero_id` to `target`, spending movement points.
@@ -90,6 +97,14 @@ impl GameState {
         target: MapCoord,
     ) -> Result<Vec<TurnEvent>, Error> {
         let idx = self.hero_index(hero_id)?;
+        
+        // Check if target is occupied by another living hero
+        if let Some(other) = self.hero_at(target) {
+            if other.id != hero_id {
+                return Err(Error::OccupiedTile { x: target.x, y: target.y });
+            }
+        }
+        
         let start  = self.heroes[idx].position;
         let budget = self.heroes[idx].mov_remaining;
 

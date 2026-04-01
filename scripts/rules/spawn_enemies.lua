@@ -73,7 +73,7 @@ local function get_zone(x, y, map_w, map_h)
     return 4 -- bottom-right
 end
 
-local function is_valid_spawn(tx, ty, placed, map_w, map_h, map)
+local function is_valid_spawn(tx, ty, placed, map_w, map_h, map, player_x, player_y)
     -- Check bounds
     if tx < 0 or tx >= map_w or ty < 0 or ty >= map_h then
         return false
@@ -83,6 +83,13 @@ local function is_valid_spawn(tx, ty, placed, map_w, map_h, map)
     local tile = tile_at({ tiles = map.tiles, chunks_wide = map.chunks_wide, width = map_w }, tx, ty)
     if not tile or not SPAWNABLE[tile] then
         return false
+    end
+
+    -- Check distance from player spawn (minimum 3 tiles away)
+    if player_x and player_y then
+        if distance(tx, ty, player_x, player_y) < 3 then
+            return false
+        end
     end
 
     -- Check distance from other placed enemies (minimum 5 tiles apart)
@@ -132,7 +139,7 @@ local function count_spawnable_in_zone(map, zone, map_w, map_h)
 end
 
 -- Try to place enemy in a specific zone
-local function try_place_in_zone(map, zone, placed, map_w, map_h, max_attempts)
+local function try_place_in_zone(map, zone, placed, map_w, map_h, max_attempts, player_x, player_y)
     local half_w = map_w / 2
     local half_h = map_h / 2
     
@@ -152,7 +159,7 @@ local function try_place_in_zone(map, zone, placed, map_w, map_h, max_attempts)
         local tx = math.random(math.floor(x_min), math.floor(x_max))
         local ty = math.random(math.floor(y_min), math.floor(y_max))
         
-        if is_valid_spawn(tx, ty, placed, map_w, map_h, map) then
+        if is_valid_spawn(tx, ty, placed, map_w, map_h, map, player_x, player_y) then
             return { x = tx, y = ty }
         end
     end
@@ -161,6 +168,7 @@ local function try_place_in_zone(map, zone, placed, map_w, map_h, max_attempts)
 end
 
 return function(map)
+    local player_x, player_y = find_player_start(map)
     local map_w = map.width or (map.chunks_wide * 32)
     local map_h = map.height or (map.chunks_tall * 32)
     local enemies = {}
@@ -183,7 +191,7 @@ return function(map)
     -- First pass: try to place at least one enemy in each zone
     for _, zone in ipairs(zones) do
         if #enemies < MAX_ENEMIES then
-            local pos = try_place_in_zone(map, zone, placed, map_w, map_h, 200)
+            local pos = try_place_in_zone(map, zone, placed, map_w, map_h, 200, player_x, player_y)
             if pos then
                 -- Determine enemy type based on zone distance from center
                 local center_dist = distance(pos.x, pos.y, map_w / 2, map_h / 2)
@@ -234,16 +242,16 @@ return function(map)
         
         for z = 1, 4 do
             if zone_counts[z] and zone_counts[z] < min_count and zone_counts[z] > 0 then
-                min_count = zone_counts[zone]
+                min_count = zone_counts[z]
                 min_zone = z
             end
         end
         
-        local pos = try_place_in_zone(map, min_zone, placed, map_w, map_h, 100)
+        local pos = try_place_in_zone(map, min_zone, placed, map_w, map_h, 100, player_x, player_y)
         if not pos then
             -- Fallback: try any zone
             for _, zone in ipairs(zones) do
-                pos = try_place_in_zone(map, zone, placed, map_w, map_h, 50)
+                pos = try_place_in_zone(map, zone, placed, map_w, map_h, 50, player_x, player_y)
                 if pos then break end
             end
         end

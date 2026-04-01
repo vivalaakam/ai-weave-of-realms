@@ -34,4 +34,8 @@ pub enum Error {
     /// Movement was requested to a tile that cannot be reached.
     #[error("unreachable tile at ({x}, {y})")]
     UnreachableTile { x: u32, y: u32 },
+
+    /// Movement was requested to a tile occupied by another hero.
+    #[error("tile at ({x}, {y}) is occupied by another hero")]
+    OccupiedTile { x: u32, y: u32 },
 }
