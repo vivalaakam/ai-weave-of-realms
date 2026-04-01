@@ -630,18 +630,7 @@ impl MainScene {
         });
 
         // Spawn Red hero (id = 1).
-        self.add_game_hero(
-            1,
-            "Красный",
-            100,
-            20,
-            10,
-            15,
-            i64::from(red_spawn.x),
-            i64::from(red_spawn.y),
-            "red",
-            true,
-        );
+        self.add_game_hero(1, "Красный", 100, 20, 10, 15, red_spawn, "red", true);
         self.create_hero_node(1, "red", true, red_spawn);
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
@@ -656,18 +645,7 @@ impl MainScene {
         }
 
         // Spawn Blue hero (id = 2).
-        self.add_game_hero(
-            2,
-            "Синий",
-            100,
-            20,
-            10,
-            15,
-            i64::from(blue_spawn.x),
-            i64::from(blue_spawn.y),
-            "blue",
-            true,
-        );
+        self.add_game_hero(2, "Синий", 100, 20, 10, 15, blue_spawn, "blue", true);
         self.create_hero_node(2, "blue", true, blue_spawn);
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
@@ -832,8 +810,7 @@ impl MainScene {
         atk: i64,
         def: i64,
         spd: i64,
-        x: i64,
-        y: i64,
+        pos: Vector2i,
         team_name: &str,
         player_controlled: bool,
     ) {
@@ -845,8 +822,7 @@ impl MainScene {
             atk,
             def,
             spd,
-            x,
-            y,
+            pos,
             GString::from(team_name),
             player_controlled,
         );
@@ -1226,18 +1202,7 @@ impl MainScene {
             v
         };
         let name = format!("Герой {new_id}");
-        self.add_game_hero(
-            new_id,
-            &name,
-            100,
-            20,
-            10,
-            15,
-            tile.x as i64,
-            tile.y as i64,
-            &team,
-            true,
-        );
+        self.add_game_hero(new_id, &name, 100, 20, 10, 15, tile, &team, true);
         self.create_hero_node(new_id, &team, true, tile);
         self.update_heroes_list();
         info!(hero_id = new_id, team = %team, x = tile.x, y = tile.y, "hired new hero at city");

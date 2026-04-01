@@ -180,8 +180,7 @@ impl GameManager {
         atk: i64,
         def: i64,
         spd: i64,
-        x: i64,
-        y: i64,
+        pos: Vector2i,
         team_name: GString,
         player_controlled: bool,
     ) -> bool {
@@ -193,7 +192,7 @@ impl GameManager {
             .rng
             .as_ref()
             .map(|r| r.derive_for_hero(id as u32))
-            .unwrap_or_else(|| rpg_engine::rng::SeededRng::new(&format!("hero_{id}")));
+            .unwrap_or_else(|| SeededRng::new(&format!("hero_{id}")));
         let hero = Hero::new(
             id as u32,
             name.to_string(),
@@ -201,7 +200,7 @@ impl GameManager {
             atk as u32,
             def as u32,
             spd as u32,
-            MapCoord::new(x as u32, y as u32),
+            MapCoord::new(pos.x as u32, pos.y as u32),
             team,
             hero_rng,
         );
