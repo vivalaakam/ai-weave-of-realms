@@ -141,6 +141,7 @@ Update status as work progresses.
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
 | 8.1 | Показывать диалог найма героя при клике/нажатии X на городе без героя игрока | Copilot | DONE | Мышь + gamepad X; `is_city_tile()` и `get_next_hero_id()` в GameManager; `_create_hire_hero_dialog` в MainScene |
+| 8.2 | Три команды Red/Blue/Enemy, разные города, цветные маркеры, владение городами | Copilot | DONE | `Team::color()`, `Team::red/blue/enemies()`, `GameState::city_owners`, `find_city_entrance_spawns()`, HeroNode modulate по team_name, найм только в своих городах |
 
 ---
 

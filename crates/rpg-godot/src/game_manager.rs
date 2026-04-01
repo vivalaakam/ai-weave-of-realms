@@ -608,6 +608,49 @@ impl GameManager {
             .unwrap_or(false)
     }
 
+    /// Returns the name of the team that owns the city at `(x, y)`, or an empty
+    /// string if the city is neutral or the coordinates are out of bounds.
+    #[func]
+    pub fn get_city_owner(&self, x: i64, y: i64) -> GString {
+        let Some(state) = &self.state else {
+            return GString::default();
+        };
+        let coord = MapCoord::new(x as u32, y as u32);
+        state
+            .city_owner(coord)
+            .filter(|s| !s.is_empty())
+            .map(GString::from)
+            .unwrap_or_default()
+    }
+
+    /// Assigns ownership of the city at `(x, y)` to `team_name`.
+    ///
+    /// Pass an empty string to mark the city as neutral.
+    /// Typically called once at game-start when heroes are placed at their home cities.
+    #[func]
+    pub fn set_city_owner(&mut self, x: i64, y: i64, team_name: GString) {
+        let Some(state) = &mut self.state else { return };
+        let coord = MapCoord::new(x as u32, y as u32);
+        state.set_city_owner(coord, team_name.to_string());
+    }
+
+    /// Returns up to `count` city-entrance spawn points spread across the map.
+    ///
+    /// Uses greedy farthest-point selection so the returned tiles are as far apart
+    /// as possible — ideal for placing multiple player team starting positions.
+    #[func]
+    pub fn find_city_entrance_spawns(&self, count: i64) -> Array<Vector2i> {
+        let Some(state) = &self.state else {
+            return Array::new();
+        };
+        let spawns = spawn::find_city_entrance_spawns(&state.map, count as usize);
+        let mut arr = Array::new();
+        for c in spawns {
+            arr.push(Vector2i::new(c.x as i32, c.y as i32));
+        }
+        arr
+    }
+
     /// Returns ids of all living AI-controlled heroes in stable insertion order.
     #[func]
     pub fn get_living_enemy_hero_ids(&self) -> Array<i64> {

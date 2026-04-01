@@ -81,6 +81,68 @@ pub fn find_enemy_spawn(map: &GameMap, player: MapCoord) -> Result<MapCoord, Err
     find_best_tile(map, fallback_passable_priority)
 }
 
+/// Selects up to `count` [`Tiles::CityEntrance`] tiles spread across the map.
+///
+/// Uses greedy farthest-point selection to maximise distance between the
+/// chosen spawns.  If fewer than `count` city entrance tiles exist, falls
+/// back to plain [`Tiles::City`] tiles, then to any passable tile.
+///
+/// Returns an empty `Vec` only when the map has no passable tiles at all.
+pub fn find_city_entrance_spawns(map: &GameMap, count: usize) -> Vec<MapCoord> {
+    if count == 0 {
+        return Vec::new();
+    }
+
+    // Collect CityEntrance tiles first, then City as fallback.
+    let mut candidates: Vec<MapCoord> = Vec::new();
+    for_each_coord(map, |coord, kind| {
+        if kind == Tiles::CityEntrance {
+            candidates.push(coord);
+        }
+    });
+    if candidates.is_empty() {
+        for_each_coord(map, |coord, kind| {
+            if kind == Tiles::City {
+                candidates.push(coord);
+            }
+        });
+    }
+    if candidates.is_empty() {
+        // Last resort: any passable tile.
+        for_each_coord(map, |coord, kind| {
+            if kind.is_passable() {
+                candidates.push(coord);
+            }
+        });
+    }
+
+    if candidates.len() <= count {
+        return candidates;
+    }
+
+    // Greedy farthest-point selection: start from the first candidate and
+    // iteratively pick the candidate farthest from all already-selected points.
+    let mut selected: Vec<MapCoord> = vec![candidates[0]];
+    while selected.len() < count {
+        let next = candidates
+            .iter()
+            .filter(|c| !selected.contains(c))
+            .max_by_key(|&&c| {
+                // Key = minimum Manhattan distance to any already-selected point.
+                selected
+                    .iter()
+                    .map(|&s| manhattan_distance(c, s))
+                    .min()
+                    .unwrap_or(0)
+            });
+        match next {
+            Some(&coord) => selected.push(coord),
+            None => break,
+        }
+    }
+    selected
+}
+
 fn find_best_tile(
     map: &GameMap,
     priority: fn(MapCoord, Tiles, u32, u32) -> Option<i32>,

@@ -12,6 +12,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::combat::{self, CombatResult};
 use crate::error::Error;
@@ -34,6 +35,8 @@ pub enum TurnEvent {
     },
     /// A hero visited a point of interest and triggered a score event.
     PoiVisited { hero_id: u32, coord: MapCoord },
+    /// City ownership changed: `team_name` is empty when the city becomes neutral.
+    CityOwnerChanged { coord: MapCoord, team_name: String },
     /// A hero engaged and resolved combat with an enemy.
     CombatResolved {
         attacker_id: u32,
@@ -58,6 +61,9 @@ pub struct GameState {
     turn: u32,
     /// Accumulated score.
     pub score: ScoreBoard,
+    /// City tile ownership: maps each occupied city [`MapCoord`] to the owning
+    /// team name.  Absence from the map means the city is neutral.
+    pub city_owners: HashMap<MapCoord, String>,
 }
 
 impl GameState {
@@ -68,6 +74,7 @@ impl GameState {
             heroes,
             turn: 1,
             score: ScoreBoard::new(),
+            city_owners: HashMap::new(),
         }
     }
 
@@ -97,6 +104,18 @@ impl GameState {
         self.heroes
             .iter()
             .find(|h| h.is_alive() && h.position == pos)
+    }
+
+    /// Returns the team name that owns the city at `coord`, or `None` if neutral.
+    pub fn city_owner(&self, coord: MapCoord) -> Option<&str> {
+        self.city_owners.get(&coord).map(|s| s.as_str())
+    }
+
+    /// Sets the owning team for the city at `coord`.
+    ///
+    /// Pass an empty string (or use `city_owners.remove`) to make a city neutral.
+    pub fn set_city_owner(&mut self, coord: MapCoord, team_name: String) {
+        self.city_owners.insert(coord, team_name);
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -192,6 +211,24 @@ impl GameState {
                             .record(ScoreEvent::ResourceCollected { coord: target });
                     }
                     _ => {}
+                }
+            }
+
+            // City ownership: any hero entering a City or CityEntrance claims it for
+            // their team.  Emit CityOwnerChanged only when the owner actually changes.
+            if matches!(tile.kind, Tiles::City | Tiles::CityEntrance) {
+                let team_name = self.heroes[idx].team.name.clone();
+                let already_owned = self
+                    .city_owners
+                    .get(&target)
+                    .map(|o| o == &team_name)
+                    .unwrap_or(false);
+                if !already_owned {
+                    self.city_owners.insert(target, team_name.clone());
+                    events.push(TurnEvent::CityOwnerChanged {
+                        coord: target,
+                        team_name,
+                    });
                 }
             }
         }

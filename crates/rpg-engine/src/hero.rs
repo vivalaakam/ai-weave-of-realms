@@ -10,25 +10,36 @@ use crate::rng::SeededRng;
 /// The team a hero belongs to.
 ///
 /// All units — player heroes and enemies alike — are heroes in a `Team`.
-/// The `player_controlled` flag is the only thing that distinguishes a team the
-/// human commands from one driven by AI.
+/// The `player_controlled` flag distinguishes teams the human commands from AI-driven ones.
+/// The display colour (used for hero markers) is derived from the team name via [`Team::color`].
+///
+/// ## Built-in teams
+/// | Name      | Controlled | Colour |
+/// |-----------|------------|--------|
+/// | `"red"`   | player     | red    |
+/// | `"blue"`  | player     | blue   |
+/// | `"enemy"` | AI         | purple |
 ///
 /// # Examples
 /// ```
 /// use rpg_engine::hero::Team;
 ///
-/// let player_team = Team::player();
-/// assert!(player_team.player_controlled);
+/// let red = Team::red();
+/// assert!(red.player_controlled);
+/// assert_eq!(red.color(), (220, 50, 50));
 ///
-/// let enemy_team = Team::enemy();
-/// assert!(!enemy_team.player_controlled);
+/// let blue = Team::blue();
+/// assert!(blue.player_controlled);
+///
+/// let enemies = Team::enemies();
+/// assert!(!enemies.player_controlled);
 ///
 /// let bandit_team = Team::new("bandits", false);
 /// assert_eq!(bandit_team.name, "bandits");
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
-    /// Human-readable team identifier (e.g. `"player"`, `"enemy"`).
+    /// Human-readable team identifier (e.g. `"red"`, `"blue"`, `"enemy"`).
     pub name: String,
     /// `true` if the human player can select and command heroes on this team.
     pub player_controlled: bool,
@@ -43,12 +54,41 @@ impl Team {
         }
     }
 
-    /// Convenience constructor for the human player's team.
+    /// Returns the display colour for this team as an `(R, G, B)` tuple.
+    ///
+    /// Colours are derived from the team name:
+    /// - `"red"`  → `(220, 50, 50)`
+    /// - `"blue"` → `(50, 100, 220)`
+    /// - anything else → `(150, 80, 200)` (purple, used for AI enemies)
+    pub fn color(&self) -> (u8, u8, u8) {
+        match self.name.as_str() {
+            "red" => (220, 50, 50),
+            "blue" => (50, 100, 220),
+            _ => (150, 80, 200),
+        }
+    }
+
+    /// Convenience constructor for the **Red** player team.
+    pub fn red() -> Self {
+        Self::new("red", true)
+    }
+
+    /// Convenience constructor for the **Blue** player team.
+    pub fn blue() -> Self {
+        Self::new("blue", true)
+    }
+
+    /// Convenience constructor for the AI-controlled **enemy** team.
+    pub fn enemies() -> Self {
+        Self::new("enemy", false)
+    }
+
+    /// Convenience constructor for the human player's team (legacy; prefer [`Team::red`]).
     pub fn player() -> Self {
         Self::new("player", true)
     }
 
-    /// Convenience constructor for a standard AI-controlled enemy team.
+    /// Convenience constructor for a standard AI-controlled enemy team (legacy; prefer [`Team::enemies`]).
     pub fn enemy() -> Self {
         Self::new("enemy", false)
     }

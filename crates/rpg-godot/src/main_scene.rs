@@ -35,6 +35,11 @@ const GAMEPAD_BTN_DPAD_LEFT: JoyButton = JoyButton::DPAD_LEFT;
 const LEFT_STICK_DEADZONE: f32 = 0.50;
 const LEFT_STICK_REPEAT_INTERVAL: f64 = 0.14;
 
+/// Ordered list of player-controlled team names.
+/// The game cycles through them each round; after the last team the global
+/// turn advances and movement resets for all heroes.
+const PLAYER_TEAMS: &[&str] = &["red", "blue"];
+
 // ─── MainScene ────────────────────────────────────────────────────────────────
 
 #[derive(GodotClass)]
@@ -42,9 +47,13 @@ const LEFT_STICK_REPEAT_INTERVAL: f64 = 0.14;
 pub struct MainScene {
     base: Base<Node>,
     selected_hero_id: i64,
+    /// The team whose heroes the player may currently select and move.
+    active_team: String,
     end_turn_dialog: Option<Gd<ConfirmationDialog>>,
     hire_hero_dialog: Option<Gd<ConfirmationDialog>>,
     hire_target_tile: Vector2i,
+    /// Team name for the city where the pending hire will take place.
+    hire_target_team: String,
     left_stick_move_cooldown: f64,
     left_stick_direction_held: bool,
     cross_was_pressed: bool,
@@ -58,9 +67,11 @@ impl INode for MainScene {
         Self {
             base,
             selected_hero_id: -1,
+            active_team: PLAYER_TEAMS[0].to_string(),
             end_turn_dialog: None,
             hire_hero_dialog: None,
             hire_target_tile: Vector2i::new(-1, -1),
+            hire_target_team: String::new(),
             left_stick_move_cooldown: 0.0,
             left_stick_direction_held: false,
             cross_was_pressed: false,
@@ -509,7 +520,9 @@ impl MainScene {
         self.spawn_heroes();
         self.update_heroes_list();
         self.set_center_debug_inputs(MAP_WIDTH / 2, MAP_HEIGHT / 2);
-        self.select_first_player_hero();
+        // Always start a new game from the first player team.
+        self.active_team = PLAYER_TEAMS[0].to_string();
+        self.select_first_active_team_hero();
         self.gamepad_cursor_tile = Vector2i::new(MAP_WIDTH / 2, MAP_HEIGHT / 2);
         self.apply_gamepad_cursor_highlight();
         self.center_camera(tilemap);
@@ -592,27 +605,48 @@ impl MainScene {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     fn spawn_heroes(&mut self) {
-        let Some(player_spawn) = self.player_spawn_position() else {
-            warn!("skipping hero spawn because no valid start position was found");
-            return;
+        // Find two maximally-distant city entrance tiles for the two player teams.
+        let city_spawns: Vec<Vector2i> = {
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let arr = gm.bind().find_city_entrance_spawns(2);
+            arr.iter_shared().collect()
         };
 
-        // Spawn player hero (spd=15 → mov = 35)
-        self.add_game_hero(
-            1,
-            "Hero",
-            100,
-            20,
-            10,
-            15,
-            i64::from(player_spawn.x),
-            i64::from(player_spawn.y),
-            "player",
-            true,
-        );
-        self.create_hero_node(1, "player", true, player_spawn.x, player_spawn.y);
+        // Fallback: use the legacy player-spawn helper when city data is missing.
+        let fallback = self.player_spawn_position().unwrap_or(Vector2i::new(0, 0));
+        let red_spawn = city_spawns.first().copied().unwrap_or(fallback);
+        let blue_spawn = city_spawns.get(1).copied().unwrap_or_else(|| {
+            // No second city: pick the point farthest from red_spawn on the map.
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let ep = gm.bind().get_enemy_spawn();
+            if ep.x >= 0 { ep } else { fallback }
+        });
 
-        // Spawn enemies via Lua-driven spawner
+        // Spawn Red hero (id = 1).
+        self.add_game_hero(1, "Красный", 100, 20, 10, 15,
+            i64::from(red_spawn.x), i64::from(red_spawn.y), "red", true);
+        self.create_hero_node(1, "red", true, red_spawn.x, red_spawn.y);
+        {
+            let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            gm.bind_mut().set_city_owner(
+                i64::from(red_spawn.x), i64::from(red_spawn.y),
+                GString::from("red"),
+            );
+        }
+
+        // Spawn Blue hero (id = 2).
+        self.add_game_hero(2, "Синий", 100, 20, 10, 15,
+            i64::from(blue_spawn.x), i64::from(blue_spawn.y), "blue", true);
+        self.create_hero_node(2, "blue", true, blue_spawn.x, blue_spawn.y);
+        {
+            let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            gm.bind_mut().set_city_owner(
+                i64::from(blue_spawn.x), i64::from(blue_spawn.y),
+                GString::from("blue"),
+            );
+        }
+
+        // Spawn enemies via Lua-driven spawner.
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         let enemy_count = gm.bind_mut().spawn_enemies();
         info!(count = enemy_count, "enemies spawned");
@@ -808,14 +842,6 @@ impl MainScene {
         (player.x >= 0 && player.y >= 0).then_some(player)
     }
 
-    fn select_first_player_hero(&mut self) {
-        let heroes = self.player_hero_ids();
-        let Some(hero_id) = heroes.iter_shared().next() else {
-            self.selected_hero_id = -1;
-            return;
-        };
-        self.set_selected_hero(hero_id, false);
-    }
 
     /// Updates the heroes list in the UI panel.
     fn update_heroes_list(&mut self) {
@@ -931,9 +957,14 @@ impl MainScene {
         self.end_turn_dialog = Some(dialog);
     }
 
-    /// Показывает диалог подтверждения завершения хода.
+    /// Показывает диалог подтверждения завершения хода текущей команды.
     fn show_end_turn_dialog(&mut self) {
         if let Some(mut dialog) = self.end_turn_dialog.clone() {
+            let team = team_display_name(&self.active_team);
+            dialog.set_text(&format!(
+                "Завершить ход команды {}?\nПосле этого ход перейдёт к следующей команде.",
+                team
+            ));
             dialog.popup_centered();
         }
     }
@@ -946,14 +977,14 @@ impl MainScene {
             .unwrap_or(false)
     }
 
-    /// Вызывается при нажатии «Да» в диалоге.
-    /// Завершает ход и возвращает управление первому герою игрока.
+    /// Вызывается при нажатии «Да» в диалоге завершения хода.
+    ///
+    /// Переключает активную команду на следующую.  После того как все команды
+    /// игрока сходили, вызывает `advance_turn`, сбрасывает движение у всех
+    /// героев и возвращает ход первой команде.
     #[func]
     fn _on_end_turn_confirmed(&mut self) {
-        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        gm.call_deferred("advance_turn", &[]);
-        // После advance_turn движение сброшено у всех; выбираем первого героя игрока.
-        self.select_first_player_hero();
+        self.advance_active_team();
         self.update_heroes_list();
     }
 
@@ -990,9 +1021,31 @@ impl MainScene {
     }
 
     /// Показывает диалог найма героя для тайла `tile`.
+    ///
+    /// Найм разрешён только в городах, принадлежащих команде игрока (Red/Blue).
+    /// Нейтральные и вражеские города игнорируются.
     fn show_hire_hero_dialog(&mut self, tile: Vector2i) {
+        // Determine which team owns this city.
+        let owner = {
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let v = gm.bind().get_city_owner(tile.x as i64, tile.y as i64).to_string();
+            v
+        };
+
+        // Hiring is only allowed at cities owned by the currently active player team.
+        if owner != self.active_team {
+            return;
+        }
+
         self.hire_target_tile = tile;
+        self.hire_target_team = owner.clone();
+
+        // Update dialog text to show which team will gain the new hero.
         if let Some(mut dialog) = self.hire_hero_dialog.clone() {
+            let team_display = team_display_name(&owner);
+            dialog.set_text(&format!(
+                "В городе нет героя.\nНанять нового героя для команды {team_display}?"
+            ));
             dialog.popup_centered();
         }
     }
@@ -1012,11 +1065,13 @@ impl MainScene {
 
     /// Вызывается при нажатии «Нанять» в диалоге.
     ///
-    /// Создаёт нового героя игрока на тайле города и добавляет его в сцену.
+    /// Создаёт нового героя для команды, которой принадлежит город,
+    /// и добавляет его в сцену.
     #[func]
     fn _on_hire_hero_confirmed(&mut self) {
         let tile = self.hire_target_tile;
-        if tile.x < 0 || tile.y < 0 {
+        let team = self.hire_target_team.clone();
+        if tile.x < 0 || tile.y < 0 || team.is_empty() {
             return;
         }
         let new_id = {
@@ -1025,10 +1080,11 @@ impl MainScene {
             v
         };
         let name = format!("Герой {new_id}");
-        self.add_game_hero(new_id, &name, 100, 20, 10, 15, tile.x as i64, tile.y as i64, "player", true);
-        self.create_hero_node(new_id, "player", true, tile.x, tile.y);
+        self.add_game_hero(new_id, &name, 100, 20, 10, 15,
+            tile.x as i64, tile.y as i64, &team, true);
+        self.create_hero_node(new_id, &team, true, tile.x, tile.y);
         self.update_heroes_list();
-        info!(hero_id = new_id, x = tile.x, y = tile.y, "hired new hero at city");
+        info!(hero_id = new_id, team = %team, x = tile.x, y = tile.y, "hired new hero at city");
     }
 
     /// Вызывается при нажатии «Отмена» или Esc в диалоге найма.
@@ -1037,14 +1093,19 @@ impl MainScene {
         // Диалог уже закрылся сам — дополнительных действий не требуется.
     }
 
-    /// Возвращает id управляемого игроком героя, стоящего на тайле `tile`,
+    /// Возвращает id управляемого активной командой героя, стоящего на тайле `tile`,
     /// или `None` если такого нет.
     fn player_hero_at_tile(&self, tile: Vector2i) -> Option<i64> {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         let hero_id = gm
             .bind()
             .get_hero_id_at_position(tile.x as i64, tile.y as i64);
-        if hero_id >= 0 && gm.bind().is_hero_player_controlled(hero_id) {
+        if hero_id < 0 {
+            return None;
+        }
+        let controlled = gm.bind().is_hero_player_controlled(hero_id);
+        let team = gm.bind().get_hero_team_name(hero_id).to_string();
+        if controlled && team == self.active_team {
             Some(hero_id)
         } else {
             None
@@ -1058,7 +1119,7 @@ impl MainScene {
     }
 
     fn select_next_player_hero(&mut self) {
-        let heroes = self.player_hero_ids();
+        let heroes = self.active_team_hero_ids();
         if heroes.is_empty() {
             self.selected_hero_id = -1;
             return;
@@ -1109,10 +1170,53 @@ impl MainScene {
         }
     }
 
-    fn player_hero_ids(&self) -> Array<i64> {
+    /// Returns living hero IDs that belong to the currently active team.
+    fn active_team_hero_ids(&self) -> Array<i64> {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let ids = gm.bind().get_living_player_hero_ids();
-        ids
+        let all_player = gm.bind().get_living_player_hero_ids();
+        let mut result: Array<i64> = Array::new();
+        for id in all_player.iter_shared() {
+            let team = gm.bind().get_hero_team_name(id).to_string();
+            if team == self.active_team {
+                result.push(id);
+            }
+        }
+        result
+    }
+
+    /// Selects the first living hero of the active team, if any.
+    fn select_first_active_team_hero(&mut self) {
+        let ids = self.active_team_hero_ids();
+        match ids.iter_shared().next() {
+            Some(id) => self.set_selected_hero(id, true),
+            None => self.selected_hero_id = -1,
+        }
+    }
+
+    /// Advances to the next player team's phase, or — when all player teams have
+    /// moved — calls `advance_turn` (global turn counter + movement reset) and
+    /// returns to the first player team.
+    fn advance_active_team(&mut self) {
+        let current_idx = PLAYER_TEAMS
+            .iter()
+            .position(|&t| t == self.active_team.as_str())
+            .unwrap_or(0);
+        let next_idx = current_idx + 1;
+
+        if next_idx < PLAYER_TEAMS.len() {
+            // Still more player teams to go this round.
+            self.active_team = PLAYER_TEAMS[next_idx].to_string();
+        } else {
+            // All player teams are done — trigger the engine turn advance,
+            // which resets movement for every hero and increments the counter.
+            let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            gm.call_deferred("advance_turn", &[]);
+            self.active_team = PLAYER_TEAMS[0].to_string();
+        }
+
+        self.selected_hero_id = -1;
+        self.select_first_active_team_hero();
+        info!(active_team = %self.active_team, "team turn started");
     }
 
     fn normalize_seed(seed: String) -> String {
@@ -1263,7 +1367,8 @@ impl MainScene {
         };
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         let turn = gm.bind().get_turn();
-        label.set_text(&format!("Ход: {turn}"));
+        let team = team_display_name(&self.active_team);
+        label.set_text(&format!("Ход: {turn} · {team}"));
     }
 
     fn update_hero_mov_label(&self) {
@@ -1294,5 +1399,16 @@ impl MainScene {
         if let Some(mut label) = self.version_label() {
             label.set_text(&build_info::version_string());
         }
+    }
+}
+
+// ── Module-level helpers ──────────────────────────────────────────────────────
+
+/// Returns a human-readable Russian display name for a team identifier.
+fn team_display_name(team: &str) -> &'static str {
+    match team {
+        "red"  => "Красных",
+        "blue" => "Синих",
+        _      => "Врагов",
     }
 }
