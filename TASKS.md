@@ -110,3 +110,25 @@ Update status as work progresses.
 | 2026-03-27 | `mapgen` exports both PNG and TMX into a per-run timestamp directory | Keeps generation artefacts grouped and lets TMX reference the shared root tileset |
 | 2026-03-27 | Chunk edges use a 3-step connection grid (`pos % 3 == 1`) for roads/rivers and anchored continuous segments for forest/mountain/water | Ensures deterministic chunk-to-chunk connectivity and prevents ragged seam contacts |
 | 2026-03-31 | Isometric tileset atlas is generated from `rpg_engine::map::tile::Tiles` instead of being maintained manually | Keeps Godot rendering, TMX export, tile count, and color semantics in sync from one source of truth |
+
+## Phase 6 — Build Version Tracking
+
+| ID | Task | Assignee | Status | Notes |
+|----|------|----------|--------|-------|
+| 6.1 | Add build script to generate version info from git | Codex | DONE | `crates/rpg-godot/build.rs` generates BUILD_GIT_HASH, BUILD_NUMBER, BUILD_PROFILE |
+| 6.2 | Add `build_info` module for runtime version access | Codex | DONE | `crates/rpg-godot/src/build_info.rs` exposes `version_string()` and `build_info()` |
+| 6.3 | Display version in UI and console on startup | Codex | DONE | Added `VersionLabel` in main.tscn, `update_version_label()` in MainScene |
+| 6.4 | WASD camera controls + arrow keys hero movement | Codex | DONE | Camera uses WASD, active hero moves with arrow keys |
+| 6.5 | Highlight selected hero in UI list | Codex | DONE | Yellow modulate on selected hero button |
+| 6.6 | Fix borrow conflict on hero movement via arrow keys | Codex | DONE | Collect data before mutation, drop borrow, then mutate |
+
+---
+
+**Latest Change (2026-04-01)**
+
+- Added `build.rs` to generate compile-time version info from git
+- Created `build_info` module with `GIT_HASH`, `BUILD_NUMBER`, `BUILD_PROFILE`, `GIT_TIMESTAMP`
+- Added version display in UI (bottom of right panel) and console logging on startup
+- Changed camera controls from arrow keys to WASD
+- Added arrow keys movement for active hero (with borrow conflict fix)
+- Added highlight for selected hero in UI list (yellow modulate)

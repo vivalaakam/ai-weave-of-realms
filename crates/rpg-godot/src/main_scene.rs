@@ -14,6 +14,7 @@ use crate::camera_controller::CameraController;
 use crate::coords::TILE_W;
 use crate::game_manager::GameManager;
 use crate::hero_node::HeroNode;
+use crate::build_info;
 use crate::map_node::MapNode;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -39,6 +40,16 @@ impl INode for MainScene {
     }
 
     fn ready(&mut self) {
+        // Log build version
+        info!(
+            version = %build_info::version_string(),
+            build = %build_info::BUILD_NUMBER,
+            git = %build_info::GIT_HASH,
+            src = %build_info::SRC_HASH,
+            profile = %build_info::BUILD_PROFILE,
+            "MainScene initialized"
+        );
+
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
 
         // Build callables before connecting (connect takes &Callable)
@@ -86,6 +97,9 @@ impl INode for MainScene {
             center_y.connect("text_submitted", &cb_center_submit);
         }
 
+        // Update version label in UI
+        self.update_version_label();
+
         // Defer startup so map_ready fires after ready() returns,
         // avoiding a double-borrow of MainScene.
         self.base_mut().call_deferred("_start_game_from_ui", &[]);
@@ -105,6 +119,50 @@ impl INode for MainScene {
                     self.select_next_player_hero();
                     return;
                 }
+
+                // Arrow keys movement for active hero
+                if self.selected_hero_id >= 0 {
+                    let mut dx: i32 = 0;
+                    let mut dy: i32 = 0;
+                    if physical == Key::LEFT || logical == Key::LEFT {
+                        dx = -1;
+                    } else if physical == Key::RIGHT || logical == Key::RIGHT {
+                        dx = 1;
+                    } else if physical == Key::UP || logical == Key::UP {
+                        dy = -1;
+                    } else if physical == Key::DOWN || logical == Key::DOWN {
+                        dy = 1;
+                    }
+
+                    if dx != 0 || dy != 0 {
+                        let id = self.selected_hero_id;
+                        // Get all data before mutation to avoid borrow conflicts
+                        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                        let (current, width, height) = {
+                            let bound = gm.bind();
+                            let pos = bound.get_hero_position(id);
+                            let w = bound.get_map_width();
+                            let h = bound.get_map_height();
+                            (pos, w, h)
+                        };
+                        // Drop the borrow before mutation
+                        drop(gm);
+                        
+                        if current.x >= 0 && current.y >= 0 {
+                            let new_x = current.x + dx;
+                            let new_y = current.y + dy;
+                            if new_x >= 0 && new_y >= 0 && new_x < width as i32 && new_y < height as i32 {
+                                let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                                gm.call_deferred("move_hero", &[
+                                    id.to_variant(),
+                                    (new_x as i64).to_variant(),
+                                    (new_y as i64).to_variant(),
+                                ]);
+                            }
+                        }
+                        return;
+                    }
+                }
             }
         }
 
@@ -116,14 +174,18 @@ impl INode for MainScene {
                 if let Some(tile) = self.mouse_to_tile(&mb) {
                     let id = self.selected_hero_id;
                     let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-                    gm.bind_mut().move_hero(id, tile.x as i64, tile.y as i64);
+                    gm.call_deferred("move_hero", &[
+                        id.to_variant(),
+                        (tile.x as i64).to_variant(),
+                        (tile.y as i64).to_variant(),
+                    ]);
                 }
             }
         }
 
         if event.is_action_pressed("ui_accept") {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            gm.bind_mut().advance_turn();
+            gm.call_deferred("advance_turn", &[]);
         }
     }
 }
@@ -202,6 +264,7 @@ impl MainScene {
 
     #[func]
     fn _on_hero_moved(&mut self, hero_id: i64, fx: i64, fy: i64, tx: i64, ty: i64) {
+        info!("_on_hero_moved {hero_id} fx:{fx} fy:{ty}");
         let Some(root) = self.base().get_node_or_null("World/Heroes") else { return };
         for child in root.get_children().iter_shared() {
             if let Ok(mut hn) = child.try_cast::<HeroNode>() {
@@ -249,6 +312,7 @@ impl MainScene {
         if self.selected_hero_id == hero_id {
             self.select_next_player_hero();
         }
+        self.update_heroes_list();
     }
 
     #[func]
@@ -259,7 +323,7 @@ impl MainScene {
     #[func]
     fn _on_move_requested(&mut self, hero_id: i64, x: i64, y: i64) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        gm.bind_mut().move_hero(hero_id, x, y);
+        gm.call_deferred("move_hero", &[hero_id.to_variant(), x.to_variant(), y.to_variant()]);
     }
 
     #[func]
@@ -480,6 +544,9 @@ impl MainScene {
         for id in enemy_ids.iter_shared() {
             self.add_hero_to_list(&gm, id, "Enemy", list.clone());
         }
+
+        // Highlight selected hero
+        self.highlight_selected_hero_in_list();
     }
 
     fn add_hero_to_list(&self, gm: &Gd<GameManager>, hero_id: i64, name_prefix: &str, mut list: Gd<VBoxContainer>) {
@@ -487,6 +554,7 @@ impl MainScene {
         let is_alive = gm.bind().is_hero_alive(hero_id);
         
         let mut btn: Gd<Button> = Button::new_alloc();
+        btn.set_name(&StringName::from(&format!("HeroBtn_{}", hero_id)));
         btn.set_text(&format!("{} {} ({}:{})", name_prefix, hero_id, pos.x, pos.y));
         btn.set_disabled(!is_alive);
         
@@ -497,9 +565,34 @@ impl MainScene {
         list.add_child(&btn);
     }
 
+    /// Highlights the selected hero button in the UI list.
+    fn highlight_selected_hero_in_list(&self) {
+        let Some(list) = self.heroes_list() else { return };
+        
+        for child in list.get_children().iter_shared() {
+            if let Ok(mut btn) = child.try_cast::<Button>() {
+                let btn_name = btn.get_name().to_string();
+                // Extract hero_id from button name "HeroBtn_{id}"
+                let hero_id_str = btn_name.strip_prefix("HeroBtn_");
+                let is_selected = hero_id_str
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .map(|id| id == self.selected_hero_id)
+                    .unwrap_or(false);
+                
+                if is_selected {
+                    // Highlight selected hero with yellow color
+                    btn.set_modulate(Color::from_rgba8(255, 255, 100, 255));
+                } else {
+                    // Reset to default color
+                    btn.set_modulate(Color::from_rgba8(255, 255, 255, 255));
+                }
+            }
+        }
+    }
+
     #[func]
     fn _on_hero_list_clicked(&mut self, hero_id: i64) {
-        self.focus_camera_on_hero(hero_id);
+        self.set_selected_hero(hero_id, true);
     }
 
     fn heroes_list(&self) -> Option<Gd<VBoxContainer>> {
@@ -527,6 +620,7 @@ impl MainScene {
 
     fn set_selected_hero(&mut self, hero_id: i64, focus_camera: bool) {
         self.selected_hero_id = hero_id;
+        self.highlight_selected_hero_in_list();
         if focus_camera {
             self.focus_camera_on_hero(hero_id);
         }
@@ -675,10 +769,21 @@ impl MainScene {
         let local = tilemap.to_local(world);
         tilemap.call("local_to_map", &[local.to_variant()]).try_to::<Vector2i>().ok()
     }
-
     fn tilemap_layer(&self) -> Option<Gd<TileMapLayer>> {
         self.base()
             .get_node_or_null("World/TileMapLayer")
             .and_then(|node| node.try_cast::<TileMapLayer>().ok())
+    }
+
+    fn version_label(&self) -> Option<Gd<Label>> {
+        self.base()
+            .get_node_or_null("UI/RightPanel/MarginContainer/Content/VersionLabel")
+            .and_then(|node| node.try_cast::<Label>().ok())
+    }
+
+    fn update_version_label(&self) {
+        if let Some(mut label) = self.version_label() {
+            label.set_text(&build_info::version_string());
+        }
     }
 }

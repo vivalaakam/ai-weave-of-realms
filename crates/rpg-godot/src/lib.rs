@@ -16,6 +16,7 @@
 
 use godot::prelude::*;
 
+pub mod build_info;
 pub mod camera_controller;
 pub mod coords;
 pub mod error;

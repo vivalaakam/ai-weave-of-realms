@@ -129,3 +129,9 @@ placeholder_text = "Y"
 
 [node name="CenterButton" type="Button" parent="UI/RightPanel/MarginContainer/Content"]
 text = "Focus Tile"
+
+[node name="Separator3" type="HSeparator" parent="UI/RightPanel/MarginContainer/Content"]
+
+[node name="VersionLabel" type="Label" parent="UI/RightPanel/MarginContainer/Content"]
+text = "v0.1.0-unknown"
+autowrap_mode = 2

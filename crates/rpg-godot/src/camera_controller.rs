@@ -5,7 +5,7 @@
 //! ## Controls
 //! | Action | Gesture |
 //! |--------|---------|
-//! | Pan | Middle-mouse drag **or** arrow keys |
+//! | Pan | Middle-mouse drag **or** WASD keys |
 //! | Zoom | Scroll wheel or `-` / `=` |
 
 use godot::classes::{Camera2D, ICamera2D, Input, InputEvent, InputEventKey, InputEventMouseButton,
@@ -76,10 +76,16 @@ impl ICamera2D for CameraController {
         let input = Input::singleton();
         let mut dir = Vector2::ZERO;
 
-        if input.is_action_pressed("ui_left")  { dir.x -= 1.0; }
-        if input.is_action_pressed("ui_right") { dir.x += 1.0; }
-        if input.is_action_pressed("ui_up")    { dir.y -= 1.0; }
-        if input.is_action_pressed("ui_down")  { dir.y += 1.0; }
+        // WASD camera movement
+        let key_w = input.is_key_pressed(Key::W);
+        let key_a = input.is_key_pressed(Key::A);
+        let key_s = input.is_key_pressed(Key::S);
+        let key_d = input.is_key_pressed(Key::D);
+
+        if key_a { dir.x -= 1.0; }
+        if key_d { dir.x += 1.0; }
+        if key_w { dir.y -= 1.0; }
+        if key_s { dir.y += 1.0; }
 
         if dir != Vector2::ZERO {
             let z = self.base().get_zoom().x;
