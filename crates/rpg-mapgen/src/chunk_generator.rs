@@ -11,6 +11,7 @@
 //! and the return value is a 1-indexed Lua table of exactly 1024 tile kind strings.
 
 use std::path::Path;
+use std::str::FromStr;
 
 use mlua::{Function, Lua, Table, Value};
 use tracing::{debug, instrument};

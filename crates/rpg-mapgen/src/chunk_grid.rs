@@ -54,6 +54,8 @@ impl ChunkGrid {
     ///
     /// # Errors
     /// Returns [`EngineError::OutOfBounds`] if the coordinate is outside the grid.
+    // TODO: used by future pathfinding / inspection passes
+    #[allow(dead_code)]
     pub fn get_chunk(&self, coord: ChunkCoord) -> Result<&Chunk, EngineError> {
         let idx = self.chunk_index(coord)?;
         Ok(&self.chunks[idx])
@@ -63,6 +65,8 @@ impl ChunkGrid {
     ///
     /// # Errors
     /// Returns [`EngineError::OutOfBounds`] if the coordinate is outside the grid.
+    // TODO: used by future pathfinding / inspection passes
+    #[allow(dead_code)]
     pub fn get_chunk_mut(&mut self, coord: ChunkCoord) -> Result<&mut Chunk, EngineError> {
         let idx = self.chunk_index(coord)?;
         Ok(&mut self.chunks[idx])

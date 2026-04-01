@@ -121,6 +121,9 @@ Update status as work progresses.
 | 6.4 | WASD camera controls + arrow keys hero movement | Codex | DONE | Camera uses WASD, active hero moves with arrow keys |
 | 6.5 | Highlight selected hero in UI list | Codex | DONE | Yellow modulate on selected hero button |
 | 6.6 | Fix borrow conflict on hero movement via arrow keys | Codex | DONE | Collect data before mutation, drop borrow, then mutate |
+| 6.7 | Добавить поддержку Sony gamepad: Cross/Circle/R1/L1 + стики для героя и камеры | Codex | DONE | Cross=confirm, Circle=cancel, R1=next hero, L1=end turn dialog, LS=hero movement, RS=camera pan |
+| 6.8 | Исправить confirm/cancel в end-turn диалоге на Sony gamepad (работа через polling и авто device id) | Codex | DONE | Убрана зависимость от fixed `device=0`; confirm/cancel читаются через polling + rising-edge по первому подключенному gamepad |
+| 6.9 | Переназначить gamepad: D-pad двигает героя, левый стик двигает активный курсор клетки с подсветкой | Codex | DONE | D-pad=hero step movement, LS=grid cursor movement with forced active highlight in `TileHighlight` |
 
 ---
 
@@ -149,3 +152,6 @@ Update status as work progresses.
 - Updated Godot bridge `GameManager::move_hero(hero_id, direction: i64)` (0=N, 1=E, 2=S, 3=W)
 - Updated `HeroNode::move_requested` signal and `request_move` to pass direction int
 - Updated keyboard handler (arrow keys → direction) and mouse-click handler (adjacent tile → direction)
+- Added Sony gamepad controls in Godot bridge: Cross confirm, Circle cancel, R1 next hero, L1 end-turn dialog, left stick hero movement (deadzone + repeat), right stick camera pan
+- Fixed Sony confirm/cancel reliability in end-turn dialog: use connected-gamepad auto-detect and per-frame button polling with edge detection
+- Remapped controls: D-pad now moves selected hero; left stick now moves active grid cursor; `TileHighlight` supports forced active tile with stronger color to indicate gamepad focus

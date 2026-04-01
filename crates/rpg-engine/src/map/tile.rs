@@ -164,29 +164,7 @@ impl Tiles {
         }
     }
 
-    /// Constructs a [`Tiles`] from the Lua-facing string identifier.
-    ///
-    /// # Errors
-    /// Returns [`Error::InvalidTileKind`] if the string is not recognised.
-    pub fn from_str(s: &str) -> Result<Self, Error> {
-        match s {
-            "meadow" => Ok(Tiles::Meadow),
-            "forest" => Ok(Tiles::Forest),
-            "mountain" => Ok(Tiles::Mountain),
-            "water" => Ok(Tiles::Water),
-            "city" => Ok(Tiles::City),
-            "city_entrance" => Ok(Tiles::CityEntrance),
-            "road" => Ok(Tiles::Road),
-            "river" => Ok(Tiles::River),
-            "bridge" => Ok(Tiles::Bridge),
-            "village" => Ok(Tiles::Village),
-            "merchant" => Ok(Tiles::Merchant),
-            "ruins" => Ok(Tiles::Ruins),
-            "gold" => Ok(Tiles::Gold),
-            "resource" => Ok(Tiles::Resource),
-            other => Err(Error::InvalidTileKind(other.to_string())),
-        }
-    }
+
 
     /// Returns the TMX GID for this tile (1-based; GID 0 is reserved by Tiled for "empty").
     ///
@@ -276,10 +254,40 @@ impl Default for Tile {
     }
 }
 
+impl std::str::FromStr for Tiles {
+    type Err = Error;
+
+    /// Constructs a [`Tiles`] from the Lua-facing string identifier.
+    ///
+    /// # Errors
+    /// Returns [`Error::InvalidTileKind`] if the string is not recognised.
+    fn from_str(s: &str) -> Result<Self, Error> {
+        match s {
+            "meadow" => Ok(Tiles::Meadow),
+            "forest" => Ok(Tiles::Forest),
+            "mountain" => Ok(Tiles::Mountain),
+            "water" => Ok(Tiles::Water),
+            "city" => Ok(Tiles::City),
+            "city_entrance" => Ok(Tiles::CityEntrance),
+            "road" => Ok(Tiles::Road),
+            "river" => Ok(Tiles::River),
+            "bridge" => Ok(Tiles::Bridge),
+            "village" => Ok(Tiles::Village),
+            "merchant" => Ok(Tiles::Merchant),
+            "ruins" => Ok(Tiles::Ruins),
+            "gold" => Ok(Tiles::Gold),
+            "resource" => Ok(Tiles::Resource),
+            other => Err(Error::InvalidTileKind(other.to_string())),
+        }
+    }
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]

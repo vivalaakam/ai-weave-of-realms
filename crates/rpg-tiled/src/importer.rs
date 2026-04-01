@@ -51,8 +51,6 @@ struct TmxParser {
     seed: [u8; 32],
     /// Whether we are currently inside a `<data encoding="csv">` element.
     in_csv_data: bool,
-    /// Whether the next property value is the map seed.
-    next_property_is_seed: bool,
     /// Accumulated CSV text from `<data>`.
     csv: String,
 }

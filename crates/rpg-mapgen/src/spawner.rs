@@ -138,27 +138,19 @@ fn parse_spawn_results(value: Value) -> Result<Vec<EnemySpawn>, Error> {
     let len = table.len().unwrap_or(0) as usize;
     if len > 0 {
         for i in 1..=len {
-            match table.get::<mlua::Table>(i) {
-                Ok(entry) => {
-                    if let Some(spawn) = parse_enemy_entry(entry, i as u32)? {
-                        enemies.push(spawn);
-                    }
+            if let Ok(entry) = table.get::<mlua::Table>(i) {
+                if let Some(spawn) = parse_enemy_entry(entry, i as u32)? {
+                    enemies.push(spawn);
                 }
-                Err(_) => {}
             }
         }
     } else {
         // Fallback: iterate as dict (0-indexed)
-        for result in table.pairs::<mlua::Value, mlua::Value>() {
-            match result {
-                Ok((key, val)) => {
-                    if let (mlua::Value::Integer(idx), mlua::Value::Table(entry)) = (key, val) {
-                        if let Some(spawn) = parse_enemy_entry(entry, idx as u32)? {
-                            enemies.push(spawn);
-                        }
-                    }
+        for (key, val) in table.pairs::<mlua::Value, mlua::Value>().flatten() {
+            if let (mlua::Value::Integer(idx), mlua::Value::Table(entry)) = (key, val) {
+                if let Some(spawn) = parse_enemy_entry(entry, idx as u32)? {
+                    enemies.push(spawn);
                 }
-                Err(_) => {}
             }
         }
     }

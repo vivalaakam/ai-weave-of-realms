@@ -34,8 +34,8 @@ pub fn game_map_to_lua_table(lua: &Lua, map: &GameMap) -> mlua::Result<Table> {
 
     // Calculate chunk dimensions (32x32 chunks)
     const CHUNK_SIZE: u32 = 32;
-    let cw = (tw + CHUNK_SIZE - 1) / CHUNK_SIZE;
-    let ct = (th + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    let cw = tw.div_ceil(CHUNK_SIZE);
+    let ct = th.div_ceil(CHUNK_SIZE);
     t.set("chunks_wide", cw)?;
     t.set("chunks_tall", ct)?;
 

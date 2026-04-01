@@ -200,8 +200,8 @@ impl Stitcher {
 
             for window in anchors.windows(2) {
                 if window[1] - window[0] == 3 {
-                    for fill_pos in window[0]..=window[1] {
-                        natural_fill[fill_pos] = Some(kind);
+                    for cell in natural_fill.iter_mut().take(window[1] + 1).skip(window[0]) {
+                        *cell = Some(kind);
                     }
                 }
             }

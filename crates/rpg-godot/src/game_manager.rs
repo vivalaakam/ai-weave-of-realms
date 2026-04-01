@@ -164,6 +164,7 @@ impl GameManager {
     /// `team_name` is a human-readable team identifier (e.g. `"player"`, `"enemy"`).
     /// `player_controlled` indicates whether the human player commands this hero.
     #[func]
+    #[allow(clippy::too_many_arguments)]
     pub fn add_hero(
         &mut self,
         id: i64,

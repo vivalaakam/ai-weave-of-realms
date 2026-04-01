@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -322,7 +322,7 @@ fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
 }
 
 /// Creates a new timestamped directory for this generation under `root`.
-fn create_generation_dir(root: &PathBuf) -> Result<PathBuf, std::io::Error> {
+fn create_generation_dir(root: &Path) -> Result<PathBuf, std::io::Error> {
     let timestamp = generation_timestamp();
     let dir = root.join(timestamp);
     fs::create_dir_all(&dir)?;

@@ -15,6 +15,7 @@ use crate::coords::{TILE_H, TILE_W};
 pub struct TileHighlight {
     base: Base<Node2D>,
     hovered_tile: Vector2i,
+    forced_active_tile: Vector2i,
 }
 
 #[godot_api]
@@ -23,6 +24,7 @@ impl INode2D for TileHighlight {
         Self {
             base,
             hovered_tile: Vector2i::new(-1, -1),
+            forced_active_tile: Vector2i::new(-1, -1),
         }
     }
 
@@ -35,7 +37,11 @@ impl INode2D for TileHighlight {
     }
 
     fn draw(&mut self) {
-        let tile = self.hovered_tile;
+        let tile = if self.forced_active_tile.x >= 0 && self.forced_active_tile.y >= 0 {
+            self.forced_active_tile
+        } else {
+            self.hovered_tile
+        };
         if tile.x < 0 || tile.y < 0 {
             return;
         }
@@ -54,7 +60,11 @@ impl INode2D for TileHighlight {
         pts.push(origin + Vector2::new(-hw, 0.0));
         pts.push(origin + Vector2::new(0.0, -hh)); // close
 
-        let color = Color::from_rgba(1.0, 1.0, 1.0, 0.45);
+        let color = if self.forced_active_tile.x >= 0 && self.forced_active_tile.y >= 0 {
+            Color::from_rgba(1.0, 0.9, 0.2, 0.95)
+        } else {
+            Color::from_rgba(1.0, 1.0, 1.0, 0.45)
+        };
         self.base_mut().draw_polyline(&pts, color);
     }
 }
@@ -65,6 +75,18 @@ impl TileHighlight {
     #[func]
     pub fn get_hovered_tile(&self) -> Vector2i {
         self.hovered_tile
+    }
+
+    /// Sets an explicit active tile to draw instead of mouse hover.
+    ///
+    /// # Arguments
+    /// * `tile` - Tile coordinates to highlight; use negative values to clear.
+    #[func]
+    pub fn set_forced_active_tile(&mut self, tile: Vector2i) {
+        if self.forced_active_tile != tile {
+            self.forced_active_tile = tile;
+            self.base_mut().queue_redraw();
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

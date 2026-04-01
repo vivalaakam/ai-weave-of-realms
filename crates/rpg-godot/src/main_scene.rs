@@ -3,10 +3,10 @@
 //! Set as the root node type in `main.tscn` (`type="MainScene"`).
 
 use godot::classes::{
-    Button, Camera2D, ConfirmationDialog, INode, InputEvent, InputEventKey, InputEventMouseButton,
-    Label, LineEdit, Node, TileMapLayer, VBoxContainer,
+    Button, Camera2D, ConfirmationDialog, INode, Input, InputEvent, InputEventJoypadButton,
+    InputEventKey, InputEventMouseButton, Label, LineEdit, Node, TileMapLayer, VBoxContainer,
 };
-use godot::global::{Key, MouseButton};
+use godot::global::{JoyAxis, JoyButton, Key, MouseButton};
 use godot::prelude::*;
 use tracing::{info, warn};
 
@@ -16,6 +16,7 @@ use crate::coords::TILE_W;
 use crate::game_manager::GameManager;
 use crate::hero_node::HeroNode;
 use crate::map_node::MapNode;
+use crate::tile_highlight::TileHighlight;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,16 @@ const GENERATOR_PATH: &str = "res://scripts/generators/terrain.lua";
 const DEFAULT_SEED: &str = "default-seed";
 const MAP_WIDTH: i32 = 96;
 const MAP_HEIGHT: i32 = 96;
+const GAMEPAD_BTN_CROSS: JoyButton = JoyButton::A;
+const GAMEPAD_BTN_CIRCLE: JoyButton = JoyButton::B;
+const GAMEPAD_BTN_L1: JoyButton = JoyButton::LEFT_SHOULDER;
+const GAMEPAD_BTN_R1: JoyButton = JoyButton::RIGHT_SHOULDER;
+const GAMEPAD_BTN_DPAD_UP: JoyButton = JoyButton::DPAD_UP;
+const GAMEPAD_BTN_DPAD_RIGHT: JoyButton = JoyButton::DPAD_RIGHT;
+const GAMEPAD_BTN_DPAD_DOWN: JoyButton = JoyButton::DPAD_DOWN;
+const GAMEPAD_BTN_DPAD_LEFT: JoyButton = JoyButton::DPAD_LEFT;
+const LEFT_STICK_DEADZONE: f32 = 0.50;
+const LEFT_STICK_REPEAT_INTERVAL: f64 = 0.14;
 
 // ─── MainScene ────────────────────────────────────────────────────────────────
 
@@ -32,6 +43,11 @@ pub struct MainScene {
     base: Base<Node>,
     selected_hero_id: i64,
     end_turn_dialog: Option<Gd<ConfirmationDialog>>,
+    left_stick_move_cooldown: f64,
+    left_stick_direction_held: bool,
+    cross_was_pressed: bool,
+    circle_was_pressed: bool,
+    gamepad_cursor_tile: Vector2i,
 }
 
 #[godot_api]
@@ -41,6 +57,11 @@ impl INode for MainScene {
             base,
             selected_hero_id: -1,
             end_turn_dialog: None,
+            left_stick_move_cooldown: 0.0,
+            left_stick_direction_held: false,
+            cross_was_pressed: false,
+            circle_was_pressed: false,
+            gamepad_cursor_tile: Vector2i::new(-1, -1),
         }
     }
 
@@ -114,7 +135,9 @@ impl INode for MainScene {
         self.base_mut().call_deferred("_start_game_from_ui", &[]);
     }
 
-    fn process(&mut self, _delta: f64) {
+    fn process(&mut self, delta: f64) {
+        self.process_gamepad_dialog_buttons();
+        self.process_gamepad_left_stick_cursor(delta);
         self.update_cursor_debug();
         self.update_zoom_debug();
         self.update_turn_label();
@@ -209,11 +232,155 @@ impl INode for MainScene {
                 }
             }
         }
+
+        if let Ok(btn) = event.try_cast::<InputEventJoypadButton>() {
+            if btn.is_pressed() {
+                let button = btn.get_button_index();
+                if button == GAMEPAD_BTN_R1 {
+                    self.select_next_player_hero();
+                } else if button == GAMEPAD_BTN_L1 {
+                    self.show_end_turn_dialog();
+                } else if self.selected_hero_id >= 0 {
+                    let direction: Option<i64> = if button == GAMEPAD_BTN_DPAD_LEFT {
+                        Some(3)
+                    } else if button == GAMEPAD_BTN_DPAD_RIGHT {
+                        Some(1)
+                    } else if button == GAMEPAD_BTN_DPAD_UP {
+                        Some(0)
+                    } else if button == GAMEPAD_BTN_DPAD_DOWN {
+                        Some(2)
+                    } else {
+                        None
+                    };
+                    if let Some(dir) = direction {
+                        let id = self.selected_hero_id;
+                        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+                        gm.call_deferred("move_hero", &[id.to_variant(), dir.to_variant()]);
+                    }
+                }
+            }
+        }
     }
 }
 
 #[godot_api]
 impl MainScene {
+    fn connected_gamepad_device_id() -> Option<i32> {
+        let input = Input::singleton();
+        let ids = input.get_connected_joypads();
+        if ids.is_empty() {
+            None
+        } else {
+            ids.get(0).map(|id| id as i32)
+        }
+    }
+
+    fn process_gamepad_dialog_buttons(&mut self) {
+        if !self.is_end_turn_dialog_visible() {
+            self.cross_was_pressed = false;
+            self.circle_was_pressed = false;
+            return;
+        }
+
+        let Some(device_id) = Self::connected_gamepad_device_id() else {
+            self.cross_was_pressed = false;
+            self.circle_was_pressed = false;
+            return;
+        };
+        let input = Input::singleton();
+        let cross_pressed = input.is_joy_button_pressed(device_id, GAMEPAD_BTN_CROSS);
+        let circle_pressed = input.is_joy_button_pressed(device_id, GAMEPAD_BTN_CIRCLE);
+
+        if cross_pressed && !self.cross_was_pressed {
+            self._on_end_turn_confirmed();
+            if let Some(mut dialog) = self.end_turn_dialog.clone() {
+                dialog.hide();
+            }
+        } else if circle_pressed && !self.circle_was_pressed {
+            self._on_end_turn_cancelled();
+            if let Some(mut dialog) = self.end_turn_dialog.clone() {
+                dialog.hide();
+            }
+        }
+
+        self.cross_was_pressed = cross_pressed;
+        self.circle_was_pressed = circle_pressed;
+    }
+
+    fn process_gamepad_left_stick_cursor(&mut self, delta: f64) {
+        self.left_stick_move_cooldown = (self.left_stick_move_cooldown - delta).max(0.0);
+
+        let Some(device_id) = Self::connected_gamepad_device_id() else {
+            self.left_stick_direction_held = false;
+            self.apply_gamepad_cursor_highlight();
+            return;
+        };
+        let input = Input::singleton();
+        let axis_x = input.get_joy_axis(device_id, JoyAxis::LEFT_X);
+        let axis_y = input.get_joy_axis(device_id, JoyAxis::LEFT_Y);
+
+        let direction = if axis_x <= -LEFT_STICK_DEADZONE && axis_x.abs() >= axis_y.abs() {
+            Some(3) // West
+        } else if axis_x >= LEFT_STICK_DEADZONE && axis_x.abs() >= axis_y.abs() {
+            Some(1) // East
+        } else if axis_y <= -LEFT_STICK_DEADZONE {
+            Some(0) // North
+        } else if axis_y >= LEFT_STICK_DEADZONE {
+            Some(2) // South
+        } else {
+            None
+        };
+
+        let Some(direction) = direction else {
+            self.left_stick_direction_held = false;
+            return;
+        };
+
+        if self.left_stick_direction_held && self.left_stick_move_cooldown > 0.0 {
+            return;
+        }
+        self.move_gamepad_cursor(direction);
+        self.left_stick_direction_held = true;
+        self.left_stick_move_cooldown = LEFT_STICK_REPEAT_INTERVAL;
+    }
+
+    fn move_gamepad_cursor(&mut self, direction: i64) {
+        let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+        let width = gm.bind().get_map_width() as i32;
+        let height = gm.bind().get_map_height() as i32;
+        if width <= 0 || height <= 0 {
+            return;
+        }
+
+        if self.gamepad_cursor_tile.x < 0 || self.gamepad_cursor_tile.y < 0 {
+            if self.selected_hero_id >= 0 {
+                let hero_tile = gm.bind().get_hero_position(self.selected_hero_id);
+                self.gamepad_cursor_tile = Vector2i::new(hero_tile.x, hero_tile.y);
+            } else {
+                self.gamepad_cursor_tile = Vector2i::new(width / 2, height / 2);
+            }
+        }
+
+        let mut next = self.gamepad_cursor_tile;
+        match direction {
+            0 => next.y -= 1, // North
+            1 => next.x += 1, // East
+            2 => next.y += 1, // South
+            3 => next.x -= 1, // West
+            _ => return,
+        }
+        next.x = next.x.clamp(0, width - 1);
+        next.y = next.y.clamp(0, height - 1);
+        self.gamepad_cursor_tile = next;
+        self.apply_gamepad_cursor_highlight();
+    }
+
+    fn apply_gamepad_cursor_highlight(&mut self) {
+        if let Some(mut hl) = self.tile_highlight() {
+            hl.bind_mut().set_forced_active_tile(self.gamepad_cursor_tile);
+        }
+    }
+
     // ── Game startup ──────────────────────────────────────────────────────────
 
     /// Called deferred from `ready()` so that `map_ready` fires after `ready()`
@@ -281,6 +448,8 @@ impl MainScene {
         self.update_heroes_list();
         self.set_center_debug_inputs(MAP_WIDTH / 2, MAP_HEIGHT / 2);
         self.select_first_player_hero();
+        self.gamepad_cursor_tile = Vector2i::new(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+        self.apply_gamepad_cursor_highlight();
         self.center_camera(tilemap);
     }
 
@@ -419,6 +588,7 @@ impl MainScene {
         self.update_heroes_list();
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn add_game_hero(
         &mut self,
         id: i64,
@@ -535,10 +705,17 @@ impl MainScene {
         let Some(viewport) = self.base().get_viewport() else {
             return;
         };
-        let mouse = viewport.get_mouse_position();
-        let text = match self.screen_to_tile(mouse) {
-            Some(tile) => format!("Cursor: {}, {}", tile.x, tile.y),
-            None => "Cursor: -, -".to_string(),
+        let text = if self.gamepad_cursor_tile.x >= 0 && self.gamepad_cursor_tile.y >= 0 {
+            format!(
+                "Cursor: {}, {} (gamepad)",
+                self.gamepad_cursor_tile.x, self.gamepad_cursor_tile.y
+            )
+        } else {
+            let mouse = viewport.get_mouse_position();
+            match self.screen_to_tile(mouse) {
+                Some(tile) => format!("Cursor: {}, {}", tile.x, tile.y),
+                None => "Cursor: -, -".to_string(),
+            }
         };
         label.set_text(&text);
     }
@@ -869,6 +1046,12 @@ impl MainScene {
         self.base()
             .get_node_or_null("World/Camera2D")
             .and_then(|node| node.try_cast::<CameraController>().ok())
+    }
+
+    fn tile_highlight(&self) -> Option<Gd<TileHighlight>> {
+        self.base()
+            .get_node_or_null("World/TileHighlight")
+            .and_then(|node| node.try_cast::<TileHighlight>().ok())
     }
 
     fn set_center_debug_inputs(&self, x: i32, y: i32) {

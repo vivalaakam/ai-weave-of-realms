@@ -12,7 +12,7 @@ use godot::classes::{
     Camera2D, ICamera2D, Input, InputEvent, InputEventKey, InputEventMouseButton,
     InputEventMouseMotion,
 };
-use godot::global::{Key, MouseButton};
+use godot::global::{JoyAxis, Key, MouseButton};
 use godot::prelude::*;
 
 use crate::coords::{tile_to_world, TILE_H, TILE_W};
@@ -20,6 +20,8 @@ use crate::coords::{tile_to_world, TILE_H, TILE_W};
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PAN_SPEED: f32 = 400.0; // pixels per second (keyboard)
+const RIGHT_STICK_PAN_SPEED: f32 = 520.0; // pixels per second (gamepad)
+const RIGHT_STICK_DEADZONE: f32 = 0.18;
 const ZOOM_STEP: f32 = 0.1;
 const ZOOM_MIN: f32 = 0.25;
 const ZOOM_MAX: f32 = 3.0;
@@ -29,6 +31,7 @@ const LEFT_MARGIN_TILES: f32 = 1.0;
 const TOP_MARGIN_TILES: f32 = 1.0;
 const BOTTOM_MARGIN_TILES: f32 = 1.0;
 const RIGHT_MARGIN_TILES: f32 = 5.0;
+const GAMEPAD_DEVICE_ID: i32 = 0;
 
 #[derive(Clone, Copy)]
 struct CameraBounds {
@@ -95,6 +98,16 @@ impl ICamera2D for CameraController {
         }
         if key_s {
             dir.y += 1.0;
+        }
+
+        let axis_rx = input.get_joy_axis(GAMEPAD_DEVICE_ID, JoyAxis::RIGHT_X);
+        let axis_ry = input.get_joy_axis(GAMEPAD_DEVICE_ID, JoyAxis::RIGHT_Y);
+        let gamepad = Vector2::new(
+            Self::apply_stick_deadzone(axis_rx, RIGHT_STICK_DEADZONE),
+            Self::apply_stick_deadzone(axis_ry, RIGHT_STICK_DEADZONE),
+        );
+        if gamepad != Vector2::ZERO {
+            dir += gamepad * (RIGHT_STICK_PAN_SPEED / PAN_SPEED);
         }
 
         if dir != Vector2::ZERO {
@@ -191,6 +204,14 @@ impl CameraController {
     fn apply_zoom(&mut self, delta: f32) {
         self.manual_zoom = (self.manual_zoom + delta).clamp(ZOOM_MIN, ZOOM_MAX);
         self.refresh_zoom();
+    }
+
+    fn apply_stick_deadzone(value: f32, deadzone: f32) -> f32 {
+        if value.abs() < deadzone {
+            0.0
+        } else {
+            value
+        }
     }
 
     fn refresh_zoom_if_needed(&mut self) {
