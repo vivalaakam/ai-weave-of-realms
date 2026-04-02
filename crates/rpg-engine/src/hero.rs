@@ -13,7 +13,6 @@ pub type HeroId = u8;
 /// Numeric identifier for a team; equals the team's index in [`GameState::teams`].
 pub type TeamId = u8;
 
-
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 
 /// A hero unit on the game map.
@@ -31,7 +30,7 @@ pub type TeamId = u8;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hero {
     /// Unique identifier within the game session; equals the hero's index in [`GameState::heroes`].
-    pub id: HeroId,
+    id: HeroId,
     /// Display name.
     pub name: String,
     /// Current hit points.
@@ -64,6 +63,14 @@ pub struct Hero {
 }
 
 impl Hero {
+    pub(crate) fn reset_id(&mut self, id: HeroId) {
+        self.id = id;
+    }
+
+    pub fn get_id(&self) -> HeroId {
+        self.id
+    }
+
     /// Computes the total movement points for a hero with the given speed.
     ///
     /// Formula: `20 + spd`

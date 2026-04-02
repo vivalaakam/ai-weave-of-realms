@@ -512,7 +512,6 @@ impl MainScene {
         // Start with the first player team and begin their first turn.
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            gm.bind_mut().reset_active_team();
             gm.bind_mut().on_turn();
         }
         self.select_first_active_team_hero();
@@ -804,7 +803,9 @@ impl MainScene {
         team_id: i64,
     ) -> i64 {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let id = gm.bind_mut().add_hero(GString::from(name), hp, atk, def, spd, pos, team_id);
+        let id = gm
+            .bind_mut()
+            .add_hero(GString::from(name), hp, atk, def, spd, pos, team_id);
         id
     }
 
@@ -1197,7 +1198,13 @@ impl MainScene {
         let new_id = self.add_game_hero("Герой", 100, 20, 10, 15, tile, team_id);
         self.create_hero_node(new_id, &team_name, player_controlled, tile);
         self.update_heroes_list();
-        info!(hero_id = new_id, team_id, x = tile.x, y = tile.y, "hired new hero at city");
+        info!(
+            hero_id = new_id,
+            team_id,
+            x = tile.x,
+            y = tile.y,
+            "hired new hero at city"
+        );
     }
 
     /// Вызывается при нажатии «Отмена» или Esc в диалоге найма.
@@ -1256,7 +1263,11 @@ impl MainScene {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         let team_id = gm.bind().get_active_team_id();
         let id = gm.bind().get_active_hero(team_id);
-        if id >= 0 { Some(id) } else { None }
+        if id >= 0 {
+            Some(id)
+        } else {
+            None
+        }
     }
 
     fn focus_camera_on_hero(&self, hero_id: i64) {

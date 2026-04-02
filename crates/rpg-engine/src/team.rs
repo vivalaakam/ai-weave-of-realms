@@ -12,21 +12,26 @@ use crate::hero::TeamId;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
     /// Unique numeric identifier (0-8).
-    pub id: TeamId,
+    id: TeamId,
     /// Human-readable team name (e.g. "Red", "Blue").
     pub name: String,
     /// Display color as RGB tuple.
     pub color: (u8, u8, u8),
     /// `true` if the human player can select and command heroes on this team.
-    pub player_controlled: bool,
+    player_controlled: bool,
     /// How many turns this team has taken (0 = not yet started).
     /// Incremented by [`GameState::on_turn`] at the start of each of this team's turns.
-    pub turn: u32,
+    turn: u32,
 }
 
 impl Team {
     /// Creates a new team with the given properties.
-    pub fn new(id: TeamId, name: impl Into<String>, color: (u8, u8, u8), player_controlled: bool) -> Self {
+    pub fn new(
+        id: TeamId,
+        name: impl Into<String>,
+        color: (u8, u8, u8),
+        player_controlled: bool,
+    ) -> Self {
         Self {
             id,
             name: name.into(),
@@ -34,6 +39,26 @@ impl Team {
             player_controlled,
             turn: 0,
         }
+    }
+
+    pub(crate) fn reset_id(&mut self, id: TeamId) {
+        self.id = id;
+    }
+
+    pub fn get_id(&self) -> TeamId {
+        self.id
+    }
+
+    pub fn get_turn(&self) -> u32 {
+        self.turn
+    }
+
+    pub fn is_player_controlled(&self) -> bool {
+        self.player_controlled
+    }
+
+    pub(crate) fn increment_turn(&mut self) {
+        self.turn += 1;
     }
 
     /// Creates a default Red player team (id=0, first slot).

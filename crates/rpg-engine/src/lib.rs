@@ -23,11 +23,12 @@ pub mod error;
 pub mod game_state;
 pub mod hero;
 pub mod map;
-pub mod team;
 pub mod movement;
 pub mod rng;
 pub mod score;
 pub mod spawn;
+pub mod team;
 
+mod game_error;
 #[cfg(test)]
 pub mod test_utils;
