@@ -832,4 +832,24 @@ impl GameManager {
         let Some(state) = &mut self.state else { return };
         state.reset_active_team();
     }
+
+    /// Begins the active team's turn: increments their per-team turn counter and
+    /// resets movement for all living heroes of that team.
+    ///
+    /// Must be called once after [`reset_active_team`] at game start and once
+    /// after each [`get_next_active_team`] call.
+    #[func]
+    pub fn on_turn(&mut self) {
+        let Some(state) = &mut self.state else { return };
+        state.on_turn();
+    }
+
+    /// Returns the current per-team turn counter for `team_id` (0 = not yet started).
+    #[func]
+    pub fn get_team_turn(&self, team_id: i64) -> i64 {
+        let Some(state) = &self.state else { return 0 };
+        state.get_team(team_id as u8)
+            .map(|t| t.turn as i64)
+            .unwrap_or(0)
+    }
 }

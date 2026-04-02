@@ -509,10 +509,11 @@ impl MainScene {
         self.setup_city_markers();
         self.update_heroes_list();
         self.set_center_debug_inputs(MAP_WIDTH / 2, MAP_HEIGHT / 2);
-        // Start with the first player team.
+        // Start with the first player team and begin their first turn.
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
             gm.bind_mut().reset_active_team();
+            gm.bind_mut().on_turn();
         }
         self.select_first_active_team_hero();
         self.gamepad_cursor_tile = Vector2i::new(MAP_WIDTH / 2, MAP_HEIGHT / 2);
@@ -1090,8 +1091,8 @@ impl MainScene {
     /// Вызывается при нажатии «Да» в диалоге завершения хода.
     ///
     /// Переключает активную команду на следующую.  После того как все команды
-    /// игрока сходили, вызывает `advance_turn`, сбрасывает движение у всех
-    /// героев и возвращает ход первой команде.
+    /// игрока сходили, вызывает `advance_turn` (сброс AI-движения, счётчик глобального хода)
+    /// и возвращает ход первой команде.  Сброс движения игровых команд выполняется в `on_turn`.
     #[func]
     fn _on_end_turn_confirmed(&mut self) {
         self.advance_active_team();
@@ -1299,14 +1300,15 @@ impl MainScene {
     }
 
     /// Advances to the next player team's phase, or — when all player teams have
-    /// moved — calls `advance_turn` (global turn counter + movement reset) and
-    /// returns to the first player team.
+    /// moved — calls `advance_turn` (global turn counter + AI movement reset) and
+    /// returns to the first player team.  Player movement is reset via `on_turn`.
     fn advance_active_team(&mut self) {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
         let should_advance_turn = gm.bind_mut().get_next_active_team();
         if should_advance_turn {
             gm.call_deferred("advance_turn", &[]);
         }
+        gm.bind_mut().on_turn();
         drop(gm);
 
         // Try to restore the last active hero for the new team.

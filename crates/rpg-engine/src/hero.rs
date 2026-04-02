@@ -25,6 +25,9 @@ pub struct TeamInfo {
     pub color: (u8, u8, u8),
     /// `true` if the human player can select and command heroes on this team.
     pub player_controlled: bool,
+    /// How many turns this team has taken (0 = not yet started).
+    /// Incremented by [`GameState::on_turn`] at the start of each of this team's turns.
+    pub turn: u32,
 }
 
 impl TeamInfo {
@@ -35,6 +38,7 @@ impl TeamInfo {
             name: name.into(),
             color,
             player_controlled,
+            turn: 0,
         }
     }
 

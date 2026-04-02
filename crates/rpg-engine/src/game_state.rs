@@ -5,10 +5,11 @@
 //!
 //! ## Turn loop
 //! ```text
-//! loop {
-//!     // player/AI issues move_hero / attack_hero calls
-//!     state.advance_turn();   // resets movement, awards survival points
-//! }
+//! // At the start of each team's turn:
+//! state.on_turn();           // increments team turn counter, resets that team's movement
+//! // player/AI issues move_hero / attack_hero calls
+//! // When all player teams have acted:
+//! state.advance_turn();      // resets AI-team movement, awards survival points, bumps global turn
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,8 @@ pub enum TurnEvent {
     HeroDefeated { hero_id: u32 },
     /// The turn counter advanced.
     TurnAdvanced { turn: u32 },
+    /// A team's per-team turn counter advanced (emitted at the start of that team's turn).
+    TeamTurnStarted { team_id: TeamId, turn: u32 },
 }
 
 // ─── GameState ────────────────────────────────────────────────────────────────
@@ -166,6 +169,27 @@ impl GameState {
             }
         }
         self.active_team_idx = 0;
+    }
+
+    /// Begins the active team's turn:
+    /// 1. Increments their per-team turn counter.
+    /// 2. Resets movement points for all living heroes that belong to the active team.
+    ///
+    /// Must be called at the start of each team's turn, including the very first
+    /// turn after game initialisation (so that turn 0 → 1 fires the same event as
+    /// any subsequent team-turn start).
+    pub fn on_turn(&mut self) -> Vec<TurnEvent> {
+        let team = &mut self.teams[self.active_team_idx];
+        team.turn += 1;
+        let team_id = team.id;
+        let turn = team.turn;
+        let team_name = team.name.to_lowercase();
+
+        for hero in self.heroes.iter_mut().filter(|h| h.is_alive() && h.team.name == team_name) {
+            hero.reset_movement();
+        }
+
+        vec![TurnEvent::TeamTurnStarted { team_id, turn }]
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -449,10 +473,12 @@ impl GameState {
         Ok(events)
     }
 
-    /// Advances to the next turn: resets movement for all living heroes
+    /// Advances the global turn: resets movement for non-player-controlled (AI) heroes
     /// and awards one survival point.
+    ///
+    /// Movement for player-controlled heroes is reset per-team in [`GameState::on_turn`].
     pub fn advance_turn(&mut self) -> Vec<TurnEvent> {
-        for hero in self.heroes.iter_mut().filter(|h| h.is_alive()) {
+        for hero in self.heroes.iter_mut().filter(|h| h.is_alive() && !h.team.player_controlled) {
             hero.reset_movement();
         }
         self.score.record(ScoreEvent::TurnSurvived);
@@ -647,13 +673,34 @@ mod tests {
     }
 
     #[test]
-    fn advance_turn_resets_movement_and_increments_turn() {
+    fn advance_turn_increments_global_turn_and_resets_ai_movement() {
         let map = meadow_map(5, 5);
-        let mut h = player(1, MapCoord::new(0, 0));
-        h.mov_remaining = 0;
-        let mut state = GameState::new(map, vec![h]);
+        let mut p = player(1, MapCoord::new(0, 0));
+        let mut e = enemy(2, MapCoord::new(1, 0));
+        p.mov_remaining = 0;
+        e.mov_remaining = 0;
+        let mut state = GameState::new(map, vec![p, e]);
         state.advance_turn();
         assert_eq!(state.turn, 2);
+        // Player hero is NOT reset by advance_turn — that's on_turn's job.
+        assert_eq!(state.hero(1).unwrap().mov_remaining, 0);
+        // Enemy hero IS reset by advance_turn.
+        assert_eq!(state.hero(2).unwrap().mov_remaining, 25); // spd=5 → mov=25
+    }
+
+    #[test]
+    fn on_turn_resets_active_team_movement() {
+        let map = meadow_map(5, 5);
+        // Hero must belong to the active team ("red" in GameState::new default).
+        let mut h = Hero::new(
+            1, "Hero", 100, 20, 10, 10,
+            MapCoord::new(0, 0),
+            Team::red(),
+            base_rng().derive_for_hero(1),
+        );
+        h.mov_remaining = 0;
+        let mut state = GameState::new(map, vec![h]);
+        state.on_turn();
         assert_eq!(state.hero(1).unwrap().mov_remaining, 30); // spd=10 → mov=30
     }
 
@@ -710,5 +757,47 @@ mod tests {
         let state = GameState::new(map, vec![player(1, MapCoord::new(0, 0)), e]);
         assert_eq!(state.living_heroes(false).len(), 0);
         assert_eq!(state.living_heroes(true).len(), 1);
+    }
+
+    #[test]
+    fn on_turn_increments_active_team_counter() {
+        let map = meadow_map(5, 5);
+        let mut state = GameState::new(map, vec![]);
+        // All teams start at 0.
+        for team in &state.teams {
+            assert_eq!(team.turn, 0);
+        }
+        // First team's turn begins.
+        let events = state.on_turn();
+        let active_id = state.get_active_team_id();
+        assert_eq!(state.get_active_team().turn, 1);
+        assert!(matches!(
+            events[0],
+            TurnEvent::TeamTurnStarted { team_id, turn: 1 } if team_id == active_id
+        ));
+    }
+
+    #[test]
+    fn on_turn_each_team_has_own_counter() {
+        let map = meadow_map(5, 5);
+        let teams = vec![TeamInfo::red(), TeamInfo::blue()];
+        let mut state = GameState::with_teams(map, vec![], teams);
+
+        // Simulate: first team begins turn 1.
+        state.on_turn();
+        assert_eq!(state.teams[0].turn, 1);
+        assert_eq!(state.teams[1].turn, 0);
+
+        // Switch to second team and begin its turn 1.
+        state.get_next_active_team();
+        state.on_turn();
+        assert_eq!(state.teams[0].turn, 1);
+        assert_eq!(state.teams[1].turn, 1);
+
+        // Cycle back to first team, begin its turn 2.
+        state.get_next_active_team();
+        state.on_turn();
+        assert_eq!(state.teams[0].turn, 2);
+        assert_eq!(state.teams[1].turn, 1);
     }
 }
