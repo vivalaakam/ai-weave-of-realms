@@ -40,17 +40,17 @@ impl TeamInfo {
 
     /// Creates a default Red player team.
     pub fn red() -> Self {
-        Self::new(0, "Red", (220, 50, 50), true)
+        Self::new(1, "Red", (220, 50, 50), true)
     }
 
     /// Creates a default Blue player team.
     pub fn blue() -> Self {
-        Self::new(1, "Blue", (50, 100, 220), true)
+        Self::new(2, "Blue", (50, 100, 220), true)
     }
 
     /// Creates a default AI-controlled enemy team.
     pub fn enemy() -> Self {
-        Self::new(2, "Enemy", (150, 80, 200), false)
+        Self::new(3, "Enemy", (150, 80, 200), false)
     }
 }
 
@@ -70,7 +70,7 @@ pub struct Team {
 
 impl Team {
     /// Creates a team with the given name and `player_controlled` flag.
-    pub fn new(name: impl Into<String>, player_controlled: bool) -> Self {
+    pub fn new(name : impl Into<String>, player_controlled: bool) -> Self {
         Self {
             name: name.into(),
             player_controlled,
