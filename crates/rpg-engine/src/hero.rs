@@ -63,8 +63,9 @@ pub struct Hero {
 }
 
 impl Hero {
-    pub(crate) fn reset_id(&mut self, id: HeroId) {
+    pub(crate) fn reset(&mut self, id: HeroId, seed: &SeededRng) {
         self.id = id;
+        self.rng = seed.update(&format!("hero_{}", self.id));
     }
 
     pub fn get_id(&self) -> HeroId {
@@ -95,7 +96,6 @@ impl Hero {
         spd: u32,
         position: MapCoord,
         team_id: TeamId,
-        rng: SeededRng,
     ) -> Self {
         let mov = Self::movement_for_spd(spd);
         Self {
@@ -110,7 +110,7 @@ impl Hero {
             mov_remaining: mov,
             position,
             team_id,
-            rng,
+            rng: SeededRng::new("default"),
         }
     }
 
@@ -137,8 +137,7 @@ mod tests {
     use super::*;
 
     fn hero() -> Hero {
-        let rng = SeededRng::new("test").derive_for_hero(1);
-        Hero::new(0, "Arthur", 100, 20, 10, 15, MapCoord::new(0, 0), 1, rng)
+        Hero::new(0, "Arthur", 100, 20, 10, 15, MapCoord::new(0, 0), 1)
     }
 
     #[test]

@@ -94,11 +94,9 @@ fn calc_damage(source: &mut Hero, target: &Hero) -> u32 {
 mod tests {
     use super::*;
     use crate::map::game_map::MapCoord;
-    use crate::rng::SeededRng;
 
-    fn make_hero(id: u32, hp: u32, atk: u32, def: u32, spd: u32) -> Hero {
-        let rng = SeededRng::new("combat-test").derive_for_hero(id);
-        Hero::new(0, "Hero", hp, atk, def, spd, MapCoord::new(0, 0), 1, rng)
+    fn make_hero(id: u8, hp: u32, atk: u32, def: u32, spd: u32) -> Hero {
+        Hero::new(id, "Hero", hp, atk, def, spd, MapCoord::new(0, 0), 1)
     }
 
     #[test]

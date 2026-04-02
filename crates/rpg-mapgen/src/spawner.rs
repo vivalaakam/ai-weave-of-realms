@@ -16,7 +16,6 @@ use tracing::{debug, instrument};
 
 use rpg_engine::hero::{Hero, TeamId};
 use rpg_engine::map::game_map::{GameMap, MapCoord};
-use rpg_engine::rng::SeededRng;
 
 use crate::error::Error;
 use crate::map_table::game_map_to_lua_table;
@@ -47,7 +46,7 @@ impl EnemySpawn {
     ///
     /// `team_id` must correspond to a [`rpg_engine::team::Team`] registered
     /// in the active [`GameState`].
-    pub fn into_hero(self, base_rng: &SeededRng, team_id: TeamId) -> Hero {
+    pub fn into_hero(self, team_id: TeamId) -> Hero {
         Hero::new(
             self.id as u8,
             format!("Enemy {}", self.id),
@@ -57,7 +56,6 @@ impl EnemySpawn {
             self.spd,
             self.position,
             team_id,
-            base_rng.derive_for_hero(self.id),
         )
     }
 }
@@ -274,8 +272,7 @@ mod tests {
             "#,
         );
         let spawns = spawner.spawn(&make_map()).unwrap();
-        let base_rng = SeededRng::new("test-session");
-        let hero = spawns.into_iter().next().unwrap().into_hero(&base_rng, 3);
+        let hero = spawns.into_iter().next().unwrap().into_hero(3);
         assert_eq!(hero.hp, 50);
         assert_eq!(hero.atk, 15);
     }

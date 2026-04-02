@@ -21,6 +21,7 @@ use crate::game_error::GameError;
 use crate::hero::{Hero, HeroId, TeamId};
 use crate::map::game_map::{Direction, GameMap, MapCoord};
 use crate::map::tile::Tiles;
+use crate::rng::SeededRng;
 use crate::score::{ScoreBoard, ScoreEvent};
 use crate::team::Team;
 
@@ -74,14 +75,17 @@ pub struct GameState {
     teams_order: VecDeque<TeamId>,
     /// Last active hero for each team. Used to restore selection when switching teams.
     active_hero: BTreeMap<TeamId, Option<HeroId>>,
+    /// Session RNG, seeded at construction time.
+    rng: SeededRng,
+    hero_pointer: HeroId,
 }
 
 impl GameState {
-    /// Creates a new empty game session with only a map.
+    /// Creates a new empty game session with a map and a seed for the session RNG.
     ///
     /// Add teams via [`add_team`](Self::add_team) and heroes via
     /// [`add_hero`](Self::add_hero) before the first turn.
-    pub fn new(map: GameMap) -> Self {
+    pub fn new(map: GameMap, seed: impl AsRef<str>) -> Self {
         Self {
             map,
             heroes: BTreeMap::new(),
@@ -90,6 +94,8 @@ impl GameState {
             teams: BTreeMap::new(),
             active_hero: BTreeMap::new(),
             teams_order: VecDeque::new(),
+            rng: SeededRng::new(seed.as_ref()),
+            hero_pointer: 0,
         }
     }
 
@@ -97,10 +103,15 @@ impl GameState {
     ///
     /// Returns the assigned [`HeroId`].
     pub fn add_hero(&mut self, mut hero: Hero) -> HeroId {
-        hero.reset_id(self.heroes.len() as HeroId);
-        let id = hero.get_id();
-        self.heroes.insert(id, hero);
-        id
+        let next_hero_id = self.hero_pointer;
+        hero.reset(next_hero_id, &self.rng);
+        self.heroes.insert(next_hero_id, hero);
+        self.hero_pointer += 1;
+        next_hero_id
+    }
+
+    pub fn get_total_heroes(&self) -> usize {
+        self.heroes.len()
     }
 
     /// Adds a team to the session, auto-assigning `id = teams.len()`.
@@ -562,7 +573,6 @@ fn flood_city(map: &GameMap, start: MapCoord) -> Vec<MapCoord> {
 mod tests {
     use super::*;
     use crate::map::tile::Tile;
-    use crate::rng::SeededRng;
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
         let tiles = vec![
@@ -574,13 +584,9 @@ mod tests {
         GameMap::new(w, h, tiles, [0u8; 32]).unwrap()
     }
 
-    fn base_rng() -> SeededRng {
-        SeededRng::new("test-session")
-    }
-
     /// Creates a state with Red (0), Blue (1), Enemy (2) teams pre-registered.
     fn make_state(map: GameMap) -> GameState {
-        let mut state = GameState::new(map);
+        let mut state = GameState::new(map, "test-session");
         state.add_team(Team::red());
         state.add_team(Team::blue());
         state.add_team(Team::enemy());
@@ -598,7 +604,6 @@ mod tests {
             10,
             pos,
             0,
-            base_rng().derive_for_hero(0),
         )
     }
 
@@ -613,7 +618,6 @@ mod tests {
             5,
             pos,
             2,
-            base_rng().derive_for_hero(0),
         )
     }
 
@@ -715,7 +719,6 @@ mod tests {
     #[test]
     fn defeated_enemy_awards_score() {
         let map = meadow_map(5, 5);
-        let base = base_rng();
         let mut state = make_state(map);
         let pid = state.add_hero(Hero::new(
             0,
@@ -726,7 +729,6 @@ mod tests {
             10,
             MapCoord::new(0, 0),
             0,
-            base.derive_for_hero(0),
         ));
         let eid = state.add_hero(Hero::new(
             0,
@@ -737,7 +739,6 @@ mod tests {
             1,
             MapCoord::new(1, 0),
             2,
-            base.derive_for_hero(0),
         ));
         state.attack_hero(pid, eid).unwrap();
         assert!(state.score.total() > 0);
@@ -776,7 +777,7 @@ mod tests {
     #[test]
     fn on_turn_each_team_has_own_counter() {
         let map = meadow_map(5, 5);
-        let mut state = GameState::new(map);
+        let mut state = GameState::new(map, "test-session");
         state.add_team(Team::red());
         state.add_team(Team::blue());
 

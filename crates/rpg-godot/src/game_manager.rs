@@ -24,7 +24,6 @@ use rpg_engine::hero::{Hero, HeroId, TeamId};
 use rpg_engine::map::game_map::MapCoord;
 use rpg_engine::map::tile::Tiles;
 use rpg_engine::movement;
-use rpg_engine::rng::SeededRng;
 use rpg_engine::spawn;
 use rpg_engine::team::Team;
 use rpg_engine::Direction;
@@ -38,7 +37,6 @@ use rpg_mapgen::spawner::EnemySpawner;
 pub struct GameManager {
     base: Base<Node>,
     state: Option<GameState>,
-    rng: Option<SeededRng>,
     enemy_spawner: Option<EnemySpawner>,
 }
 
@@ -48,7 +46,6 @@ impl INode for GameManager {
         Self {
             base,
             state: None,
-            rng: None,
             enemy_spawner: None,
         }
     }
@@ -134,8 +131,7 @@ impl GameManager {
             }
         };
 
-        self.rng = Some(SeededRng::new(&seed_str));
-        let mut state = GameState::new(map);
+        let mut state = GameState::new(map, &seed_str);
         state.add_team(Team::red());
         state.add_team(Team::blue());
         state.add_team(Team::enemy());
@@ -191,14 +187,8 @@ impl GameManager {
         let Some(state) = &mut self.state else {
             return -1;
         };
-        let next_id = state.heroes.len() as HeroId;
-        let hero_rng = self
-            .rng
-            .as_ref()
-            .map(|r| r.derive_for_hero(next_id as u32))
-            .unwrap_or_else(|| SeededRng::new(&format!("hero_{next_id}")));
         let hero = Hero::new(
-            next_id,
+            0,
             name.to_string(),
             hp as u32,
             atk as u32,
@@ -206,7 +196,6 @@ impl GameManager {
             spd as u32,
             MapCoord::new(pos.x as u32, pos.y as u32),
             team_id as TeamId,
-            hero_rng,
         );
         state.add_hero(hero) as i64
     }
@@ -244,15 +233,9 @@ impl GameManager {
                     })
                     .unwrap_or(Team::enemy().get_id());
 
-                let base_rng = self
-                    .rng
-                    .as_ref()
-                    .cloned()
-                    .unwrap_or_else(|| SeededRng::new("fallback-spawn"));
-
                 for spawn in spawns {
-                    let hero = spawn.into_hero(&base_rng, enemy_team_id);
                     if let Some(state) = &mut self.state {
+                        let hero = spawn.into_hero(enemy_team_id);
                         state.add_hero(hero);
                     }
                 }
