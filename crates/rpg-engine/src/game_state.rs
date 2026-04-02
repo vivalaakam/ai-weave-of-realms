@@ -17,8 +17,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::combat::{self, CombatResult};
 use crate::error::Error;
-#[allow(unused_imports)] // Team is re-exported for tests via `use super::*`
-use crate::hero::{Hero, Team, TeamId, TeamInfo};
+use crate::hero::{Hero, HeroId, TeamId};
+use crate::team::Team;
 use crate::map::game_map::{Direction, GameMap, MapCoord};
 use crate::map::tile::Tiles;
 use crate::score::{ScoreBoard, ScoreEvent};
@@ -30,22 +30,22 @@ use crate::score::{ScoreBoard, ScoreEvent};
 pub enum TurnEvent {
     /// A hero moved to a new tile.
     HeroMoved {
-        hero_id: u32,
+        hero_id: HeroId,
         from: MapCoord,
         to: MapCoord,
     },
     /// A hero visited a point of interest and triggered a score event.
-    PoiVisited { hero_id: u32, coord: MapCoord },
+    PoiVisited { hero_id: HeroId, coord: MapCoord },
     /// City ownership changed: `team_id` is None when the city becomes neutral.
     CityOwnerChanged { coord: MapCoord, team_id: Option<TeamId> },
     /// A hero engaged and resolved combat with an enemy.
     CombatResolved {
-        attacker_id: u32,
-        defender_id: u32,
+        attacker_id: HeroId,
+        defender_id: HeroId,
         result: CombatResult,
     },
     /// A hero was defeated and removed from the map.
-    HeroDefeated { hero_id: u32 },
+    HeroDefeated { hero_id: HeroId },
     /// The turn counter advanced.
     TurnAdvanced { turn: u32 },
     /// A team's per-team turn counter advanced (emitted at the start of that team's turn).
@@ -68,30 +68,45 @@ pub struct GameState {
     /// team id.  Absence from the map means the city is neutral.
     pub city_owners: HashMap<MapCoord, TeamId>,
     /// All teams in the game (player-controlled and AI).
-    pub teams: Vec<TeamInfo>,
+    pub teams: Vec<Team>,
     /// Last active hero for each team. Used to restore selection when switching teams.
-    active_hero: HashMap<TeamId, Option<u32>>,
+    active_hero: HashMap<TeamId, Option<HeroId>>,
     /// The team whose turn it is to act (index into `teams`).
     active_team_idx: usize,
 }
 
 impl GameState {
-    /// Creates a new game session at turn 1 with default teams (Red, Blue, Enemy).
+    /// Creates a new game session at turn 1 with default teams (Red, Blue).
+    ///
+    /// Team and hero ids are normalised to equal their index in the respective
+    /// arrays, overriding any ids provided in the input.
     pub fn new(map: GameMap, heroes: Vec<Hero>) -> Self {
+        let mut teams = vec![Team::red(), Team::blue()];
+        Self::normalize_ids(&mut teams, &mut vec![]);
+        let mut heroes = heroes;
+        for (i, h) in heroes.iter_mut().enumerate() {
+            h.id = i as HeroId;
+        }
         Self {
             map,
             heroes,
-            turn: 1,
+            turn: 0,
             score: ScoreBoard::new(),
             city_owners: HashMap::new(),
-            teams: vec![TeamInfo::red(), TeamInfo::blue()],
+            teams,
             active_hero: HashMap::new(),
             active_team_idx: 0,
         }
     }
 
     /// Creates a new game session with custom teams.
-    pub fn with_teams(map: GameMap, heroes: Vec<Hero>, teams: Vec<TeamInfo>) -> Self {
+    ///
+    /// Team and hero ids are normalised to equal their index in the respective
+    /// arrays, overriding any ids provided in the input.
+    pub fn with_teams(map: GameMap, heroes: Vec<Hero>, teams: Vec<Team>) -> Self {
+        let mut teams = teams;
+        let mut heroes = heroes;
+        Self::normalize_ids(&mut teams, &mut heroes);
         Self {
             map,
             heroes,
@@ -104,12 +119,41 @@ impl GameState {
         }
     }
 
+    /// Adds a hero to the session, auto-assigning `id = heroes.len()`.
+    ///
+    /// Returns the assigned [`HeroId`].
+    pub fn add_hero(&mut self, mut hero: Hero) -> HeroId {
+        hero.id = self.heroes.len() as HeroId;
+        let id = hero.id;
+        self.heroes.push(hero);
+        id
+    }
+
+    /// Adds a team to the session, auto-assigning `id = teams.len()`.
+    ///
+    /// Returns the assigned [`TeamId`].
+    pub fn add_team(&mut self, mut team: Team) -> TeamId {
+        team.id = self.teams.len() as TeamId;
+        let id = team.id;
+        self.teams.push(team);
+        id
+    }
+
+    fn normalize_ids(teams: &mut [Team], heroes: &mut [Hero]) {
+        for (i, t) in teams.iter_mut().enumerate() {
+            t.id = i as TeamId;
+        }
+        for (i, h) in heroes.iter_mut().enumerate() {
+            h.id = i as HeroId;
+        }
+    }
+
     pub fn get_turn(&self) -> u32 {
         self.turn
     }
 
     /// Returns the currently active team info.
-    pub fn get_active_team(&self) -> &TeamInfo {
+    pub fn get_active_team(&self) -> &Team {
         &self.teams[self.active_team_idx]
     }
 
@@ -119,12 +163,12 @@ impl GameState {
     }
 
     /// Returns all player-controlled teams.
-    pub fn player_teams(&self) -> impl Iterator<Item = &TeamInfo> {
+    pub fn player_teams(&self) -> impl Iterator<Item = &Team> {
         self.teams.iter().filter(|t| t.player_controlled)
     }
 
     /// Returns team info by id.
-    pub fn get_team(&self, id: TeamId) -> Option<&TeamInfo> {
+    pub fn get_team(&self, id: TeamId) -> Option<&Team> {
         self.teams.iter().find(|t| t.id == id)
     }
 
@@ -183,9 +227,8 @@ impl GameState {
         team.turn += 1;
         let team_id = team.id;
         let turn = team.turn;
-        let team_name = team.name.to_lowercase();
 
-        for hero in self.heroes.iter_mut().filter(|h| h.is_alive() && h.team.name == team_name) {
+        for hero in self.heroes.iter_mut().filter(|h| h.is_alive() && h.team_id == team_id) {
             hero.reset_movement();
         }
 
@@ -194,19 +237,24 @@ impl GameState {
 
     // ── Queries ───────────────────────────────────────────────────────────────
 
+    /// Returns `true` if the team with `team_id` is player-controlled.
+    pub fn is_player_controlled(&self, team_id: TeamId) -> bool {
+        self.teams.iter().find(|t| t.id == team_id).map(|t| t.player_controlled).unwrap_or(false)
+    }
+
     /// Returns living heroes whose team has the given `player_controlled` value.
     ///
     /// Pass `true` to get all player-controlled heroes, `false` for AI-controlled ones.
     pub fn living_heroes(&self, player_controlled: bool) -> Vec<&Hero> {
         self.heroes
             .iter()
-            .filter(|h| h.team.player_controlled == player_controlled && h.is_alive())
+            .filter(|h| self.is_player_controlled(h.team_id) == player_controlled && h.is_alive())
             .collect()
     }
 
     /// Returns a reference to a hero by id, or `None`.
-    pub fn hero(&self, id: u32) -> Option<&Hero> {
-        self.heroes.iter().find(|h| h.id == id)
+    pub fn hero(&self, id: HeroId) -> Option<&Hero> {
+        self.heroes.get(id as usize).filter(|h| h.id == id)
     }
 
     /// Returns a reference to the living hero at `pos`, or `None`.
@@ -222,12 +270,12 @@ impl GameState {
     }
 
     /// Returns the last active hero ID for `team_id`, or `None` if not set.
-    pub fn get_active_hero(&self, team_id: TeamId) -> Option<u32> {
+    pub fn get_active_hero(&self, team_id: TeamId) -> Option<HeroId> {
         self.active_hero.get(&team_id).copied().flatten()
     }
 
     /// Sets the active hero for `team_id`.
-    pub fn set_active_hero(&mut self, team_id: TeamId, hero_id: Option<u32>) {
+    pub fn set_active_hero(&mut self, team_id: TeamId, hero_id: Option<HeroId>) {
         self.active_hero.insert(team_id, hero_id);
     }
 
@@ -236,15 +284,11 @@ impl GameState {
     /// If no active hero is set or the active hero is dead/wrong team,
     /// returns the first living hero of the team.
     /// Returns `None` if the team has no living heroes.
-    pub fn get_next_hero(&self, team_id: TeamId) -> Option<u32> {
-        let team_heroes: Vec<u32> = self
+    pub fn get_next_hero(&self, team_id: TeamId) -> Option<HeroId> {
+        let team_heroes: Vec<HeroId> = self
             .heroes
             .iter()
-            .filter(|h| {
-                // For now, match by team name until Hero stores TeamId
-                self.teams.iter().any(|t| t.id == team_id && t.name.to_lowercase() == h.team.name)
-                    && h.is_alive()
-            })
+            .filter(|h| h.team_id == team_id && h.is_alive())
             .map(|h| h.id)
             .collect();
 
@@ -320,7 +364,7 @@ impl GameState {
     /// - [`Error::OccupiedTile`]     — target tile is occupied by another hero
     pub fn move_hero(
         &mut self,
-        hero_id: u32,
+        hero_id: HeroId,
         direction: Direction,
     ) -> Result<Vec<TurnEvent>, Error> {
         let idx = self.hero_index(hero_id)?;
@@ -402,22 +446,19 @@ impl GameState {
             // entire connected city complex for the hero's team.
             // Emit CityOwnerChanged for every tile whose owner actually changes.
             if matches!(tile.kind, Tiles::City | Tiles::CityEntrance) {
-                // Find TeamId by hero's team name
-                let team_id = self.team_id_by_name(&self.heroes[idx].team.name);
-                if let Some(tid) = team_id {
-                    for coord in flood_city(&self.map, target) {
-                        let already_owned = self
-                            .city_owners
-                            .get(&coord)
-                            .map(|&o| o == tid)
-                            .unwrap_or(false);
-                        if !already_owned {
-                            self.city_owners.insert(coord, tid);
-                            events.push(TurnEvent::CityOwnerChanged {
-                                coord,
-                                team_id: Some(tid),
-                            });
-                        }
+                let tid = self.heroes[idx].team_id;
+                for coord in flood_city(&self.map, target) {
+                    let already_owned = self
+                        .city_owners
+                        .get(&coord)
+                        .map(|&o| o == tid)
+                        .unwrap_or(false);
+                    if !already_owned {
+                        self.city_owners.insert(coord, tid);
+                        events.push(TurnEvent::CityOwnerChanged {
+                            coord,
+                            team_id: Some(tid),
+                        });
                     }
                 }
             }
@@ -438,8 +479,8 @@ impl GameState {
     /// Returns [`Error::OutOfBounds`] if either hero id is not found.
     pub fn attack_hero(
         &mut self,
-        attacker_id: u32,
-        defender_id: u32,
+        attacker_id: HeroId,
+        defender_id: HeroId,
     ) -> Result<Vec<TurnEvent>, Error> {
         let att_idx = self.hero_index(attacker_id)?;
         let def_idx = self.hero_index(defender_id)?;
@@ -478,7 +519,11 @@ impl GameState {
     ///
     /// Movement for player-controlled heroes is reset per-team in [`GameState::on_turn`].
     pub fn advance_turn(&mut self) -> Vec<TurnEvent> {
-        for hero in self.heroes.iter_mut().filter(|h| h.is_alive() && !h.team.player_controlled) {
+        let player_teams: std::collections::HashSet<TeamId> = self.teams.iter()
+            .filter(|t| t.player_controlled)
+            .map(|t| t.id)
+            .collect();
+        for hero in self.heroes.iter_mut().filter(|h| h.is_alive() && !player_teams.contains(&h.team_id)) {
             hero.reset_movement();
         }
         self.score.record(ScoreEvent::TurnSurvived);
@@ -488,11 +533,13 @@ impl GameState {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    fn hero_index(&self, id: u32) -> Result<usize, Error> {
-        self.heroes
-            .iter()
-            .position(|h| h.id == id)
-            .ok_or_else(|| Error::OutOfBounds(format!("hero {id} not found")))
+    fn hero_index(&self, id: HeroId) -> Result<usize, Error> {
+        let idx = id as usize;
+        if self.heroes.get(idx).map(|h| h.id == id).unwrap_or(false) {
+            Ok(idx)
+        } else {
+            Err(Error::OutOfBounds(format!("hero {id} not found")))
+        }
     }
 }
 
@@ -585,176 +632,122 @@ mod tests {
         SeededRng::new("test-session")
     }
 
-    fn player(id: u32, pos: MapCoord) -> Hero {
-        // spd=10 → mov = 30
-        Hero::new(
-            id,
-            "Player",
-            100,
-            20,
-            10,
-            10,
-            pos,
-            Team::player(),
-            base_rng().derive_for_hero(id),
-        )
+    // team_id=0 = Team::red() at index 0 (default active team); spd=10 → mov=30
+    fn player(pos: MapCoord) -> Hero {
+        Hero::new(0, "Player", 100, 20, 10, 10, pos, 0, base_rng().derive_for_hero(0))
     }
 
-    fn enemy(id: u32, pos: MapCoord) -> Hero {
-        // spd=5 → mov = 25
-        Hero::new(
-            id,
-            "Enemy",
-            30,
-            10,
-            5,
-            5,
-            pos,
-            Team::enemy(),
-            base_rng().derive_for_hero(id),
-        )
+    // team_id=2 = Team::enemy() (non-player-controlled); spd=5 → mov=25
+    fn enemy(pos: MapCoord) -> Hero {
+        Hero::new(0, "Enemy", 30, 10, 5, 5, pos, 2, base_rng().derive_for_hero(0))
     }
 
     #[test]
     fn move_hero_updates_position_and_spends_movement() {
         let map = meadow_map(10, 10);
-        let h = player(1, MapCoord::new(0, 0));
-        let mut state = GameState::new(map, vec![h]);
+        let mut state = GameState::new(map, vec![]);
+        state.add_hero(player(MapCoord::new(0, 0)));
 
         // Move East three times — each step costs 1 movement point on Meadow.
-        state.move_hero(1, Direction::East).unwrap();
-        state.move_hero(1, Direction::East).unwrap();
-        let events = state.move_hero(1, Direction::East).unwrap();
-        assert_eq!(state.hero(1).unwrap().position, MapCoord::new(3, 0));
-        assert_eq!(state.hero(1).unwrap().mov_remaining, 27); // 30 - 3 = 27
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, TurnEvent::HeroMoved { .. })));
+        state.move_hero(0, Direction::East).unwrap();
+        state.move_hero(0, Direction::East).unwrap();
+        let events = state.move_hero(0, Direction::East).unwrap();
+        assert_eq!(state.hero(0).unwrap().position, MapCoord::new(3, 0));
+        assert_eq!(state.hero(0).unwrap().mov_remaining, 27); // 30 - 3 = 27
+        assert!(events.iter().any(|e| matches!(e, TurnEvent::HeroMoved { .. })));
     }
 
     #[test]
     fn move_hero_with_zero_budget_returns_error() {
         let map = meadow_map(10, 10);
-        let mut h = player(1, MapCoord::new(0, 0));
+        let mut state = GameState::new(map, vec![]);
+        let mut h = player(MapCoord::new(0, 0));
         h.mov_remaining = 0;
-        let mut state = GameState::new(map, vec![h]);
-        let result = state.move_hero(1, Direction::East);
+        state.add_hero(h);
+        let result = state.move_hero(0, Direction::East);
         assert!(matches!(result, Err(Error::NoMovementPoints { .. })));
     }
 
     #[test]
     fn move_hero_into_impassable_returns_error() {
         use crate::map::tile::Tile;
-        // Build a map where (1, 0) is a Mountain.
-        let mut tiles = vec![
-            Tile {
-                kind: Tiles::Meadow
-            };
-            9
-        ];
-        tiles[1] = Tile {
-            kind: Tiles::Mountain,
-        };
+        let mut tiles = vec![Tile { kind: Tiles::Meadow }; 9];
+        tiles[1] = Tile { kind: Tiles::Mountain };
         let map = GameMap::new(3, 3, tiles, [0u8; 32]).unwrap();
-        let h = player(1, MapCoord::new(0, 0));
-        let mut state = GameState::new(map, vec![h]);
-        let result = state.move_hero(1, Direction::East);
+        let mut state = GameState::new(map, vec![]);
+        state.add_hero(player(MapCoord::new(0, 0)));
+        let result = state.move_hero(0, Direction::East);
         assert!(matches!(result, Err(Error::ImpassableTile { .. })));
     }
 
     #[test]
     fn move_hero_out_of_bounds_returns_error() {
         let map = meadow_map(5, 5);
-        let h = player(1, MapCoord::new(0, 0));
-        let mut state = GameState::new(map, vec![h]);
-        // Moving North from (0,0) should go out of bounds.
-        let result = state.move_hero(1, Direction::North);
+        let mut state = GameState::new(map, vec![]);
+        state.add_hero(player(MapCoord::new(0, 0)));
+        let result = state.move_hero(0, Direction::North);
         assert!(matches!(result, Err(Error::OutOfBounds(_))));
     }
 
     #[test]
     fn advance_turn_increments_global_turn_and_resets_ai_movement() {
         let map = meadow_map(5, 5);
-        let mut p = player(1, MapCoord::new(0, 0));
-        let mut e = enemy(2, MapCoord::new(1, 0));
+        let mut state = GameState::new(map, vec![]);
+        let mut p = player(MapCoord::new(0, 0));
         p.mov_remaining = 0;
+        let mut e = enemy(MapCoord::new(1, 0));
         e.mov_remaining = 0;
-        let mut state = GameState::new(map, vec![p, e]);
+        let pid = state.add_hero(p); // id=0
+        let eid = state.add_hero(e); // id=1
         state.advance_turn();
         assert_eq!(state.turn, 2);
         // Player hero is NOT reset by advance_turn — that's on_turn's job.
-        assert_eq!(state.hero(1).unwrap().mov_remaining, 0);
+        assert_eq!(state.hero(pid).unwrap().mov_remaining, 0);
         // Enemy hero IS reset by advance_turn.
-        assert_eq!(state.hero(2).unwrap().mov_remaining, 25); // spd=5 → mov=25
+        assert_eq!(state.hero(eid).unwrap().mov_remaining, 25); // spd=5 → mov=25
     }
 
     #[test]
     fn on_turn_resets_active_team_movement() {
         let map = meadow_map(5, 5);
-        // Hero must belong to the active team ("red" in GameState::new default).
-        let mut h = Hero::new(
-            1, "Hero", 100, 20, 10, 10,
-            MapCoord::new(0, 0),
-            Team::red(),
-            base_rng().derive_for_hero(1),
-        );
+        // team_id=0 = Team::red(), the first active team in GameState::new.
+        let mut state = GameState::new(map, vec![]);
+        let mut h = player(MapCoord::new(0, 0));
         h.mov_remaining = 0;
-        let mut state = GameState::new(map, vec![h]);
+        let hid = state.add_hero(h);
         state.on_turn();
-        assert_eq!(state.hero(1).unwrap().mov_remaining, 30); // spd=10 → mov=30
+        assert_eq!(state.hero(hid).unwrap().mov_remaining, 30); // spd=10 → mov=30
     }
 
     #[test]
     fn attack_hero_applies_damage() {
         let map = meadow_map(5, 5);
-        let heroes = vec![
-            player(1, MapCoord::new(0, 0)),
-            enemy(2, MapCoord::new(1, 0)),
-        ];
-        let mut state = GameState::new(map, heroes);
-        state.attack_hero(1, 2).unwrap();
-        // Enemy should have taken damage (strong player vs weak enemy)
-        assert!(state.hero(2).unwrap().hp < 30);
+        let mut state = GameState::new(map, vec![]);
+        let pid = state.add_hero(player(MapCoord::new(0, 0)));
+        let eid = state.add_hero(enemy(MapCoord::new(1, 0)));
+        state.attack_hero(pid, eid).unwrap();
+        assert!(state.hero(eid).unwrap().hp < 30);
     }
 
     #[test]
     fn defeated_enemy_awards_score() {
         let map = meadow_map(5, 5);
-        // Player with overwhelming stats, enemy with minimal hp
         let base = base_rng();
-        let p = Hero::new(
-            1,
-            "P",
-            100,
-            200,
-            0,
-            10,
-            MapCoord::new(0, 0),
-            Team::player(),
-            base.derive_for_hero(1),
-        );
-        let e = Hero::new(
-            2,
-            "E",
-            1,
-            1,
-            0,
-            1,
-            MapCoord::new(1, 0),
-            Team::enemy(),
-            base.derive_for_hero(2),
-        );
-        let mut state = GameState::new(map, vec![p, e]);
-        state.attack_hero(1, 2).unwrap();
+        let mut state = GameState::new(map, vec![]);
+        let pid = state.add_hero(Hero::new(0, "P", 100, 200, 0, 10, MapCoord::new(0, 0), 0, base.derive_for_hero(0)));
+        let eid = state.add_hero(Hero::new(0, "E", 1, 1, 0, 1, MapCoord::new(1, 0), 2, base.derive_for_hero(0)));
+        state.attack_hero(pid, eid).unwrap();
         assert!(state.score.total() > 0);
     }
 
     #[test]
     fn living_heroes_excludes_dead() {
         let map = meadow_map(5, 5);
-        let mut e = enemy(2, MapCoord::new(1, 0));
-        e.take_damage(30); // kill
-        let state = GameState::new(map, vec![player(1, MapCoord::new(0, 0)), e]);
+        let mut state = GameState::new(map, vec![]);
+        state.add_hero(player(MapCoord::new(0, 0)));
+        let mut e = enemy(MapCoord::new(1, 0));
+        e.take_damage(30); // kill before adding
+        state.add_hero(e);
         assert_eq!(state.living_heroes(false).len(), 0);
         assert_eq!(state.living_heroes(true).len(), 1);
     }
@@ -780,7 +773,7 @@ mod tests {
     #[test]
     fn on_turn_each_team_has_own_counter() {
         let map = meadow_map(5, 5);
-        let teams = vec![TeamInfo::red(), TeamInfo::blue()];
+        let teams = vec![Team::red(), Team::blue()];
         let mut state = GameState::with_teams(map, vec![], teams);
 
         // Simulate: first team begins turn 1.

@@ -46,8 +46,8 @@ pub struct MainScene {
     end_turn_dialog: Option<Gd<ConfirmationDialog>>,
     hire_hero_dialog: Option<Gd<ConfirmationDialog>>,
     hire_target_tile: Vector2i,
-    /// Team name for the city where the pending hire will take place.
-    hire_target_team: String,
+    /// Team id for the city where the pending hire will take place.
+    hire_target_team_id: i64,
     left_stick_move_cooldown: f64,
     left_stick_direction_held: bool,
     cross_was_pressed: bool,
@@ -63,7 +63,7 @@ impl INode for MainScene {
             end_turn_dialog: None,
             hire_hero_dialog: None,
             hire_target_tile: Vector2i::new(-1, -1),
-            hire_target_team: String::new(),
+            hire_target_team_id: -1,
             left_stick_move_cooldown: 0.0,
             left_stick_direction_held: false,
             cross_was_pressed: false,
@@ -619,9 +619,9 @@ impl MainScene {
             }
         });
 
-        // Spawn Red hero (id = 1, team_id = 0).
-        self.add_game_hero(1, "Красный", 100, 20, 10, 15, red_spawn, "red", true);
-        self.create_hero_node(1, "red", true, red_spawn);
+        // Spawn Red hero (team_id = 0 = Team::red() at index 0).
+        let red_id = self.add_game_hero("Красный", 100, 20, 10, 15, red_spawn, 0);
+        self.create_hero_node(red_id, "red", true, red_spawn);
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
             gm.call_deferred(
@@ -634,9 +634,9 @@ impl MainScene {
             );
         }
 
-        // Spawn Blue hero (id = 2, team_id = 1).
-        self.add_game_hero(2, "Синий", 100, 20, 10, 15, blue_spawn, "blue", true);
-        self.create_hero_node(2, "blue", true, blue_spawn);
+        // Spawn Blue hero (team_id = 1 = Team::blue() at index 1).
+        let blue_id = self.add_game_hero("Синий", 100, 20, 10, 15, blue_spawn, 1);
+        self.create_hero_node(blue_id, "blue", true, blue_spawn);
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
             gm.call_deferred(
@@ -792,30 +792,20 @@ impl MainScene {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Adds a hero to the game session and returns the auto-assigned hero id.
     fn add_game_hero(
         &mut self,
-        id: i64,
         name: &str,
         hp: i64,
         atk: i64,
         def: i64,
         spd: i64,
         pos: Vector2i,
-        team_name: &str,
-        player_controlled: bool,
-    ) {
+        team_id: i64,
+    ) -> i64 {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        gm.bind_mut().add_hero(
-            id,
-            GString::from(name),
-            hp,
-            atk,
-            def,
-            spd,
-            pos,
-            GString::from(team_name),
-            player_controlled,
-        );
+        let id = gm.bind_mut().add_hero(GString::from(name), hp, atk, def, spd, pos, team_id);
+        id
     }
 
     fn create_hero_node(
@@ -1157,7 +1147,11 @@ impl MainScene {
         }
 
         self.hire_target_tile = tile;
-        self.hire_target_team = owner.clone();
+        self.hire_target_team_id = {
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let id = gm.bind().get_active_team_id();
+            id
+        };
 
         // Update dialog text to show which team will gain the new hero.
         if let Some(mut dialog) = self.hire_hero_dialog.clone() {
@@ -1189,20 +1183,21 @@ impl MainScene {
     #[func]
     fn _on_hire_hero_confirmed(&mut self) {
         let tile = self.hire_target_tile;
-        let team = self.hire_target_team.clone();
-        if tile.x < 0 || tile.y < 0 || team.is_empty() {
+        let team_id = self.hire_target_team_id;
+        if tile.x < 0 || tile.y < 0 || team_id < 0 {
             return;
         }
-        let new_id = {
+        let (team_name, player_controlled) = {
             let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            let v = gm.bind().get_next_hero_id();
-            v
+            let team_name = gm.bind().get_active_team().to_string();
+            let player_controlled = gm.bind().is_team_player_controlled(team_id);
+            (team_name, player_controlled)
         };
-        let name = format!("Герой {new_id}");
-        self.add_game_hero(new_id, &name, 100, 20, 10, 15, tile, &team, true);
-        self.create_hero_node(new_id, &team, true, tile);
+
+        let new_id = self.add_game_hero("Герой", 100, 20, 10, 15, tile, team_id);
+        self.create_hero_node(new_id, &team_name, player_controlled, tile);
         self.update_heroes_list();
-        info!(hero_id = new_id, team = %team, x = tile.x, y = tile.y, "hired new hero at city");
+        info!(hero_id = new_id, team_id, x = tile.x, y = tile.y, "hired new hero at city");
     }
 
     /// Вызывается при нажатии «Отмена» или Esc в диалоге найма.

@@ -20,7 +20,8 @@ use godot::prelude::*;
 use tracing::{debug, error, warn};
 
 use rpg_engine::game_state::{GameState, TurnEvent};
-use rpg_engine::hero::{Hero, Team};
+use rpg_engine::hero::{Hero, HeroId, TeamId};
+use rpg_engine::team::Team;
 use rpg_engine::map::game_map::MapCoord;
 use rpg_engine::map::tile::Tiles;
 use rpg_engine::movement;
@@ -164,48 +165,46 @@ impl GameManager {
         true
     }
 
-    /// Adds a hero to the current session.
+    /// Adds a hero to the current session, auto-assigning `id = heroes.len()`.
     ///
     /// Movement points are derived automatically from `spd` as `20 + spd`.
     ///
-    /// `team_name` is a human-readable team identifier (e.g. `"player"`, `"enemy"`).
-    /// `player_controlled` indicates whether the human player commands this hero.
+    /// `team_id` must match the `id` of a [`Team`] registered in the game state.
+    ///
+    /// Returns the assigned hero id, or `-1` if no session is active.
     #[func]
     #[allow(clippy::too_many_arguments)]
     pub fn add_hero(
         &mut self,
-        id: i64,
         name: GString,
         hp: i64,
         atk: i64,
         def: i64,
         spd: i64,
         pos: Vector2i,
-        team_name: GString,
-        player_controlled: bool,
-    ) -> bool {
+        team_id: i64,
+    ) -> i64 {
         let Some(state) = &mut self.state else {
-            return false;
+            return -1;
         };
-        let team = Team::new(team_name.to_string(), player_controlled);
+        let next_id = state.heroes.len() as HeroId;
         let hero_rng = self
             .rng
             .as_ref()
-            .map(|r| r.derive_for_hero(id as u32))
-            .unwrap_or_else(|| SeededRng::new(&format!("hero_{id}")));
+            .map(|r| r.derive_for_hero(next_id as u32))
+            .unwrap_or_else(|| SeededRng::new(&format!("hero_{next_id}")));
         let hero = Hero::new(
-            id as u32,
+            next_id,
             name.to_string(),
             hp as u32,
             atk as u32,
             def as u32,
             spd as u32,
             MapCoord::new(pos.x as u32, pos.y as u32),
-            team,
+            team_id as TeamId,
             hero_rng,
         );
-        state.heroes.push(hero);
-        true
+        state.add_hero(hero) as i64
     }
 
     /// Spawns enemies on the map using the Lua spawn script.
@@ -228,16 +227,20 @@ impl GameManager {
                     return 0;
                 }
 
-                // Add enemies to game state, giving each a derived RNG
+                // Add enemies to game state, giving each a derived RNG.
+                // Use the first non-player-controlled team id, falling back to Team::enemy().id.
+                let enemy_team_id: TeamId = self.state.as_ref()
+                    .and_then(|s| s.teams.iter().find(|t| !t.player_controlled).map(|t| t.id))
+                    .unwrap_or(Team::enemy().id);
                 let base_rng = self
                     .rng
                     .as_ref()
                     .cloned()
                     .unwrap_or_else(|| rpg_engine::rng::SeededRng::new("fallback-spawn"));
                 for spawn in spawns {
-                    let hero = spawn.into_hero(&base_rng);
+                    let hero = spawn.into_hero(&base_rng, enemy_team_id);
                     if let Some(state) = &mut self.state {
-                        state.heroes.push(hero);
+                        state.add_hero(hero);
                     }
                 }
 
@@ -271,8 +274,9 @@ impl GameManager {
         state
             .heroes
             .iter()
-            .find(|h| h.id == hero_id as u32)
-            .map(|h| GString::from(h.team.name.as_str()))
+            .find(|h| h.id == hero_id as HeroId)
+            .and_then(|h| state.team_name_by_id(h.team_id))
+            .map(GString::from)
             .unwrap_or_default()
     }
 
@@ -285,8 +289,8 @@ impl GameManager {
         state
             .heroes
             .iter()
-            .find(|h| h.id == hero_id as u32)
-            .map(|h| h.team.player_controlled)
+            .find(|h| h.id == hero_id as HeroId)
+            .map(|h| state.is_player_controlled(h.team_id))
             .unwrap_or(false)
     }
 
@@ -315,7 +319,7 @@ impl GameManager {
         };
 
         let events = match self.state.as_mut() {
-            Some(state) => match state.move_hero(hero_id as u32, dir) {
+            Some(state) => match state.move_hero(hero_id as HeroId, dir) {
                 Ok(ev) => ev,
                 Err(e) => {
                     warn!("move_hero {hero_id} dir={direction} failed: {e}");
@@ -367,7 +371,7 @@ impl GameManager {
     pub fn attack_hero(&mut self, attacker_id: i64, defender_id: i64) -> bool {
         let events = {
             match &mut self.state {
-                Some(state) => match state.attack_hero(attacker_id as u32, defender_id as u32) {
+                Some(state) => match state.attack_hero(attacker_id as HeroId, defender_id as HeroId) {
                     Ok(ev) => ev,
                     Err(e) => {
                         warn!("attack_hero failed: {e}");
@@ -445,7 +449,7 @@ impl GameManager {
         state
             .heroes
             .iter()
-            .find(|h| h.id == hero_id as u32)
+            .find(|h| h.id == hero_id as HeroId)
             .map(|h| h.mov_remaining as i64)
             .unwrap_or(-1)
     }
@@ -457,7 +461,7 @@ impl GameManager {
         state
             .heroes
             .iter()
-            .find(|h| h.id == hero_id as u32)
+            .find(|h| h.id == hero_id as HeroId)
             .map(|h| h.mov as i64)
             .unwrap_or(-1)
     }
@@ -519,7 +523,7 @@ impl GameManager {
         let Some(state) = &self.state else {
             return Array::new();
         };
-        let Some(hero) = state.heroes.iter().find(|h| h.id == hero_id as u32) else {
+        let Some(hero) = state.heroes.iter().find(|h| h.id == hero_id as HeroId) else {
             return Array::new();
         };
         let coords = movement::reachable_tiles(&state.map, hero.position, hero.mov_remaining);
@@ -547,7 +551,7 @@ impl GameManager {
         state
             .heroes
             .iter()
-            .find(|h| h.id == hero_id as u32)
+            .find(|h| h.id == hero_id as HeroId)
             .map(|h| Vector2i::new(h.position.x as i32, h.position.y as i32))
             .unwrap_or(Vector2i::new(-1, -1))
     }
@@ -561,7 +565,7 @@ impl GameManager {
         state
             .heroes
             .iter()
-            .find(|h| h.id == hero_id as u32)
+            .find(|h| h.id == hero_id as HeroId)
             .map(|h| h.is_alive())
             .unwrap_or(false)
     }
@@ -598,7 +602,7 @@ impl GameManager {
         for hero in state
             .heroes
             .iter()
-            .filter(|h| h.team.player_controlled && h.is_alive())
+            .filter(|h| state.is_player_controlled(h.team_id) && h.is_alive())
         {
             ids.push(hero.id as i64);
         }
@@ -727,7 +731,7 @@ impl GameManager {
         for hero in state
             .heroes
             .iter()
-            .filter(|h| !h.team.player_controlled && h.is_alive())
+            .filter(|h| !state.is_player_controlled(h.team_id) && h.is_alive())
         {
             ids.push(hero.id as i64);
         }
@@ -745,7 +749,7 @@ impl GameManager {
     #[func]
     pub fn set_active_hero(&mut self, team_id: i64, hero_id: i64) {
         let Some(state) = &mut self.state else { return };
-        let id = if hero_id >= 0 { Some(hero_id as u32) } else { None };
+        let id = if hero_id >= 0 { Some(hero_id as HeroId) } else { None };
         state.set_active_hero(team_id as u8, id);
     }
 

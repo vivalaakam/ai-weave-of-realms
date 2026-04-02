@@ -8,7 +8,8 @@
 //! ## Modules
 //! - [`rng`]        — Keccak256-based deterministic [`rng::SeededRng`]
 //! - [`map`]        — Map types: tiles, chunks, [`map::game_map::GameMap`]
-//! - [`hero`]       — [`hero::Hero`] entity and [`hero::Team`]
+//! - [`hero`]       — [`hero::Hero`] entity
+//! - [`team`]       — [`team::Team`] configuration
 //! - [`movement`]   — Reachable tiles and pathfinding (Dijkstra)
 //! - [`combat`]     — Auto-resolve combat between heroes
 //! - [`score`]      — [`score::ScoreBoard`] and [`score::ScoreEvent`]
@@ -22,6 +23,7 @@ pub mod error;
 pub mod game_state;
 pub mod hero;
 pub mod map;
+pub mod team;
 pub mod movement;
 pub mod rng;
 pub mod score;

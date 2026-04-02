@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use crate::hero::HeroId;
+
 /// All errors that can occur within the rpg-engine crate.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -45,5 +47,5 @@ pub enum Error {
 
     /// Movement was requested but the hero has no movement points remaining.
     #[error("hero {hero_id} has no movement points remaining")]
-    NoMovementPoints { hero_id: u32 },
+    NoMovementPoints { hero_id: HeroId },
 }

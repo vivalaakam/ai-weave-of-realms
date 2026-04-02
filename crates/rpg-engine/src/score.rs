@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::hero::HeroId;
 use crate::map::game_map::MapCoord;
 
 // ─── Point values ─────────────────────────────────────────────────────────────
@@ -20,7 +21,7 @@ pub enum ScoreEvent {
     /// Player captured a city tile.
     CityCapture { city: MapCoord },
     /// Player defeated an enemy unit.
-    EnemyDefeated { enemy_id: u32 },
+    EnemyDefeated { enemy_id: HeroId },
     /// Player collected a resource deposit.
     ResourceCollected { coord: MapCoord },
     /// Player collected a gold mine.

@@ -14,7 +14,7 @@ use std::path::Path;
 use mlua::{Function, Lua, Table, Value};
 use tracing::{debug, instrument};
 
-use rpg_engine::hero::{Hero, Team};
+use rpg_engine::hero::{Hero, TeamId};
 use rpg_engine::map::game_map::{GameMap, MapCoord};
 use rpg_engine::rng::SeededRng;
 
@@ -44,16 +44,19 @@ impl EnemySpawn {
     ///
     /// `base_rng` is the session RNG; the hero's personal RNG is derived from
     /// it via [`SeededRng::derive_for_hero`] so the result is reproducible.
-    pub fn into_hero(self, base_rng: &SeededRng) -> Hero {
+    ///
+    /// `team_id` must correspond to a [`rpg_engine::team::Team`] registered
+    /// in the active [`GameState`].
+    pub fn into_hero(self, base_rng: &SeededRng, team_id: TeamId) -> Hero {
         Hero::new(
-            self.id,
+            self.id as u8,
             format!("Enemy {}", self.id),
             self.hp,
             self.atk,
             self.def,
             self.spd,
             self.position,
-            Team::enemy(),
+            team_id,
             base_rng.derive_for_hero(self.id),
         )
     }
@@ -272,7 +275,7 @@ mod tests {
         );
         let spawns = spawner.spawn(&make_map()).unwrap();
         let base_rng = SeededRng::new("test-session");
-        let hero = spawns.into_iter().next().unwrap().into_hero(&base_rng);
+        let hero = spawns.into_iter().next().unwrap().into_hero(&base_rng, 3);
         assert_eq!(hero.hp, 50);
         assert_eq!(hero.atk, 15);
     }
