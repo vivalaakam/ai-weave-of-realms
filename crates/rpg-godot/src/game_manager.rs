@@ -225,12 +225,7 @@ impl GameManager {
                 let enemy_team_id: TeamId = self
                     .state
                     .as_ref()
-                    .and_then(|s| {
-                        s.teams
-                            .values()
-                            .find(|t| !t.is_player_controlled())
-                            .map(|t| t.get_id())
-                    })
+                    .and_then(|s| s.enemy_team_id())
                     .unwrap_or(Team::enemy().get_id());
 
                 for spawn in spawns {
@@ -589,30 +584,16 @@ impl GameManager {
         let Some(state) = &self.state else {
             return Array::new();
         };
-        let mut ids = Array::new();
-        for (_, hero) in state
-            .heroes
-            .iter()
-            .filter(|(_, h)| state.is_player_controlled(h.team_id) && h.is_alive())
-        {
-            ids.push(hero.get_id() as i64);
-        }
-        ids
-    }
 
-    /// Returns the next available hero ID (maximum existing hero ID + 1, or 1 if no heroes exist).
-    ///
-    /// Use this to generate a unique ID before calling [`add_hero`](Self::add_hero).
-    #[func]
-    pub fn get_next_hero_id(&self) -> i64 {
-        let Some(state) = &self.state else { return 1 };
+        let Ok(&active_team) = state.get_active_team_id() else {
+            return Array::new();
+        };
+
         state
-            .heroes
-            .values()
-            .map(|h| h.get_id() as i64)
-            .max()
-            .unwrap_or(0)
-            + 1
+            .get_team_alive_heroes_ids(active_team)
+            .iter()
+            .map(|h| *h as i64)
+            .collect()
     }
 
     /// Returns `true` if the tile at `(x, y)` is a [`Tiles::City`] or [`Tiles::CityEntrance`].
@@ -730,15 +711,16 @@ impl GameManager {
         let Some(state) = &self.state else {
             return Array::new();
         };
-        let mut ids = Array::new();
-        for (_, hero) in state
-            .heroes
+
+        let Ok(&active_team) = state.get_active_team_id() else {
+            return Array::new();
+        };
+
+        state
+            .get_team_alive_heroes_ids(active_team)
             .iter()
-            .filter(|(_, h)| !state.is_player_controlled(h.team_id) && h.is_alive())
-        {
-            ids.push(hero.get_id() as i64);
-        }
-        ids
+            .map(|h| *h as i64)
+            .collect()
     }
 
     /// Returns the last active hero ID for `team_id`, or -1 if not set.
@@ -808,7 +790,7 @@ impl GameManager {
     #[func]
     pub fn get_team_count(&self) -> i64 {
         let Some(state) = &self.state else { return 0 };
-        state.teams.len() as i64
+        state.teams_count() as i64
     }
 
     /// Returns team id by index.
@@ -816,8 +798,7 @@ impl GameManager {
     pub fn get_team_id(&self, index: i64) -> i64 {
         let Some(state) = &self.state else { return -1 };
         state
-            .teams
-            .get(&(index as TeamId))
+            .get_team(index as TeamId)
             .map(|t| t.get_id() as i64)
             .unwrap_or(-1)
     }

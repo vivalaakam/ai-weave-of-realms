@@ -64,14 +64,14 @@ pub struct GameState {
     /// The assembled game map.
     pub map: GameMap,
     /// All heroes currently on the map (player and enemy, living and dead).
-    pub heroes: BTreeMap<HeroId, Hero>,
+    heroes: BTreeMap<HeroId, Hero>,
     /// Accumulated score.
     pub score: ScoreBoard,
     /// City tile ownership: maps each occupied city [`MapCoord`] to the owning
     /// team id.  Absence from the map means the city is neutral.
     pub city_owners: BTreeMap<MapCoord, TeamId>,
     /// All teams in the game (player-controlled and AI).
-    pub teams: BTreeMap<TeamId, Team>,
+    teams: BTreeMap<TeamId, Team>,
     teams_order: VecDeque<TeamId>,
     /// Last active hero for each team. Used to restore selection when switching teams.
     active_hero: BTreeMap<TeamId, Option<HeroId>>,
@@ -155,6 +155,32 @@ impl GameState {
     /// Returns team info by id.
     pub fn get_team(&self, id: TeamId) -> Option<&Team> {
         self.teams.get(&id)
+    }
+
+    /// Returns the number of teams.
+    pub fn teams_count(&self) -> usize {
+        self.teams.len()
+    }
+
+    /// Returns the first non-player-controlled (AI) team id.
+    pub fn enemy_team_id(&self) -> Option<TeamId> {
+        self.teams
+            .values()
+            .find(|t| !t.is_player_controlled())
+            .map(|t| t.get_id())
+    }
+
+    pub fn get_team_alive_heroes_ids(&self, team_id: TeamId) -> Vec<HeroId> {
+        self.heroes
+            .iter()
+            .filter_map(|(&id, h)| {
+                if h.team_id == team_id && h.is_alive() {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<HeroId>>()
     }
 
     /// Advances to the next player team.
@@ -595,30 +621,12 @@ mod tests {
 
     // team_id=0 = Team::red() at index 0 (default active team); spd=10 → mov=30
     fn player(pos: MapCoord) -> Hero {
-        Hero::new(
-            0,
-            "Player",
-            100,
-            20,
-            10,
-            10,
-            pos,
-            0,
-        )
+        Hero::new(0, "Player", 100, 20, 10, 10, pos, 0)
     }
 
     // team_id=2 = Team::enemy() (non-player-controlled); spd=5 → mov=25
     fn enemy(pos: MapCoord) -> Hero {
-        Hero::new(
-            0,
-            "Enemy",
-            30,
-            10,
-            5,
-            5,
-            pos,
-            2,
-        )
+        Hero::new(0, "Enemy", 30, 10, 5, 5, pos, 2)
     }
 
     #[test]
@@ -720,26 +728,8 @@ mod tests {
     fn defeated_enemy_awards_score() {
         let map = meadow_map(5, 5);
         let mut state = make_state(map);
-        let pid = state.add_hero(Hero::new(
-            0,
-            "P",
-            100,
-            200,
-            0,
-            10,
-            MapCoord::new(0, 0),
-            0,
-        ));
-        let eid = state.add_hero(Hero::new(
-            0,
-            "E",
-            1,
-            1,
-            0,
-            1,
-            MapCoord::new(1, 0),
-            2,
-        ));
+        let pid = state.add_hero(Hero::new(0, "P", 100, 200, 0, 10, MapCoord::new(0, 0), 0));
+        let eid = state.add_hero(Hero::new(0, "E", 1, 1, 0, 1, MapCoord::new(1, 0), 2));
         state.attack_hero(pid, eid).unwrap();
         assert!(state.score.total() > 0);
     }
