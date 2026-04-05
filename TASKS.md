@@ -45,6 +45,8 @@ Update status as work progresses.
 | 2.3 | TMX importer: `.tmx` XML → `GameMap` | — | DONE | `rpg-tiled::importer`, quick-xml event parser |
 | 2.4 | Isometric tileset descriptor (GID ↔ TileKind mapping) | — | DONE | `Tiles::to_gid` / `from_gid` в rpg-engine |
 | 2.5 | Integration test: generate → export TMX → import TMX → compare | — | DONE | round_trip_* тесты в importer.rs |
+| 2.6 | Добавить точки спавна врагов/сундуков в чанках и отрисовку в TMX, Godot, T-Deck | — | DONE | TMX object layer + маркеры в Godot/T-Deck, удалён Lua-spawner |
+| 2.7 | Отрисовать точки спавна врагов/сундуков в PNG-экспорте | — | DONE | Маркеры кружками в mapgen PNG |
 
 ## Phase 3 — Game Mechanics
 

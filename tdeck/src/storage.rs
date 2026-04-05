@@ -7,7 +7,7 @@ use alloc::{
 };
 
 use embedded_sdmmc::{LfnBuffer, Mode, VolumeIdx, VolumeManager};
-use rpg_engine::map::game_map::GameMap;
+use rpg_engine::map::game_map::{GameMap, MapCoord};
 use rpg_engine::map::tile::{Tile, Tiles};
 
 const MAPS_DIR: &str = "MAPS";
@@ -202,13 +202,125 @@ fn parse_tmx(name: &str, xml: &str) -> Result<LoadedMap, AppError> {
         return Err(AppError::InvalidTmx("Tile count does not match map size"));
     }
 
-    let map = GameMap::new(width, height, tiles, [0u8; 32])
+    let (enemy_spawns, chest_spawns) = parse_spawn_points(xml)?;
+
+    let mut map = GameMap::new(width, height, tiles, [0u8; 32])
+        .map_err(|err| AppError::Engine(err.to_string()))?;
+    map.set_spawn_points(enemy_spawns, chest_spawns)
         .map_err(|err| AppError::Engine(err.to_string()))?;
 
     Ok(LoadedMap {
         name: name.to_string(),
         map,
     })
+}
+
+fn parse_spawn_points(xml: &str) -> Result<(Vec<MapCoord>, Vec<MapCoord>), AppError> {
+    let mut enemy_spawns = Vec::new();
+    let mut chest_spawns = Vec::new();
+    let mut search_start = 0usize;
+
+    while let Some(group_start) = xml[search_start..].find("<objectgroup") {
+        let group_start = search_start + group_start;
+        let group_tag_end = xml[group_start..]
+            .find('>')
+            .ok_or(AppError::InvalidTmx("Malformed <objectgroup> tag"))?
+            + group_start;
+        let group_tag = &xml[group_start..=group_tag_end];
+
+        let group_end = xml[group_tag_end..]
+            .find("</objectgroup>")
+            .ok_or(AppError::InvalidTmx("Unclosed <objectgroup> tag"))?
+            + group_tag_end;
+        let group_name = match parse_attribute_str(group_tag, "name") {
+            Ok(name) => name,
+            Err(_) => {
+                search_start = group_end + "</objectgroup>".len();
+                continue;
+            }
+        };
+
+        if group_name == "Spawns" {
+            let group_body = &xml[group_tag_end..group_end];
+            parse_spawn_objects(group_body, &mut enemy_spawns, &mut chest_spawns)?;
+            break;
+        }
+
+        search_start = group_end + "</objectgroup>".len();
+    }
+
+    Ok((enemy_spawns, chest_spawns))
+}
+
+fn parse_spawn_objects(
+    body: &str,
+    enemy_spawns: &mut Vec<MapCoord>,
+    chest_spawns: &mut Vec<MapCoord>,
+) -> Result<(), AppError> {
+    let mut search_start = 0usize;
+    while let Some(obj_start) = body[search_start..].find("<object") {
+        let obj_start = search_start + obj_start;
+        let tag_end = body[obj_start..]
+            .find('>')
+            .ok_or(AppError::InvalidTmx("Malformed <object> tag"))?
+            + obj_start;
+        let obj_tag = &body[obj_start..=tag_end];
+        let obj_end = body[tag_end..]
+            .find("</object>")
+            .ok_or(AppError::InvalidTmx("Unclosed <object> tag"))?
+            + tag_end;
+        let obj_body = &body[tag_end..obj_end];
+
+        let kind = parse_attribute_str(obj_tag, "type")
+            .or_else(|_| parse_attribute_str(obj_tag, "name"))
+            .unwrap_or_default();
+
+        let tile_x = parse_property_u32(obj_body, "tile_x")?;
+        let tile_y = parse_property_u32(obj_body, "tile_y")?;
+
+        if let (Some(x), Some(y)) = (tile_x, tile_y) {
+            let coord = MapCoord::new(x, y);
+            if kind == "enemy" || kind == "EnemySpawn" {
+                enemy_spawns.push(coord);
+            } else if kind == "chest" || kind == "ChestSpawn" {
+                chest_spawns.push(coord);
+            }
+        }
+
+        search_start = obj_end + "</object>".len();
+    }
+    Ok(())
+}
+
+fn parse_property_u32(body: &str, property_name: &str) -> Result<Option<u32>, AppError> {
+    let needle = format!("name=\"{property_name}\"");
+    let Some(start) = body.find(needle.as_str()) else {
+        return Ok(None);
+    };
+    let prop_start = body[..start]
+        .rfind("<property")
+        .ok_or(AppError::InvalidTmx("Malformed <property> tag"))?;
+    let prop_end = body[prop_start..]
+        .find('>')
+        .ok_or(AppError::InvalidTmx("Malformed <property> tag"))?
+        + prop_start;
+    let prop_tag = &body[prop_start..=prop_end];
+
+    let value = parse_attribute_u32(prop_tag, "value")?;
+    Ok(Some(value))
+}
+
+fn parse_attribute_str(tag: &str, attribute: &str) -> Result<String, AppError> {
+    let needle = format!("{attribute}=\"");
+    let start = tag
+        .find(needle.as_str())
+        .ok_or(AppError::InvalidTmx("Missing attribute"))?
+        + needle.len();
+    let end = tag[start..]
+        .find('"')
+        .ok_or(AppError::InvalidTmx("Malformed attribute"))?
+        + start;
+    Ok(tag[start..end].to_string())
 }
 
 fn parse_attribute_u32(tag: &str, attribute: &str) -> Result<u32, AppError> {

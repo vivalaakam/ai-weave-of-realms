@@ -4,6 +4,7 @@
 //! Isometric staggered layout (`staggeraxis="x"`, `staggerindex="odd"`).
 //! Tile data is encoded as CSV.  The map seed is stored as a custom string
 //! property so that a full round-trip through [`crate::importer`] is lossless.
+//! Enemy/chest spawn points are exported as a `Spawns` object layer.
 
 use std::path::Path;
 
@@ -25,6 +26,9 @@ pub const TILE_PIXEL_HEIGHT: u32 = 64;
 pub fn export_tmx(map: &GameMap, tileset_source: &str) -> String {
     let seed_hex = hex_encode(&map.seed);
     let csv = tile_csv(map);
+    let spawn_objects = spawn_objects_xml(map);
+    let spawn_layer = spawn_layer_xml(&spawn_objects);
+    let next_object_id = spawn_objects.len() as u32 + 1;
 
     format!(
         concat!(
@@ -32,7 +36,7 @@ pub fn export_tmx(map: &GameMap, tileset_source: &str) -> String {
             "<map version=\"1.10\" tiledversion=\"1.11.0\" orientation=\"staggered\" ",
             "renderorder=\"right-down\" width=\"{width}\" height=\"{height}\" ",
             "tilewidth=\"{tw}\" tileheight=\"{th}\" infinite=\"0\" ",
-            "staggeraxis=\"x\" staggerindex=\"odd\" nextlayerid=\"2\" nextobjectid=\"1\">\n",
+            "staggeraxis=\"x\" staggerindex=\"odd\" nextlayerid=\"3\" nextobjectid=\"{next_object_id}\">\n",
             "  <properties>\n",
             "    <property name=\"seed\" type=\"string\" value=\"{seed}\"/>\n",
             "  </properties>\n",
@@ -42,6 +46,7 @@ pub fn export_tmx(map: &GameMap, tileset_source: &str) -> String {
             "{csv}\n",
             "    </data>\n",
             "  </layer>\n",
+            "{spawn_layer}",
             "</map>\n"
         ),
         width = map.tile_width(),
@@ -50,7 +55,9 @@ pub fn export_tmx(map: &GameMap, tileset_source: &str) -> String {
         th = TILE_PIXEL_HEIGHT,
         seed = seed_hex,
         tileset = xml_escape_attr(tileset_source),
+        next_object_id = next_object_id,
         csv = csv,
+        spawn_layer = spawn_layer,
     )
 }
 
@@ -80,6 +87,65 @@ fn tile_csv(map: &GameMap) -> String {
         rows.push(format!("      {}", gids.join(",")));
     }
     rows.join(",\n")
+}
+
+fn spawn_layer_xml(spawn_objects: &[String]) -> String {
+    let mut out = String::from("  <objectgroup id=\"2\" name=\"Spawns\">\n");
+    for obj in spawn_objects {
+        out.push_str(obj);
+    }
+    out.push_str("  </objectgroup>\n");
+    out
+}
+
+fn spawn_objects_xml(map: &GameMap) -> Vec<String> {
+    let mut objects: Vec<String> = Vec::new();
+    let mut next_id: u32 = 1;
+
+    for coord in map.enemy_spawns() {
+        objects.push(spawn_object_xml(next_id, coord, "enemy", "EnemySpawn"));
+        next_id += 1;
+    }
+
+    for coord in map.chest_spawns() {
+        objects.push(spawn_object_xml(next_id, coord, "chest", "ChestSpawn"));
+        next_id += 1;
+    }
+
+    objects
+}
+
+fn spawn_object_xml(id: u32, coord: &MapCoord, kind: &str, name: &str) -> String {
+    let (x, y) = spawn_object_point(coord.x, coord.y);
+    format!(
+        concat!(
+            "    <object id=\"{id}\" name=\"{name}\" type=\"{kind}\" x=\"{x}\" y=\"{y}\">\n",
+            "      <properties>\n",
+            "        <property name=\"tile_x\" type=\"int\" value=\"{tile_x}\"/>\n",
+            "        <property name=\"tile_y\" type=\"int\" value=\"{tile_y}\"/>\n",
+            "      </properties>\n",
+            "      <point/>\n",
+            "    </object>\n"
+        ),
+        id = id,
+        name = name,
+        kind = kind,
+        x = x,
+        y = y,
+        tile_x = coord.x,
+        tile_y = coord.y,
+    )
+}
+
+fn spawn_object_point(tile_x: u32, tile_y: u32) -> (u32, u32) {
+    let half_w = TILE_PIXEL_WIDTH / 2;
+    let half_h = TILE_PIXEL_HEIGHT / 2;
+    let x = tile_x * half_w + half_w;
+    let mut y = tile_y * TILE_PIXEL_HEIGHT + half_h;
+    if tile_x % 2 == 1 {
+        y += half_h;
+    }
+    (x, y)
 }
 
 /// Hex-encodes a 32-byte seed into a 64-character lowercase string.

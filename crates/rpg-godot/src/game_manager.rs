@@ -17,7 +17,7 @@
 
 use godot::classes::ProjectSettings;
 use godot::prelude::*;
-use tracing::{debug, error, warn};
+use tracing::{error, warn};
 
 use rpg_engine::game_state::{GameState, TurnEvent};
 use rpg_engine::hero::{Hero, HeroId, TeamId};
@@ -28,7 +28,6 @@ use rpg_engine::spawn;
 use rpg_engine::team::Team;
 use rpg_engine::Direction;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
-use rpg_mapgen::spawner::EnemySpawner;
 
 // ─── GameManager ──────────────────────────────────────────────────────────────
 
@@ -37,7 +36,6 @@ use rpg_mapgen::spawner::EnemySpawner;
 pub struct GameManager {
     base: Base<Node>,
     state: Option<GameState>,
-    enemy_spawner: Option<EnemySpawner>,
 }
 
 #[godot_api]
@@ -46,7 +44,6 @@ impl INode for GameManager {
         Self {
             base,
             state: None,
-            enemy_spawner: None,
         }
     }
 }
@@ -79,9 +76,6 @@ impl GameManager {
 
     #[signal]
     fn score_changed(score: i64);
-
-    #[signal]
-    fn enemies_spawned(count: i64);
 
     /// Emitted when any tile in a city complex changes ownership.
     ///
@@ -137,24 +131,6 @@ impl GameManager {
         state.add_team(Team::enemy());
         self.state = Some(state);
 
-        // Load enemy spawn script if not already loaded
-        if self.enemy_spawner.is_none() {
-            let spawn_script = std::path::PathBuf::from(
-                ProjectSettings::singleton()
-                    .globalize_path(&GString::from("res://scripts/rules/spawn_enemies.lua"))
-                    .to_string(),
-            );
-            match EnemySpawner::from_script(&spawn_script) {
-                Ok(spawner) => {
-                    debug!(path = %spawn_script.display(), "enemy spawner loaded");
-                    self.enemy_spawner = Some(spawner);
-                }
-                Err(e) => {
-                    warn!("failed to load enemy spawner: {e}");
-                }
-            }
-        }
-
         // Defer signal emission to avoid borrow conflicts in signal handlers
         self.base_mut().call_deferred(
             "emit_signal",
@@ -198,55 +174,6 @@ impl GameManager {
             team_id as TeamId,
         );
         state.add_hero(hero) as i64
-    }
-
-    /// Spawns enemies on the map using the Lua spawn script.
-    ///
-    /// Returns the number of enemies spawned.
-    #[func]
-    pub fn spawn_enemies(&mut self) -> i64 {
-        let Some(state) = &self.state else {
-            return 0;
-        };
-        let Some(spawner) = &self.enemy_spawner else {
-            debug!("enemy spawner not loaded");
-            return 0;
-        };
-
-        match spawner.spawn(&state.map) {
-            Ok(spawns) => {
-                let count = spawns.len() as i64;
-                if count == 0 {
-                    return 0;
-                }
-
-                // Add enemies to game state, giving each a derived RNG.
-                // Use the first non-player-controlled team id, falling back to Team::enemy().id.
-                let enemy_team_id: TeamId = self
-                    .state
-                    .as_ref()
-                    .and_then(|s| s.enemy_team_id())
-                    .unwrap_or(Team::enemy().get_id());
-
-                for spawn in spawns {
-                    if let Some(state) = &mut self.state {
-                        let hero = spawn.into_hero(enemy_team_id);
-                        state.add_hero(hero);
-                    }
-                }
-
-                debug!(count, "enemies spawned");
-                self.base_mut().call_deferred(
-                    "emit_signal",
-                    &["enemies_spawned".to_variant(), count.to_variant()],
-                );
-                count
-            }
-            Err(e) => {
-                warn!("enemy spawn failed: {e}");
-                0
-            }
-        }
     }
 
     /// Returns the number of living AI-controlled heroes on the map.
@@ -684,6 +611,32 @@ impl GameManager {
                     }
                 }
             }
+        }
+        arr
+    }
+
+    /// Returns all enemy spawn points on the map.
+    #[func]
+    pub fn get_enemy_spawn_points(&self) -> Array<Vector2i> {
+        let Some(state) = &self.state else {
+            return Array::new();
+        };
+        let mut arr = Array::new();
+        for coord in state.map.enemy_spawns() {
+            arr.push(Vector2i::new(coord.x as i32, coord.y as i32));
+        }
+        arr
+    }
+
+    /// Returns all chest spawn points on the map.
+    #[func]
+    pub fn get_chest_spawn_points(&self) -> Array<Vector2i> {
+        let Some(state) = &self.state else {
+            return Array::new();
+        };
+        let mut arr = Array::new();
+        for coord in state.map.chest_spawns() {
+            arr.push(Vector2i::new(coord.x as i32, coord.y as i32));
         }
         arr
     }

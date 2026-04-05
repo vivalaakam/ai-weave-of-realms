@@ -385,6 +385,23 @@ where
         );
     }
 
+    if map.has_enemy_spawn(coord) {
+        halt_on_error(
+            Rectangle::new(top_left + Point::new(1, 1), Size::new(3, 3))
+                .into_styled(PrimitiveStyle::with_fill(Rgb565::RED))
+                .draw(display),
+        );
+    }
+
+    if map.has_chest_spawn(coord) {
+        let x = top_left.x + TILE_SIZE - 5;
+        halt_on_error(
+            Rectangle::new(Point::new(x, top_left.y + 1), Size::new(3, 3))
+                .into_styled(PrimitiveStyle::with_fill(Rgb565::YELLOW))
+                .draw(display),
+        );
+    }
+
     if let Some(hero) = map_view.session.state().hero_at(coord) {
         draw_hero_marker(display, hero.get_id(), map_view.session.selected_hero_id(), top_left);
     }
@@ -422,6 +439,12 @@ fn cell_signature(map_view: &MapViewScreen, coord: MapCoord) -> u32 {
     }
     if let Some(team_id) = map_view.session.state().city_owner(coord) {
         signature |= (u32::from(team_id) + 1) << 24;
+    }
+    if map.has_enemy_spawn(coord) {
+        signature |= 1 << 30;
+    }
+    if map.has_chest_spawn(coord) {
+        signature |= 1 << 31;
     }
     signature
 }

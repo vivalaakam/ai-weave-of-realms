@@ -20,8 +20,10 @@ use std::path::PathBuf;
 use tracing::{debug, info, instrument, warn};
 
 use rpg_engine::map::chunk::{ChunkCoord, CHUNK_SIZE};
-use rpg_engine::map::game_map::GameMap;
+use rpg_engine::map::game_map::{GameMap, MapCoord};
+use rpg_engine::map::tile::Tiles;
 use rpg_engine::rng::keccak256;
+use rpg_engine::rng::{derive_seed, SeededRng};
 
 use crate::chunk_generator::ChunkGenerator;
 use crate::chunk_grid::ChunkGrid;
@@ -255,6 +257,10 @@ impl MapAssembler {
         info!("stitching chunk boundaries");
         Stitcher::stitch(&mut map, CHUNK_SIZE as u32)?;
 
+        let (enemy_spawns, chest_spawns) = generate_spawn_points(&map, &self.map_seed);
+        map.set_spawn_points(enemy_spawns, chest_spawns)
+            .map_err(Error::Engine)?;
+
         if let Some(ev) = &self.evaluator {
             let score = ev.evaluate(&map)?;
             info!(score, "map evaluated");
@@ -428,4 +434,66 @@ mod tests {
             Err(Error::ValidationFailed(_))
         ));
     }
+}
+
+fn generate_spawn_points(map: &GameMap, map_seed: &[u8; 32]) -> (Vec<MapCoord>, Vec<MapCoord>) {
+    let mut enemy_spawns = Vec::new();
+    let mut chest_spawns = Vec::new();
+    let cs = CHUNK_SIZE as u32;
+    let chunk_w = map.tile_width() / cs;
+    let chunk_h = map.tile_height() / cs;
+
+    for cy in 0..chunk_h {
+        for cx in 0..chunk_w {
+            let seed = derive_seed(map_seed, format!("spawn_{cx}_{cy}").as_bytes());
+            let mut rng = SeededRng::from_bytes(seed);
+            let mut candidates: Vec<MapCoord> = Vec::new();
+
+            for y in 0..cs {
+                for x in 0..cs {
+                    let gx = cx * cs + x;
+                    let gy = cy * cs + y;
+                    let coord = MapCoord::new(gx, gy);
+                    if let Ok(tile) = map.get_tile(coord) {
+                        if is_spawnable_tile(tile.kind) {
+                            candidates.push(coord);
+                        }
+                    }
+                }
+            }
+
+            let target_enemy = rng.random_range_u32(4..9) as usize;
+            let target_chest = rng.random_range_u32(1..4) as usize;
+
+            let enemy_count = target_enemy.min(candidates.len());
+            for _ in 0..enemy_count {
+                let idx = rng.random_range_usize(0..candidates.len());
+                enemy_spawns.push(candidates.swap_remove(idx));
+            }
+
+            let chest_count = target_chest.min(candidates.len());
+            for _ in 0..chest_count {
+                let idx = rng.random_range_usize(0..candidates.len());
+                chest_spawns.push(candidates.swap_remove(idx));
+            }
+
+            if enemy_count < target_enemy || chest_count < target_chest {
+                warn!(
+                    cx,
+                    cy,
+                    target_enemy,
+                    target_chest,
+                    enemy_count,
+                    chest_count,
+                    "spawn points limited by available tiles"
+                );
+            }
+        }
+    }
+
+    (enemy_spawns, chest_spawns)
+}
+
+fn is_spawnable_tile(tile: Tiles) -> bool {
+    tile.is_passable() && !matches!(tile, Tiles::City | Tiles::CityEntrance)
 }

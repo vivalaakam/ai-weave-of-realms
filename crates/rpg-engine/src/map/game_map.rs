@@ -87,6 +87,12 @@ pub struct GameMap {
     height: u32,
     /// Flat array of all tiles in row-major order.
     tiles: Vec<Tile>,
+    /// Absolute tile coordinates where enemies can spawn.
+    #[serde(default)]
+    enemy_spawns: Vec<MapCoord>,
+    /// Absolute tile coordinates where chests can spawn.
+    #[serde(default)]
+    chest_spawns: Vec<MapCoord>,
     /// The 32-byte seed this map was generated from.
     pub seed: [u8; 32],
 }
@@ -114,6 +120,8 @@ impl GameMap {
             width,
             height,
             tiles,
+            enemy_spawns: Vec::new(),
+            chest_spawns: Vec::new(),
             seed,
         })
     }
@@ -131,6 +139,46 @@ impl GameMap {
     /// Returns a flat slice of all tiles in row-major order.
     pub fn tiles(&self) -> &[Tile] {
         &self.tiles
+    }
+
+    /// Returns all configured enemy spawn points.
+    pub fn enemy_spawns(&self) -> &[MapCoord] {
+        &self.enemy_spawns
+    }
+
+    /// Returns all configured chest spawn points.
+    pub fn chest_spawns(&self) -> &[MapCoord] {
+        &self.chest_spawns
+    }
+
+    /// Returns `true` if an enemy spawn exists at `coord`.
+    pub fn has_enemy_spawn(&self, coord: MapCoord) -> bool {
+        self.enemy_spawns.contains(&coord)
+    }
+
+    /// Returns `true` if a chest spawn exists at `coord`.
+    pub fn has_chest_spawn(&self, coord: MapCoord) -> bool {
+        self.chest_spawns.contains(&coord)
+    }
+
+    /// Replaces the enemy and chest spawn point lists.
+    ///
+    /// # Arguments
+    /// * `enemy_spawns` - Absolute tile coordinates for enemy spawn points.
+    /// * `chest_spawns` - Absolute tile coordinates for chest spawn points.
+    ///
+    /// # Errors
+    /// Returns [`Error::OutOfBounds`] if any coordinate is outside the map.
+    pub fn set_spawn_points(
+        &mut self,
+        enemy_spawns: Vec<MapCoord>,
+        chest_spawns: Vec<MapCoord>,
+    ) -> Result<(), Error> {
+        self.validate_spawn_points(&enemy_spawns)?;
+        self.validate_spawn_points(&chest_spawns)?;
+        self.enemy_spawns = enemy_spawns;
+        self.chest_spawns = chest_spawns;
+        Ok(())
     }
 
     /// Returns a reference to the tile at the given absolute map coordinate.
@@ -165,6 +213,18 @@ impl GameMap {
             )));
         }
         Ok((coord.y * self.width + coord.x) as usize)
+    }
+
+    fn validate_spawn_points(&self, points: &[MapCoord]) -> Result<(), Error> {
+        for coord in points {
+            if coord.x >= self.width || coord.y >= self.height {
+                return Err(Error::OutOfBounds(format!(
+                    "spawn ({}, {}) outside {}×{} map",
+                    coord.x, coord.y, self.width, self.height
+                )));
+            }
+        }
+        Ok(())
     }
 }
 

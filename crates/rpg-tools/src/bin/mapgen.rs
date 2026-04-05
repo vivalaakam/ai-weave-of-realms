@@ -315,9 +315,63 @@ fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
         }
     }
 
+    draw_spawn_markers(
+        map,
+        &mut img,
+        scale,
+        Rgb([220, 50, 50]),
+        Rgb([245, 200, 60]),
+    );
+
     match img.save(output) {
         Ok(_) => info!(path = %output.display(), width = w, height = h, "PNG saved"),
         Err(e) => error!(error = %e, path = %output.display(), "failed to save PNG"),
+    }
+}
+
+fn draw_spawn_markers(
+    map: &GameMap,
+    img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
+    scale: u32,
+    enemy_color: Rgb<u8>,
+    chest_color: Rgb<u8>,
+) {
+    let radius = (scale / 3).max(1) as i32;
+    for coord in map.enemy_spawns() {
+        draw_marker_circle(img, coord.x, coord.y, scale, radius, enemy_color);
+    }
+    for coord in map.chest_spawns() {
+        draw_marker_circle(img, coord.x, coord.y, scale, radius, chest_color);
+    }
+}
+
+fn draw_marker_circle(
+    img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
+    tile_x: u32,
+    tile_y: u32,
+    scale: u32,
+    radius: i32,
+    color: Rgb<u8>,
+) {
+    let center_x = (tile_x * scale + scale / 2) as i32;
+    let center_y = (tile_y * scale + scale / 2) as i32;
+    let radius_sq = radius * radius;
+
+    let img_w = img.width() as i32;
+    let img_h = img.height() as i32;
+    let min_x = (center_x - radius).max(0);
+    let max_x = (center_x + radius).min(img_w - 1);
+    let min_y = (center_y - radius).max(0);
+    let max_y = (center_y + radius).min(img_h - 1);
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x - center_x;
+            let dy = y - center_y;
+            if dx * dx + dy * dy <= radius_sq {
+                img.put_pixel(x as u32, y as u32, color);
+            }
+        }
     }
 }
 

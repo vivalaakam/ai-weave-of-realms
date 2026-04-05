@@ -4,6 +4,7 @@
 //! - Isometric staggered layout
 //! - A single `<layer>` with `encoding="csv"`
 //! - An optional `seed` string property (64-character hex)
+//! - An optional `Spawns` object group with enemy/chest points
 //!
 //! Unknown attributes and extra layers are silently ignored.
 
@@ -12,7 +13,7 @@ use std::path::Path;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-use rpg_engine::map::game_map::GameMap;
+use rpg_engine::map::game_map::{GameMap, MapCoord};
 use rpg_engine::map::tile::{Tile, Tiles};
 
 use crate::error::Error;
@@ -53,6 +54,12 @@ struct TmxParser {
     in_csv_data: bool,
     /// Accumulated CSV text from `<data>`.
     csv: String,
+    /// Whether we are currently inside the `Spawns` object group.
+    in_spawns_group: bool,
+    /// The object currently being parsed, if any.
+    active_object: Option<SpawnObject>,
+    enemy_spawns: Vec<MapCoord>,
+    chest_spawns: Vec<MapCoord>,
 }
 
 impl TmxParser {
@@ -69,11 +76,12 @@ impl TmxParser {
                         self.csv.push_str(e.unescape()?.as_ref());
                     }
                 }
-                Ok(Event::End(e)) => {
-                    if e.name().as_ref() == b"data" {
-                        self.in_csv_data = false;
-                    }
-                }
+                Ok(Event::End(e)) => match e.name().as_ref() {
+                    b"data" => self.in_csv_data = false,
+                    b"object" => self.finish_object(),
+                    b"objectgroup" => self.in_spawns_group = false,
+                    _ => {}
+                },
                 Ok(Event::Eof) => break,
                 Err(e) => return Err(Error::Parse(e)),
                 _ => {}
@@ -105,6 +113,32 @@ impl TmxParser {
                     }
                 }
             }
+            b"objectgroup" => {
+                self.in_spawns_group = false;
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"name" && attr.value.as_ref() == b"Spawns" {
+                        self.in_spawns_group = true;
+                    }
+                }
+            }
+            b"object" => {
+                if self.in_spawns_group {
+                    let mut kind: Option<SpawnKind> = None;
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"type" || attr.key.as_ref() == b"name" {
+                            let value = std::str::from_utf8(&attr.value).unwrap_or("");
+                            kind = SpawnKind::from_str(value).or(kind);
+                        }
+                    }
+                    if let Some(kind) = kind {
+                        self.active_object = Some(SpawnObject {
+                            kind,
+                            tile_x: None,
+                            tile_y: None,
+                        });
+                    }
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -115,10 +149,14 @@ impl TmxParser {
             b"property" => {
                 let mut is_seed = false;
                 let mut value: Option<String> = None;
+                let mut name: Option<String> = None;
 
                 for attr in e.attributes().flatten() {
                     match attr.key.as_ref() {
                         b"name" if attr.value.as_ref() == b"seed" => is_seed = true,
+                        b"name" => {
+                            name = Some(std::str::from_utf8(&attr.value).unwrap_or("").to_owned());
+                        }
                         b"value" => {
                             value = Some(std::str::from_utf8(&attr.value).unwrap_or("").to_owned());
                         }
@@ -127,8 +165,26 @@ impl TmxParser {
                 }
 
                 if is_seed {
-                    if let Some(hex) = value {
-                        self.seed = hex_decode(&hex)?;
+                    if let Some(ref hex) = value {
+                        self.seed = hex_decode(hex)?;
+                    }
+                }
+
+                if let (Some(active), Some(name), Some(value)) =
+                    (self.active_object.as_mut(), name, value.as_deref())
+                {
+                    match name.as_str() {
+                        "tile_x" => {
+                            if let Ok(v) = value.parse::<u32>() {
+                                active.tile_x = Some(v);
+                            }
+                        }
+                        "tile_y" => {
+                            if let Ok(v) = value.parse::<u32>() {
+                                active.tile_y = Some(v);
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -166,7 +222,48 @@ impl TmxParser {
             })
             .collect();
 
-        GameMap::new(width, height, tiles?, self.seed).map_err(Error::Engine)
+        let mut map = GameMap::new(width, height, tiles?, self.seed).map_err(Error::Engine)?;
+        map.set_spawn_points(self.enemy_spawns, self.chest_spawns)
+            .map_err(Error::Engine)?;
+        Ok(map)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SpawnKind {
+    Enemy,
+    Chest,
+}
+
+impl SpawnKind {
+    fn from_str(raw: &str) -> Option<Self> {
+        match raw {
+            "enemy" | "EnemySpawn" => Some(Self::Enemy),
+            "chest" | "ChestSpawn" => Some(Self::Chest),
+            _ => None,
+        }
+    }
+}
+
+struct SpawnObject {
+    kind: SpawnKind,
+    tile_x: Option<u32>,
+    tile_y: Option<u32>,
+}
+
+impl TmxParser {
+    fn finish_object(&mut self) {
+        let Some(active) = self.active_object.take() else {
+            return;
+        };
+        let (Some(x), Some(y)) = (active.tile_x, active.tile_y) else {
+            return;
+        };
+        let coord = MapCoord::new(x, y);
+        match active.kind {
+            SpawnKind::Enemy => self.enemy_spawns.push(coord),
+            SpawnKind::Chest => self.chest_spawns.push(coord),
+        }
     }
 }
 

@@ -36,6 +36,7 @@ const GAMEPAD_BTN_DPAD_LEFT: JoyButton = JoyButton::DPAD_LEFT;
 const LEFT_STICK_DEADZONE: f32 = 0.50;
 const LEFT_STICK_REPEAT_INTERVAL: f64 = 0.14;
 const CITY_MARKER_SIZE_PIXELS: f32 = 16.0;
+const SPAWN_MARKER_SIZE_PIXELS: f32 = 14.0;
 
 // ─── MainScene ────────────────────────────────────────────────────────────────
 
@@ -96,8 +97,6 @@ impl INode for MainScene {
         gm.connect("combat_resolved", &cb_combat_resolved);
         gm.connect("hero_defeated", &cb_hero_defeated);
         gm.connect("turn_advanced", &cb_turn_advanced);
-        let cb_enemies_spawned = self.base().callable("_on_enemies_spawned");
-        gm.connect("enemies_spawned", &cb_enemies_spawned);
         let cb_city_changed = self.base().callable("_on_city_owner_changed");
         gm.connect("city_owner_changed", &cb_city_changed);
 
@@ -507,6 +506,7 @@ impl MainScene {
         self.clear_hero_nodes();
         self.spawn_heroes();
         self.setup_city_markers();
+        self.setup_spawn_markers();
         self.update_heroes_list();
         self.set_center_debug_inputs(MAP_WIDTH / 2, MAP_HEIGHT / 2);
         // Start with the first player team and begin their first turn.
@@ -648,42 +648,6 @@ impl MainScene {
             );
         }
 
-        // Spawn enemies via Lua-driven spawner.
-        let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let enemy_count = gm.bind_mut().spawn_enemies();
-        info!(count = enemy_count, "enemies spawned");
-    }
-
-    /// Called after enemies are spawned via Lua script.
-    /// Creates visual hero nodes for all enemies.
-    #[func]
-    fn _on_enemies_spawned(&mut self, count: i64) {
-        if count <= 0 {
-            return;
-        }
-
-        // Collect enemy data first (immutable borrow).
-        // Query team info from engine — HeroNode does not cache mutable state.
-        let mut enemy_data: Vec<(i64, String, bool, Vector2i)> = Vec::new();
-        {
-            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            let enemy_ids = gm.bind().get_living_enemy_hero_ids();
-            for id in enemy_ids.iter_shared() {
-                let pos = gm.bind().get_hero_position(id);
-                if pos.x >= 0 && pos.y >= 0 {
-                    let team_name = gm.bind().get_hero_team_name(id).to_string();
-                    let player_controlled = gm.bind().is_hero_player_controlled(id);
-                    enemy_data.push((id, team_name, player_controlled, pos));
-                }
-            }
-        }
-
-        // Now create hero nodes (mutable borrow).
-        for (hero_id, team_name, player_controlled, pos) in enemy_data {
-            self.create_hero_node(hero_id, &team_name, player_controlled, pos);
-        }
-
-        self.update_heroes_list();
     }
 
     // ── City ownership markers ────────────────────────────────────────────────
@@ -769,6 +733,102 @@ impl MainScene {
             )));
 
             let mut markers = self.base().get_node_as::<Node>("World/CityMarkers");
+            markers.add_child(&sprite.upcast::<Node>());
+        }
+    }
+
+    /// Creates or recreates spawn markers for enemy and chest points.
+    fn setup_spawn_markers(&mut self) {
+        if self.base().get_node_or_null("World/SpawnMarkers").is_none() {
+            let mut container = Node2D::new_alloc();
+            container.set_name(&StringName::from("SpawnMarkers"));
+            let mut world = self.base().get_node_as::<Node>("World");
+            world.add_child(&container.upcast::<Node>());
+        }
+
+        let children: Vec<Gd<Node>> = self
+            .base()
+            .get_node_as::<Node>("World/SpawnMarkers")
+            .get_children()
+            .iter_shared()
+            .collect();
+        for mut child in children {
+            let mut root = self.base().get_node_as::<Node>("World/SpawnMarkers");
+            root.remove_child(&child);
+            child.queue_free();
+        }
+
+        let enemy_tex = ResourceLoader::singleton()
+            .load("res://assets/enemy.svg")
+            .and_then(|r| r.try_cast::<Texture2D>().ok());
+        let chest_tex = ResourceLoader::singleton()
+            .load("res://assets/chest.svg")
+            .and_then(|r| r.try_cast::<Texture2D>().ok());
+
+        let enemy_tex = match enemy_tex {
+            Some(t) => t,
+            None => {
+                warn!("setup_spawn_markers: failed to load res://assets/enemy.svg");
+                return;
+            }
+        };
+        let chest_tex = match chest_tex {
+            Some(t) => t,
+            None => {
+                warn!("setup_spawn_markers: failed to load res://assets/chest.svg");
+                return;
+            }
+        };
+
+        let enemy_scale = marker_scale_for_texture(&enemy_tex, SPAWN_MARKER_SIZE_PIXELS);
+        let chest_scale = marker_scale_for_texture(&chest_tex, SPAWN_MARKER_SIZE_PIXELS);
+
+        let enemy_coords: Vec<Vector2i> = {
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let coords = gm.bind().get_enemy_spawn_points().iter_shared().collect();
+            coords
+        };
+        let chest_coords: Vec<Vector2i> = {
+            let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
+            let coords = gm.bind().get_chest_spawn_points().iter_shared().collect();
+            coords
+        };
+
+        for coord in enemy_coords {
+            let mut sprite = Sprite2D::new_alloc();
+            sprite.set_texture(&enemy_tex);
+            sprite.set_centered(true);
+            sprite.set_scale(enemy_scale);
+            sprite.set_offset(Vector2::new(0.0, -22.0));
+            sprite.set_z_index(60);
+            sprite.set_modulate(Color::from_rgba8(230, 80, 80, 230));
+            if let Some(world_pos) = self.map_tile_to_world(coord) {
+                sprite.set_position(world_pos);
+            }
+            sprite.set_name(&StringName::from(&format!(
+                "EnemySpawn_{}_{}",
+                coord.x, coord.y
+            )));
+            let mut markers = self.base().get_node_as::<Node>("World/SpawnMarkers");
+            markers.add_child(&sprite.upcast::<Node>());
+        }
+
+        for coord in chest_coords {
+            let mut sprite = Sprite2D::new_alloc();
+            sprite.set_texture(&chest_tex);
+            sprite.set_centered(true);
+            sprite.set_scale(chest_scale);
+            sprite.set_offset(Vector2::new(0.0, -22.0));
+            sprite.set_z_index(59);
+            sprite.set_modulate(Color::from_rgba8(255, 210, 90, 230));
+            if let Some(world_pos) = self.map_tile_to_world(coord) {
+                sprite.set_position(world_pos);
+            }
+            sprite.set_name(&StringName::from(&format!(
+                "ChestSpawn_{}_{}",
+                coord.x, coord.y
+            )));
+            let mut markers = self.base().get_node_as::<Node>("World/SpawnMarkers");
             markers.add_child(&sprite.upcast::<Node>());
         }
     }
@@ -1534,4 +1594,12 @@ fn team_marker_color(team: &str) -> Color {
         "blue" => Color::from_rgba8(50, 100, 220, 210),
         _ => Color::from_rgba8(180, 180, 180, 120), // neutral / unknown
     }
+}
+
+fn marker_scale_for_texture(texture: &Gd<Texture2D>, target_size: f32) -> Vector2 {
+    let size = texture.get_size();
+    if size.x <= 0.0 || size.y <= 0.0 {
+        return Vector2::ONE;
+    }
+    Vector2::new(target_size / size.x, target_size / size.y)
 }
