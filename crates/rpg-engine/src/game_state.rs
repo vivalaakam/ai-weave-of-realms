@@ -12,8 +12,13 @@
 //! state.advance_turn();      // resets AI-team movement, awards survival points, bumps global turn
 //! ```
 
+use alloc::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    format,
+    vec,
+    vec::Vec,
+};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet, VecDeque};
 
 use crate::combat::{self, CombatResult};
 use crate::error::Error;
@@ -512,7 +517,7 @@ impl GameState {
     ///
     /// Movement for player-controlled heroes is reset per-team in [`GameState::on_turn`].
     pub fn advance_turn(&mut self) -> Vec<TurnEvent> {
-        let player_teams: HashSet<TeamId> = self
+        let player_teams: BTreeSet<TeamId> = self
             .teams
             .values()
             .filter(|t| t.is_player_controlled())
@@ -560,7 +565,7 @@ fn flood_city(map: &GameMap, start: MapCoord) -> Vec<MapCoord> {
 
     let w = map.tile_width();
     let h = map.tile_height();
-    let mut visited: HashSet<MapCoord> = HashSet::new();
+    let mut visited: BTreeSet<MapCoord> = BTreeSet::new();
     let mut queue: VecDeque<MapCoord> = VecDeque::new();
     let mut result: Vec<MapCoord> = Vec::new();
 

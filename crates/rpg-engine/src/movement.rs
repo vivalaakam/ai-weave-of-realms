@@ -13,8 +13,9 @@
 //!
 //! Movement is 4-directional (N/S/E/W).
 
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use alloc::{collections::BTreeMap, vec, vec::Vec};
+use core::cmp::Reverse;
+use alloc::collections::BinaryHeap;
 
 use crate::error::Error;
 use crate::map::game_map::{GameMap, MapCoord};
@@ -113,9 +114,9 @@ fn dijkstra(
     map: &GameMap,
     start: MapCoord,
     budget: u32,
-) -> (HashMap<MapCoord, u32>, HashMap<MapCoord, MapCoord>) {
-    let mut costs: HashMap<MapCoord, u32> = HashMap::new();
-    let mut prev: HashMap<MapCoord, MapCoord> = HashMap::new();
+) -> (BTreeMap<MapCoord, u32>, BTreeMap<MapCoord, MapCoord>) {
+    let mut costs: BTreeMap<MapCoord, u32> = BTreeMap::new();
+    let mut prev: BTreeMap<MapCoord, MapCoord> = BTreeMap::new();
     // Min-heap: Reverse((cost, x, y)) for lexicographic min ordering
     let mut heap: BinaryHeap<Reverse<(u32, u32, u32)>> = BinaryHeap::new();
 

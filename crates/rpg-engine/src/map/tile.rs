@@ -3,6 +3,9 @@
 //! [`Tiles`] is the canonical tile type for the whole project.
 //! It maps 1-to-1 to the `world_tileset` (see `tileset/tileset.tsx`).
 
+use alloc::{format, string::ToString};
+use core::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
@@ -252,7 +255,7 @@ impl Default for Tile {
     }
 }
 
-impl std::str::FromStr for Tiles {
+impl FromStr for Tiles {
     type Err = Error;
 
     /// Constructs a [`Tiles`] from the Lua-facing string identifier.
@@ -284,7 +287,7 @@ impl std::str::FromStr for Tiles {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use core::str::FromStr;
 
     use super::*;
 

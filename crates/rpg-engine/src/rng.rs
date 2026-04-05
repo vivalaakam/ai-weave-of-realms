@@ -7,7 +7,9 @@
 //! Helper functions [`keccak256`] and [`derive_seed`] allow constructing
 //! child seeds for independent sub-systems (e.g. one seed per map chunk).
 
+use alloc::format;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "std")]
 use sha3::{Digest, Keccak256};
 
 // ─── SeededRng ────────────────────────────────────────────────────────────────
@@ -28,9 +30,7 @@ impl SeededRng {
     ///
     /// The string is hashed with Keccak256 to produce the initial 32-byte state.
     pub fn new(seed: &str) -> Self {
-        let mut hasher = Keccak256::new();
-        hasher.update(seed.as_bytes());
-        let state: [u8; 32] = hasher.finalize().into();
+        let state = hash_bytes(seed.as_bytes());
         Self { state, position: 0 }
     }
 
@@ -39,10 +39,12 @@ impl SeededRng {
     ///
     /// Useful for spawning independent child generators (e.g. per-chunk RNGs).
     pub fn update(&self, seed: &str) -> Self {
-        let mut hasher = Keccak256::new();
-        hasher.update(self.state);
-        hasher.update(seed.as_bytes());
-        let new_state: [u8; 32] = hasher.finalize().into();
+        let mut data = [0u8; 64];
+        data[..32].copy_from_slice(&self.state);
+        let seed_bytes = seed.as_bytes();
+        let limit = seed_bytes.len().min(32);
+        data[32..32 + limit].copy_from_slice(&seed_bytes[..limit]);
+        let new_state = hash_bytes(&data);
         Self {
             state: new_state,
             position: 0,
@@ -76,9 +78,7 @@ impl SeededRng {
 
     /// Rehashes the internal state when all 32 bytes have been consumed.
     fn rehash(&mut self) {
-        let mut hasher = Keccak256::new();
-        hasher.update(self.state);
-        self.state = hasher.finalize().into();
+        self.state = hash_bytes(&self.state);
         self.position = 0;
     }
 
@@ -118,7 +118,7 @@ impl SeededRng {
     /// Returns a random `u32` in the half-open range `[range.start, range.end)`.
     ///
     /// Returns `range.start` if the range is empty.
-    pub fn random_range_u32(&mut self, range: std::ops::Range<u32>) -> u32 {
+    pub fn random_range_u32(&mut self, range: core::ops::Range<u32>) -> u32 {
         let len = range.end - range.start;
         if len == 0 {
             return range.start;
@@ -129,7 +129,7 @@ impl SeededRng {
     /// Returns a random `u8` in the half-open range `[range.start, range.end)`.
     ///
     /// Returns `range.start` if the range is empty.
-    pub fn random_range_u8(&mut self, range: std::ops::Range<u8>) -> u8 {
+    pub fn random_range_u8(&mut self, range: core::ops::Range<u8>) -> u8 {
         let len = range.end - range.start;
         if len == 0 {
             return range.start;
@@ -140,7 +140,7 @@ impl SeededRng {
     /// Returns a random `i32` in the half-open range `[range.start, range.end)`.
     ///
     /// Returns `range.start` if the range is empty.
-    pub fn random_range_i32(&mut self, range: std::ops::Range<i32>) -> i32 {
+    pub fn random_range_i32(&mut self, range: core::ops::Range<i32>) -> i32 {
         let len = (range.end - range.start) as u32;
         if len == 0 {
             return range.start;
@@ -151,7 +151,7 @@ impl SeededRng {
     /// Returns a random `usize` in the half-open range `[range.start, range.end)`.
     ///
     /// Returns `range.start` if the range is empty.
-    pub fn random_range_usize(&mut self, range: std::ops::Range<usize>) -> usize {
+    pub fn random_range_usize(&mut self, range: core::ops::Range<usize>) -> usize {
         let len = range.end - range.start;
         if len == 0 {
             return range.start;
@@ -160,13 +160,16 @@ impl SeededRng {
     }
 
     /// Returns a random `f64` in the half-open range `[range.start, range.end)`.
-    pub fn random_range_f64(&mut self, range: std::ops::Range<f64>) -> f64 {
+    pub fn random_range_f64(&mut self, range: core::ops::Range<f64>) -> f64 {
         let len = range.end - range.start;
         range.start + self.next_f64() * len
     }
 
     /// Returns a random `f64` in the closed range `[range.start, range.end]`.
-    pub fn random_range_f64_inclusive(&mut self, range: std::ops::RangeInclusive<f64>) -> f64 {
+    pub fn random_range_f64_inclusive(
+        &mut self,
+        range: core::ops::RangeInclusive<f64>,
+    ) -> f64 {
         let start = *range.start();
         let end = *range.end();
         let len = end - start;
@@ -187,9 +190,7 @@ impl SeededRng {
 ///
 /// Useful for producing a deterministic seed from a human-readable phrase.
 pub fn keccak256(seed: &str) -> [u8; 32] {
-    let mut hasher = Keccak256::new();
-    hasher.update(seed.as_bytes());
-    hasher.finalize().into()
+    hash_bytes(seed.as_bytes())
 }
 
 /// Derives a child seed by hashing a parent seed together with arbitrary context bytes.
@@ -201,10 +202,47 @@ pub fn keccak256(seed: &str) -> [u8; 32] {
 /// # Returns
 /// A new 32-byte seed that is deterministically unique for this `(base, context)` pair.
 pub fn derive_seed(base: &[u8; 32], context: &[u8]) -> [u8; 32] {
-    let mut hasher = Keccak256::new();
-    hasher.update(base);
-    hasher.update(context);
-    hasher.finalize().into()
+    let mut data = alloc::vec![0u8; base.len() + context.len()];
+    data[..base.len()].copy_from_slice(base);
+    data[base.len()..].copy_from_slice(context);
+    hash_bytes(&data)
+}
+
+fn hash_bytes(bytes: &[u8]) -> [u8; 32] {
+    #[cfg(feature = "std")]
+    {
+        let mut hasher = Keccak256::new();
+        hasher.update(bytes);
+        hasher.finalize().into()
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        fallback_hash(bytes)
+    }
+}
+
+#[cfg(not(feature = "std"))]
+fn fallback_hash(bytes: &[u8]) -> [u8; 32] {
+    const SEEDS: [u64; 4] = [
+        0xcbf29ce484222325,
+        0x9e3779b97f4a7c15,
+        0xd6e8feb86659fd93,
+        0x94d049bb133111eb,
+    ];
+    const PRIME: u64 = 0x100000001b3;
+
+    let mut output = [0u8; 32];
+    for (index, seed) in SEEDS.iter().enumerate() {
+        let mut state = *seed;
+        for (offset, byte) in bytes.iter().enumerate() {
+            state ^= u64::from(*byte) + ((offset as u64) << 8) + ((index as u64) << 16);
+            state = state.wrapping_mul(PRIME);
+            state ^= state.rotate_left(13);
+        }
+        output[index * 8..(index + 1) * 8].copy_from_slice(&state.to_be_bytes());
+    }
+    output
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

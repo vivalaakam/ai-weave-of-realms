@@ -4,11 +4,13 @@ version = "0.1.0"
 edition = "2021"
 description = "Core game logic: PRNG, map types, hero, combat, score. Zero Godot dependencies."
 
+[features]
+default = ["std"]
+std = ["dep:sha3"]
+
 [dependencies]
-thiserror = { workspace = true }
-tracing = { workspace = true }
-sha3 = { workspace = true }
-serde = { workspace = true }
+sha3 = { version = "0.10", default-features = false, optional = true }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

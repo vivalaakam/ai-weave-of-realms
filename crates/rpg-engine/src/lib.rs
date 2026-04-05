@@ -17,6 +17,10 @@
 //! - [`spawn`]      — Deterministic hero spawn selection on generated maps
 //! - [`error`]      — Crate-level error type
 
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+
+extern crate alloc;
+
 pub use map::game_map::Direction;
 pub mod combat;
 pub mod error;

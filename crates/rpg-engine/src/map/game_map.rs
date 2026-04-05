@@ -1,5 +1,7 @@
 //! [`GameMap`] — the full assembled game map stored as a flat tile array.
 
+use alloc::{format, vec::Vec};
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;

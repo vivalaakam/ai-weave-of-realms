@@ -1,5 +1,7 @@
 //! Hero entity — represents a unit on the map belonging to any team.
 
+use alloc::{format, string::String};
+
 use serde::{Deserialize, Serialize};
 
 use crate::map::game_map::MapCoord;

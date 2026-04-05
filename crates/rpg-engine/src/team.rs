@@ -1,5 +1,7 @@
 //! Team configuration for the game session.
 
+use alloc::string::String;
+
 use serde::{Deserialize, Serialize};
 
 use crate::hero::TeamId;

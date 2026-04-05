@@ -202,3 +202,9 @@ Update status as work progresses.
 | ID | Task | Assignee | Status | Notes |
 |----|------|----------|--------|-------|
 | 11.1 | Сгенерировать карту текущими инструментами проекта, близкую к стартовой Godot-конфигурации, и сохранить TMX в `tmp/` | Codex | DONE | Использован `terrain.lua`, seed `default-seed`, размер 96×96 как в `MainScene`; итоговый TMX: `tmp/default-seed-terrain-96x96.tmx`, артефакты прогона: `tmp/gen-1775226082-961/` |
+
+## Phase 12 — T-Deck Integration Cleanup
+
+| ID | Task | Assignee | Status | Notes |
+|----|------|----------|--------|-------|
+| 12.1 | Интегрировать `tdeck` с `rpg-engine`, загрузкой карты и стартовой инициализацией игрока/команды, а также разнести экранную логику по отдельным файлам | Codex | DONE | `tdeck` теперь грузит TMX в `rpg_engine::GameMap`, создаёт стартовую команду `Team::red()` и героя на city spawn, поддерживает режимы pan/hero move; экранная логика вынесена в `app.rs`, `render.rs`, `storage.rs`, `session.rs`, `screens/*` |

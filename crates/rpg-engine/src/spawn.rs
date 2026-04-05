@@ -4,6 +4,8 @@
 //! player-controlled hero and the first enemy unit from the generated
 //! [`GameMap`](crate::map::game_map::GameMap).
 
+use alloc::{string::ToString, vec, vec::Vec};
+
 use crate::error::Error;
 use crate::map::game_map::{GameMap, MapCoord};
 use crate::map::tile::Tiles;

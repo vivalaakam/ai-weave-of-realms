@@ -1,5 +1,7 @@
 //! Score system — tracks game events and computes a running total.
 
+use alloc::vec::Vec;
+
 use serde::{Deserialize, Serialize};
 
 use crate::hero::HeroId;
