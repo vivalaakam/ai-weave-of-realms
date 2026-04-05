@@ -16,8 +16,12 @@ use clap::Parser;
 use image::{ImageBuffer, Rgb};
 use tracing::{error, info, warn};
 
+use rpg_engine::game_state::GameState;
+use rpg_engine::hero::Hero;
 use rpg_engine::map::game_map::GameMap;
 use rpg_engine::map::tile::Tiles;
+use rpg_engine::spawn;
+use rpg_engine::team::Team;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
 use rpg_tiled::write_tmx;
 
@@ -108,6 +112,7 @@ fn main() {
 
     let png_path = output_dir.join("map.png");
     let tmx_path = output_dir.join("map.tmx");
+    let save_path = output_dir.join("map.rpgs");
     let tileset_path = resolve_project_path(TILESET_PATH);
 
     // ── Print statistics ──────────────────────────────────────────────────────
@@ -126,6 +131,11 @@ fn main() {
         std::process::exit(1);
     }
 
+    if let Err(e) = save_rpgs(&map, &args.seed, &save_path) {
+        error!(error = %e, path = %save_path.display(), "failed to save RPGS");
+        std::process::exit(1);
+    }
+
     if args.open {
         if let Err(e) = open_file(&tmx_path) {
             error!(error = %e, path = %tmx_path.display(), "failed to open generated TMX");
@@ -137,6 +147,7 @@ fn main() {
         output_dir = %output_dir.display(),
         png = %png_path.display(),
         tmx = %tmx_path.display(),
+        rpgs = %save_path.display(),
         "done"
     );
 }
@@ -327,6 +338,26 @@ fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
         Ok(_) => info!(path = %output.display(), width = w, height = h, "PNG saved"),
         Err(e) => error!(error = %e, path = %output.display(), "failed to save PNG"),
     }
+}
+
+fn save_rpgs(map: &GameMap, seed: &str, output: &PathBuf) -> Result<(), rpg_engine::error::Error> {
+    let spawn = spawn::find_city_entrance_spawns(map, 1)
+        .first()
+        .copied()
+        .map(Ok)
+        .unwrap_or_else(|| spawn::find_player_spawn(map))?;
+
+    let mut state = GameState::new(map.clone(), seed);
+    let team_id = state.add_team(Team::red());
+    state.add_team(Team::blue());
+    state.add_team(Team::enemy());
+    state.add_hero(Hero::new(0, "Hero", 100, 20, 10, 15, spawn, team_id));
+    state.set_city_owner(spawn, Some(team_id));
+    let _ = state.on_turn();
+
+    let bytes = state.to_save_bytes_with_name(seed)?;
+    fs::write(output, bytes).map_err(|err| rpg_engine::error::Error::Save(err.to_string()))?;
+    Ok(())
 }
 
 fn draw_spawn_markers(

@@ -36,6 +36,8 @@ pub enum Error {
     ImpassableTile { x: u32, y: u32 },
     /// Movement was requested but the hero has no movement points remaining.
     NoMovementPoints { hero_id: HeroId },
+    /// Save/load serialization failed.
+    Save(String),
 }
 
 impl fmt::Display for Error {
@@ -66,6 +68,7 @@ impl fmt::Display for Error {
             Error::NoMovementPoints { hero_id } => {
                 write!(formatter, "hero {hero_id} has no movement points remaining")
             }
+            Error::Save(message) => write!(formatter, "save error: {message}"),
         }
     }
 }

@@ -55,6 +55,14 @@ impl Team {
         self.turn
     }
 
+    /// Sets the team's turn counter.
+    ///
+    /// # Arguments
+    /// * `turn` - New per-team turn index.
+    pub(crate) fn set_turn(&mut self, turn: u32) {
+        self.turn = turn;
+    }
+
     pub fn is_player_controlled(&self) -> bool {
         self.player_controlled
     }

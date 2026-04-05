@@ -51,6 +51,27 @@ impl GameSession {
         })
     }
 
+    /// Creates a new engine session from a fully loaded save state.
+    ///
+    /// # Arguments
+    /// * `map_name` - Display name of the loaded save file.
+    /// * `state` - Loaded engine state.
+    ///
+    /// # Returns
+    /// A new [`GameSession`] ready for rendering and input.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::InvalidTiles`] if the save has no heroes to select.
+    pub fn from_state(map_name: String, state: GameState) -> Result<Self, EngineError> {
+        let selected_hero_id = select_hero(&state)
+            .ok_or_else(|| EngineError::InvalidTiles("save has no heroes".to_string()))?;
+        Ok(Self {
+            map_name,
+            state,
+            selected_hero_id,
+        })
+    }
+
     /// Returns the display name of the loaded map.
     pub fn map_name(&self) -> &str {
         &self.map_name
@@ -95,4 +116,13 @@ impl GameSession {
         let position = self.selected_hero_position();
         format!("{team} {hero} @{},{}", position.x, position.y)
     }
+}
+
+fn select_hero(state: &GameState) -> Option<HeroId> {
+    let active_team = state.get_active_team_id().ok().copied();
+    active_team
+        .and_then(|team_id| state.get_active_hero(team_id))
+        .or_else(|| active_team.and_then(|team_id| state.get_next_hero(team_id)))
+        .or_else(|| state.living_heroes(true).first().map(|hero| hero.get_id()))
+        .or_else(|| state.living_heroes(false).first().map(|hero| hero.get_id()))
 }

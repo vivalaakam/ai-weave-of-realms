@@ -340,8 +340,13 @@ where
     D: embedded_sdmmc::BlockDevice,
 {
     let loaded = storage::load_map(volume_mgr, entry)?;
-    let session =
-        GameSession::new(loaded.name, loaded.map).map_err(|err| AppError::Engine(err.to_string()))?;
+    let session = match loaded.payload {
+        crate::storage::LoadedPayload::Map(map) => {
+            GameSession::new(loaded.name, map).map_err(|err| AppError::Engine(err.to_string()))?
+        }
+        crate::storage::LoadedPayload::Save(state) => GameSession::from_state(loaded.name, state)
+            .map_err(|err| AppError::Engine(err.to_string()))?,
+    };
 
     Ok(MapViewScreen {
         session,

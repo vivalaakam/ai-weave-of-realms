@@ -28,6 +28,7 @@ use rpg_engine::spawn;
 use rpg_engine::team::Team;
 use rpg_engine::Direction;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
+use std::fs;
 
 // ─── GameManager ──────────────────────────────────────────────────────────────
 
@@ -138,6 +139,94 @@ impl GameManager {
         );
         self.base_mut()
             .call_deferred("emit_signal", &["map_ready".to_variant()]);
+        true
+    }
+
+    /// Loads a saved `.rpgs` game state and replaces the current session.
+    ///
+    /// # Arguments
+    /// * `path` - Save path; supports `res://` and `user://` prefixes.
+    ///
+    /// # Returns
+    /// `true` if the save was loaded and the map is ready.
+    #[func]
+    pub fn load_save(&mut self, path: GString) -> bool {
+        let path_str = path.to_string();
+        let abs_path = if path_str.starts_with("res://") || path_str.starts_with("user://") {
+            ProjectSettings::singleton()
+                .globalize_path(&path_str)
+                .to_string()
+        } else {
+            path_str
+        };
+
+        let bytes = match fs::read(&abs_path) {
+            Ok(data) => data,
+            Err(err) => {
+                error!(path = %abs_path, error = %err, "failed to read save file");
+                return false;
+            }
+        };
+
+        let state = match GameState::from_save_bytes(&bytes) {
+            Ok(state) => state,
+            Err(err) => {
+                error!(path = %abs_path, error = %err, "failed to parse save file");
+                return false;
+            }
+        };
+
+        let score = state.score.total() as i64;
+        self.state = Some(state);
+        self.base_mut().call_deferred(
+            "emit_signal",
+            &["score_changed".to_variant(), score.to_variant()],
+        );
+        self.base_mut()
+            .call_deferred("emit_signal", &["map_ready".to_variant()]);
+        true
+    }
+
+    /// Saves the current session to a `.rpgs` file.
+    ///
+    /// # Arguments
+    /// * `path` - Output path; supports `res://` and `user://` prefixes.
+    ///
+    /// # Returns
+    /// `true` if the save was written successfully.
+    #[func]
+    pub fn save_game(&self, path: GString) -> bool {
+        let Some(state) = &self.state else {
+            warn!("save_game called without active session");
+            return false;
+        };
+
+        let path_str = path.to_string();
+        let abs_path = if path_str.starts_with("res://") || path_str.starts_with("user://") {
+            ProjectSettings::singleton()
+                .globalize_path(&path_str)
+                .to_string()
+        } else {
+            path_str
+        };
+
+        let save_name = std::path::Path::new(&abs_path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("save");
+        let bytes = match state.to_save_bytes_with_name(save_name) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                error!(path = %abs_path, error = %err, "failed to serialize save file");
+                return false;
+            }
+        };
+
+        if let Err(err) = fs::write(&abs_path, bytes) {
+            error!(path = %abs_path, error = %err, "failed to write save file");
+            return false;
+        }
+
         true
     }
 

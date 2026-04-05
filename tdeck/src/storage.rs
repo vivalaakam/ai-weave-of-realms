@@ -7,6 +7,7 @@ use alloc::{
 };
 
 use embedded_sdmmc::{LfnBuffer, Mode, VolumeIdx, VolumeManager};
+use rpg_engine::game_state::GameState;
 use rpg_engine::map::game_map::{GameMap, MapCoord};
 use rpg_engine::map::tile::{Tile, Tiles};
 
@@ -23,12 +24,20 @@ pub struct MapEntry {
     pub size_bytes: u32,
 }
 
-/// Parsed map data returned by TMX loading.
+/// Parsed data returned by map/save loading.
 pub struct LoadedMap {
     /// Human-readable map name.
     pub name: String,
-    /// Parsed engine map.
-    pub map: GameMap,
+    /// Loaded session payload.
+    pub payload: LoadedPayload,
+}
+
+/// Loaded map or save payload.
+pub enum LoadedPayload {
+    /// Raw engine map payload (TMX).
+    Map(GameMap),
+    /// Full engine save state.
+    Save(GameState),
 }
 
 /// App-level error type for storage, TMX parsing, and engine session setup.
@@ -79,7 +88,11 @@ where
             let short_name = dir_entry.name.to_string();
             let display_name = long_name.unwrap_or(short_name.as_str()).to_string();
 
-            if has_tmx_extension(&display_name) || has_tmx_extension(&short_name) {
+    if has_tmx_extension(&display_name)
+        || has_tmx_extension(&short_name)
+        || has_save_extension(&display_name)
+        || has_save_extension(&short_name)
+    {
                 entries.push(MapEntry {
                     short_name,
                     display_name,
@@ -98,7 +111,7 @@ where
     Ok(entries)
 }
 
-/// Loads a TMX file from SD card and converts it to `rpg-engine::GameMap`.
+/// Loads a TMX map or `.rpgs` save file from SD card.
 pub fn load_map<D>(
     volume_mgr: &VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
     entry: &MapEntry,
@@ -135,8 +148,22 @@ where
     }
 
     bytes.truncate(offset);
-    let xml = core::str::from_utf8(&bytes).map_err(|_| AppError::InvalidTmx("TMX is not UTF-8"))?;
-    parse_tmx(entry.display_name.as_str(), xml)
+    if has_save_extension(&entry.display_name) || has_save_extension(&entry.short_name) {
+        let name = GameState::read_save_name(&bytes)
+            .ok()
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| entry.display_name.to_string());
+        let state =
+            GameState::from_save_bytes(&bytes).map_err(|err| AppError::Engine(err.to_string()))?;
+        Ok(LoadedMap {
+            name,
+            payload: LoadedPayload::Save(state),
+        })
+    } else {
+        let xml =
+            core::str::from_utf8(&bytes).map_err(|_| AppError::InvalidTmx("TMX is not UTF-8"))?;
+        parse_tmx(entry.display_name.as_str(), xml)
+    }
 }
 
 /// Returns a user-facing error string.
@@ -144,7 +171,7 @@ pub fn error_message(error: AppError) -> String {
     match error {
         AppError::StorageUnavailable => "SD card is unavailable or unreadable".to_string(),
         AppError::MapsDirMissing => "Folder /maps was not found on the SD card".to_string(),
-        AppError::NoMapsFound => "No .tmx maps were found in /maps".to_string(),
+        AppError::NoMapsFound => "No .tmx or .rpgs maps were found in /maps".to_string(),
         AppError::InvalidTmx(message) => format!("TMX parse error: {message}"),
         AppError::InvalidConfiguredMap => {
             "TDECK_START_MAP does not match any map in /maps".to_string()
@@ -211,7 +238,7 @@ fn parse_tmx(name: &str, xml: &str) -> Result<LoadedMap, AppError> {
 
     Ok(LoadedMap {
         name: name.to_string(),
-        map,
+        payload: LoadedPayload::Map(map),
     })
 }
 
@@ -346,4 +373,14 @@ fn has_tmx_extension(name: &str) -> bool {
         && lower[lower.len() - 3].eq_ignore_ascii_case(&b't')
         && lower[lower.len() - 2].eq_ignore_ascii_case(&b'm')
         && lower[lower.len() - 1].eq_ignore_ascii_case(&b'x')
+}
+
+fn has_save_extension(name: &str) -> bool {
+    let lower = name.as_bytes();
+    lower.len() >= 5
+        && lower[lower.len() - 5].eq_ignore_ascii_case(&b'.')
+        && lower[lower.len() - 4].eq_ignore_ascii_case(&b'r')
+        && lower[lower.len() - 3].eq_ignore_ascii_case(&b'p')
+        && lower[lower.len() - 2].eq_ignore_ascii_case(&b'g')
+        && lower[lower.len() - 1].eq_ignore_ascii_case(&b's')
 }

@@ -74,6 +74,31 @@ impl SeededRng {
         self.state
     }
 
+    /// Returns the current byte position within the 32-byte state buffer.
+    ///
+    /// # Returns
+    /// The current position in the range `0..=32`.
+    pub fn position(&self) -> u8 {
+        self.position as u8
+    }
+
+    /// Creates a [`SeededRng`] from a raw 32-byte state and byte position.
+    ///
+    /// # Arguments
+    /// * `state` - Raw 32-byte RNG state.
+    /// * `position` - Current position within the 32-byte state buffer.
+    ///
+    /// # Returns
+    /// A [`SeededRng`] initialized to the provided state and position.
+    ///
+    /// The caller must ensure `position <= 32`.
+    pub fn from_state_and_position(state: [u8; 32], position: u8) -> Self {
+        Self {
+            state,
+            position: position as usize,
+        }
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     /// Rehashes the internal state when all 32 bytes have been consumed.

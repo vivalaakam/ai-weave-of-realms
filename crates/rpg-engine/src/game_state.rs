@@ -15,6 +15,7 @@
 use alloc::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     format,
+    string::{String, ToString},
     vec,
     vec::Vec,
 };
@@ -543,6 +544,478 @@ impl GameState {
         } else {
             Err(Error::OutOfBounds(format!("hero {id} not found")))
         }
+    }
+}
+
+// ─── Save / Load ──────────────────────────────────────────────────────────────
+
+const SAVE_MAGIC: [u8; 4] = *b"RPGS";
+const SAVE_VERSION: u16 = 2;
+
+impl GameState {
+    /// Serializes the entire game state into a compact binary save format.
+    ///
+    /// # Returns
+    /// A byte buffer containing the full game state in the `RPGS` binary format.
+    ///
+    /// # Errors
+    /// Returns [`Error::Save`] if any field cannot be encoded (e.g. oversized strings).
+    pub fn to_save_bytes(&self) -> Result<Vec<u8>, Error> {
+        self.to_save_bytes_with_name("")
+    }
+
+    /// Serializes the entire game state with a save name embedded in the header.
+    ///
+    /// # Arguments
+    /// * `name` - Human-readable save name stored in the file header.
+    ///
+    /// # Returns
+    /// A byte buffer containing the full game state in the `RPGS` binary format.
+    ///
+    /// # Errors
+    /// Returns [`Error::Save`] if any field cannot be encoded (e.g. oversized strings).
+    pub fn to_save_bytes_with_name(&self, name: &str) -> Result<Vec<u8>, Error> {
+        let mut writer = SaveWriter::new();
+        writer.push_bytes(&SAVE_MAGIC);
+        writer.push_u16(SAVE_VERSION);
+        writer.push_u16(0);
+        writer.push_string(name)?;
+
+        writer.push_u32(self.map.tile_width());
+        writer.push_u32(self.map.tile_height());
+        writer.push_bytes(&self.map.seed);
+
+        let tile_count = to_u32(self.map.tiles().len(), "tiles")?;
+        writer.push_u32(tile_count);
+        for tile in self.map.tiles() {
+            writer.push_u8(tile.kind.tile_id() as u8);
+        }
+
+        let enemy_count = to_u32(self.map.enemy_spawns().len(), "enemy spawns")?;
+        writer.push_u32(enemy_count);
+        for coord in self.map.enemy_spawns() {
+            writer.push_u32(coord.x);
+            writer.push_u32(coord.y);
+        }
+
+        let chest_count = to_u32(self.map.chest_spawns().len(), "chest spawns")?;
+        writer.push_u32(chest_count);
+        for coord in self.map.chest_spawns() {
+            writer.push_u32(coord.x);
+            writer.push_u32(coord.y);
+        }
+
+        let team_count = to_u32(self.teams.len(), "teams")?;
+        writer.push_u32(team_count);
+        for team in self.teams.values() {
+            writer.push_u8(team.get_id());
+            writer.push_string(&team.name)?;
+            writer.push_u8(team.color.0);
+            writer.push_u8(team.color.1);
+            writer.push_u8(team.color.2);
+            writer.push_u8(if team.is_player_controlled() { 1 } else { 0 });
+            writer.push_u32(team.get_turn());
+        }
+
+        let order_count = to_u32(self.teams_order.len(), "teams order")?;
+        writer.push_u32(order_count);
+        for team_id in self.teams_order.iter() {
+            writer.push_u8(*team_id);
+        }
+
+        let active_count = to_u32(self.active_hero.len(), "active heroes")?;
+        writer.push_u32(active_count);
+        for (team_id, hero_id) in self.active_hero.iter() {
+            writer.push_u8(*team_id);
+            match hero_id {
+                Some(id) => {
+                    writer.push_u8(1);
+                    writer.push_u8(*id);
+                }
+                None => writer.push_u8(0),
+            }
+        }
+
+        let hero_count = to_u32(self.heroes.len(), "heroes")?;
+        writer.push_u32(hero_count);
+        for (hero_id, hero) in self.heroes.iter() {
+            writer.push_u8(*hero_id);
+            writer.push_string(&hero.name)?;
+            writer.push_u32(hero.hp);
+            writer.push_u32(hero.max_hp);
+            writer.push_u32(hero.atk);
+            writer.push_u32(hero.def);
+            writer.push_u32(hero.spd);
+            writer.push_u32(hero.mov);
+            writer.push_u32(hero.mov_remaining);
+            writer.push_u32(hero.position.x);
+            writer.push_u32(hero.position.y);
+            writer.push_u8(hero.team_id);
+            writer.push_bytes(&hero.rng.state());
+            writer.push_u8(hero.rng.position());
+        }
+
+        let score_count = to_u32(self.score.events().len(), "score events")?;
+        writer.push_u32(score_count);
+        for (event, _) in self.score.events() {
+            write_score_event(&mut writer, event)?;
+        }
+
+        let city_count = to_u32(self.city_owners.len(), "city owners")?;
+        writer.push_u32(city_count);
+        for (coord, team_id) in self.city_owners.iter() {
+            writer.push_u32(coord.x);
+            writer.push_u32(coord.y);
+            writer.push_u8(*team_id);
+        }
+
+        writer.push_u8(self.hero_pointer);
+        writer.push_bytes(&self.rng.state());
+        writer.push_u8(self.rng.position());
+
+        Ok(writer.finish())
+    }
+
+    /// Reads only the header name from a save file.
+    ///
+    /// # Arguments
+    /// * `bytes` - Raw bytes containing the start of a `.rpgs` file.
+    ///
+    /// # Returns
+    /// The embedded save name, or an empty string when missing.
+    ///
+    /// # Errors
+    /// Returns [`Error::Save`] if the header is malformed or unsupported.
+    pub fn read_save_name(bytes: &[u8]) -> Result<String, Error> {
+        let mut reader = SaveReader::new(bytes);
+        let magic = reader.read_bytes(4)?;
+        if magic != SAVE_MAGIC {
+            return Err(save_error("invalid save magic"));
+        }
+
+        let version = reader.read_u16()?;
+        if version > SAVE_VERSION {
+            return Err(save_error(format!("unsupported save version {version}")));
+        }
+        let _flags = reader.read_u16()?;
+
+        if version >= 2 {
+            reader.read_string()
+        } else {
+            Ok(String::new())
+        }
+    }
+
+    /// Deserializes a game state from the `RPGS` binary save format.
+    ///
+    /// # Arguments
+    /// * `bytes` - Raw bytes loaded from a `.rpgs` save file.
+    ///
+    /// # Returns
+    /// The restored [`GameState`] instance.
+    ///
+    /// # Errors
+    /// Returns [`Error::Save`] if the payload is malformed or unsupported.
+    pub fn from_save_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let mut reader = SaveReader::new(bytes);
+        let magic = reader.read_bytes(4)?;
+        if magic != SAVE_MAGIC {
+            return Err(save_error("invalid save magic"));
+        }
+
+        let version = reader.read_u16()?;
+        if version > SAVE_VERSION {
+            return Err(save_error(format!("unsupported save version {version}")));
+        }
+        let _flags = reader.read_u16()?;
+        if version >= 2 {
+            let _name = reader.read_string()?;
+        }
+
+        let width = reader.read_u32()?;
+        let height = reader.read_u32()?;
+        if width == 0 || height == 0 {
+            return Err(save_error("map dimensions must be non-zero"));
+        }
+
+        let seed = reader.read_array_32()?;
+        let tile_count = reader.read_u32()? as usize;
+        let expected = (width as usize)
+            .checked_mul(height as usize)
+            .ok_or_else(|| save_error("map size overflow"))?;
+        if tile_count != expected {
+            return Err(save_error("tile count does not match map dimensions"));
+        }
+
+        let mut tiles = Vec::with_capacity(tile_count);
+        for _ in 0..tile_count {
+            let tile_id = reader.read_u8()?;
+            let kind =
+                Tiles::from_id(tile_id as u32).map_err(|_| save_error("invalid tile id"))?;
+            tiles.push(crate::map::tile::Tile::new(kind));
+        }
+
+        let enemy_count = reader.read_u32()? as usize;
+        let mut enemy_spawns = Vec::with_capacity(enemy_count);
+        for _ in 0..enemy_count {
+            let x = reader.read_u32()?;
+            let y = reader.read_u32()?;
+            enemy_spawns.push(MapCoord::new(x, y));
+        }
+
+        let chest_count = reader.read_u32()? as usize;
+        let mut chest_spawns = Vec::with_capacity(chest_count);
+        for _ in 0..chest_count {
+            let x = reader.read_u32()?;
+            let y = reader.read_u32()?;
+            chest_spawns.push(MapCoord::new(x, y));
+        }
+
+        let mut map = GameMap::new(width, height, tiles, seed)?;
+        map.set_spawn_points(enemy_spawns, chest_spawns)?;
+
+        let team_count = reader.read_u32()? as usize;
+        let mut teams = BTreeMap::new();
+        for _ in 0..team_count {
+            let id = reader.read_u8()?;
+            let name = reader.read_string()?;
+            let r = reader.read_u8()?;
+            let g = reader.read_u8()?;
+            let b = reader.read_u8()?;
+            let player_controlled = reader.read_u8()? == 1;
+            let turn = reader.read_u32()?;
+            let mut team = Team::new(id, name, (r, g, b), player_controlled);
+            team.set_turn(turn);
+            teams.insert(id, team);
+        }
+
+        let order_count = reader.read_u32()? as usize;
+        let mut teams_order = VecDeque::with_capacity(order_count);
+        for _ in 0..order_count {
+            teams_order.push_back(reader.read_u8()?);
+        }
+
+        let active_count = reader.read_u32()? as usize;
+        let mut active_hero = BTreeMap::new();
+        for _ in 0..active_count {
+            let team_id = reader.read_u8()?;
+            let has_hero = reader.read_u8()? == 1;
+            let hero_id = if has_hero { Some(reader.read_u8()?) } else { None };
+            active_hero.insert(team_id, hero_id);
+        }
+
+        let hero_count = reader.read_u32()? as usize;
+        let mut heroes = BTreeMap::new();
+        for _ in 0..hero_count {
+            let hero_id = reader.read_u8()?;
+            let name = reader.read_string()?;
+            let hp = reader.read_u32()?;
+            let max_hp = reader.read_u32()?;
+            let atk = reader.read_u32()?;
+            let def = reader.read_u32()?;
+            let spd = reader.read_u32()?;
+            let mov = reader.read_u32()?;
+            let mov_remaining = reader.read_u32()?;
+            let x = reader.read_u32()?;
+            let y = reader.read_u32()?;
+            let team_id = reader.read_u8()?;
+            let rng_state = reader.read_array_32()?;
+            let rng_position = reader.read_u8()?;
+            if rng_position > 32 {
+                return Err(save_error("invalid hero RNG position"));
+            }
+            let mut hero =
+                Hero::new(hero_id, name, hp, atk, def, spd, MapCoord::new(x, y), team_id);
+            hero.max_hp = max_hp;
+            hero.mov = mov;
+            hero.mov_remaining = mov_remaining;
+            hero.rng = SeededRng::from_state_and_position(rng_state, rng_position);
+            heroes.insert(hero_id, hero);
+        }
+
+        let score_count = reader.read_u32()? as usize;
+        let mut score = ScoreBoard::new();
+        for _ in 0..score_count {
+            let event = read_score_event(&mut reader)?;
+            score.record(event);
+        }
+
+        let city_count = reader.read_u32()? as usize;
+        let mut city_owners = BTreeMap::new();
+        for _ in 0..city_count {
+            let x = reader.read_u32()?;
+            let y = reader.read_u32()?;
+            let team_id = reader.read_u8()?;
+            city_owners.insert(MapCoord::new(x, y), team_id);
+        }
+
+        let hero_pointer = reader.read_u8()?;
+        let rng_state = reader.read_array_32()?;
+        let rng_position = reader.read_u8()?;
+        if rng_position > 32 {
+            return Err(save_error("invalid session RNG position"));
+        }
+
+        Ok(Self {
+            map,
+            heroes,
+            score,
+            city_owners,
+            teams,
+            teams_order,
+            active_hero,
+            rng: SeededRng::from_state_and_position(rng_state, rng_position),
+            hero_pointer,
+        })
+    }
+}
+
+struct SaveWriter {
+    buffer: Vec<u8>,
+}
+
+impl SaveWriter {
+    fn new() -> Self {
+        Self { buffer: Vec::new() }
+    }
+
+    fn finish(self) -> Vec<u8> {
+        self.buffer
+    }
+
+    fn push_u8(&mut self, value: u8) {
+        self.buffer.push(value);
+    }
+
+    fn push_u16(&mut self, value: u16) {
+        self.buffer.extend_from_slice(&value.to_le_bytes());
+    }
+
+    fn push_u32(&mut self, value: u32) {
+        self.buffer.extend_from_slice(&value.to_le_bytes());
+    }
+
+    fn push_bytes(&mut self, bytes: &[u8]) {
+        self.buffer.extend_from_slice(bytes);
+    }
+
+    fn push_string(&mut self, value: &str) -> Result<(), Error> {
+        let bytes = value.as_bytes();
+        let len = bytes.len();
+        if len > u16::MAX as usize {
+            return Err(save_error("string too long"));
+        }
+        self.push_u16(len as u16);
+        self.push_bytes(bytes);
+        Ok(())
+    }
+}
+
+struct SaveReader<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> SaveReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn read_bytes(&mut self, len: usize) -> Result<&'a [u8], Error> {
+        let end = self
+            .offset
+            .checked_add(len)
+            .ok_or_else(|| save_error("read overflow"))?;
+        if end > self.bytes.len() {
+            return Err(save_error("unexpected end of save data"));
+        }
+        let slice = &self.bytes[self.offset..end];
+        self.offset = end;
+        Ok(slice)
+    }
+
+    fn read_u8(&mut self) -> Result<u8, Error> {
+        Ok(self.read_bytes(1)?[0])
+    }
+
+    fn read_u16(&mut self) -> Result<u16, Error> {
+        let bytes = self.read_bytes(2)?;
+        Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+    }
+
+    fn read_u32(&mut self) -> Result<u32, Error> {
+        let bytes = self.read_bytes(4)?;
+        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
+    fn read_string(&mut self) -> Result<String, Error> {
+        let len = self.read_u16()? as usize;
+        let bytes = self.read_bytes(len)?;
+        core::str::from_utf8(bytes)
+            .map(|value| value.to_string())
+            .map_err(|_| save_error("invalid UTF-8 string"))
+    }
+
+    fn read_array_32(&mut self) -> Result<[u8; 32], Error> {
+        let bytes = self.read_bytes(32)?;
+        let mut out = [0u8; 32];
+        out.copy_from_slice(bytes);
+        Ok(out)
+    }
+}
+
+fn to_u32(len: usize, label: &'static str) -> Result<u32, Error> {
+    u32::try_from(len).map_err(|_| save_error(format!("{label} count too large")))
+}
+
+fn save_error(message: impl Into<String>) -> Error {
+    Error::Save(message.into())
+}
+
+fn write_score_event(writer: &mut SaveWriter, event: &ScoreEvent) -> Result<(), Error> {
+    match event {
+        ScoreEvent::CityCapture { city } => {
+            writer.push_u8(0);
+            writer.push_u32(city.x);
+            writer.push_u32(city.y);
+        }
+        ScoreEvent::EnemyDefeated { enemy_id } => {
+            writer.push_u8(1);
+            writer.push_u8(*enemy_id);
+        }
+        ScoreEvent::ResourceCollected { coord } => {
+            writer.push_u8(2);
+            writer.push_u32(coord.x);
+            writer.push_u32(coord.y);
+        }
+        ScoreEvent::GoldCollected { coord } => {
+            writer.push_u8(3);
+            writer.push_u32(coord.x);
+            writer.push_u32(coord.y);
+        }
+        ScoreEvent::TurnSurvived => {
+            writer.push_u8(4);
+        }
+    }
+    Ok(())
+}
+
+fn read_score_event(reader: &mut SaveReader<'_>) -> Result<ScoreEvent, Error> {
+    match reader.read_u8()? {
+        0 => Ok(ScoreEvent::CityCapture {
+            city: MapCoord::new(reader.read_u32()?, reader.read_u32()?),
+        }),
+        1 => Ok(ScoreEvent::EnemyDefeated {
+            enemy_id: reader.read_u8()?,
+        }),
+        2 => Ok(ScoreEvent::ResourceCollected {
+            coord: MapCoord::new(reader.read_u32()?, reader.read_u32()?),
+        }),
+        3 => Ok(ScoreEvent::GoldCollected {
+            coord: MapCoord::new(reader.read_u32()?, reader.read_u32()?),
+        }),
+        4 => Ok(ScoreEvent::TurnSurvived),
+        _ => Err(save_error("invalid score event id")),
     }
 }
 
