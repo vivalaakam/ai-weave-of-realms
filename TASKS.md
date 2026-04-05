@@ -185,3 +185,20 @@ Update status as work progresses.
 | 9.4 | `get_city_center_coords()` | — | DONE | `#[func]` on `GameManager` returns all `City` (center-body, not entrance) tile coords |
 | 9.5 | City ownership markers (`owner.svg`) | — | DONE | `setup_city_markers()` creates `Sprite2D(owner.svg)` at each `City` tile; coloured by team (red/blue/neutral); `_on_city_owner_changed` updates colour live; `World/CityMarkers` node created in code |
 | 9.6 | Fix `city_owner_changed` runtime panic and resize city ownership marker to 16x16 | Codex | DONE | Initial city ownership assignment now uses deferred `set_city_owner` calls to avoid reentrant `MainScene` mutable borrows; marker size is clamped to 16x16 and `owner.svg` width/height normalized |
+
+## Phase 10 — T-Deck Prototype
+
+| ID | Task | Assignee | Status | Notes |
+|----|------|----------|--------|-------|
+| 10.1 | Создать standalone Rust embedded-проект в `tdeck/` для LilyGO T-Deck с `cargo run` через `espflash` и стартовым экраном `weave of realms` на magenta-фоне | Codex | DONE | Изолирован от основного workspace; `cargo run` шьёт `esp32s3` через `espflash`, проверено на `/dev/cu.usbmodem2101`; wiring и display init опираются на `joshmarinacci/rust-tdeck-experiments` |
+| 10.2 | Экспортировать отдельные `bmp`-тайлы для `tdeck` из общего Godot tileset, заменив прозрачность на magenta и сохранив совместимость по размеру и содержимому | Codex | DONE | Созданы 14 отдельных `64x64` BMP-файлов в `tdeck/assets/tiles/`; источник: `godot/assets/tileset.png`; все прозрачные и полупрозрачные пиксели сплющены на `#FF00FF` |
+| 10.3 | Уменьшить экспортированные `tdeck`-тайлы до `32x32` пикселей, сохранив BMP-формат, magenta-фон и соответствие Godot tileset | Codex | DONE | Все 14 файлов в `tdeck/assets/tiles/` пересобраны напрямую из `godot/assets/tileset.png` в `32x32` BMP v3; имена и порядок тайлов сохранены |
+| 10.4 | Добавить в `tdeck` выбор `.tmx`-карты с SD, запуск по `Enter`, загрузку карты и отрисовку только видимой области, а также поддержку прямого старта с выбранной картой через аргументы/конфиг запуска | Codex | DONE | Boot screen → map select → map view; чтение `/maps/*.tmx` с SD через `embedded-sdmmc`, TMX CSV-парсер в `no_std`, compile-time env `TDECK_START_MAP`/`TDECK_VIEW_X`/`TDECK_VIEW_Y` вместо runtime argv |
+| 10.5 | Оптимизировать `tdeck`-рендер: не перерисовывать экран без изменений состояния, чтобы убрать постоянное мерцание | Codex | DONE | Главный цикл теперь рисует только при изменении `Screen`; idle loop больше не делает постоянный full-screen repaint |
+| 10.6 | Оптимизировать скролл карты в `tdeck`: при изменении viewport перерисовывать только реально изменившиеся клетки, учитывая одинаковые типы тайлов | Codex | DONE | Для `MapView` добавлен cache видимого окна (`gid` по экранным ячейкам); при pan перерисовываются только позиции, где тайл реально изменился, а header/footer обновляются отдельно |
+
+## Phase 11 — Map Export
+
+| ID | Task | Assignee | Status | Notes |
+|----|------|----------|--------|-------|
+| 11.1 | Сгенерировать карту текущими инструментами проекта, близкую к стартовой Godot-конфигурации, и сохранить TMX в `tmp/` | Codex | DONE | Использован `terrain.lua`, seed `default-seed`, размер 96×96 как в `MainScene`; итоговый TMX: `tmp/default-seed-terrain-96x96.tmx`, артефакты прогона: `tmp/gen-1775226082-961/` |

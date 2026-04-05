@@ -1,0 +1,27 @@
+[package]
+name = "weave-of-realms-tdeck"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embedded-graphics = "0.8.1"
+embedded-hal-bus = "0.3.0"
+embedded-sdmmc = { version = "0.9.0", default-features = false }
+esp-backtrace = { version = "0.18.1", features = ["esp32s3", "panic-handler", "println"] }
+esp-alloc = "0.9.0"
+esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32s3"] }
+esp-hal = { version = "1.0.0", features = ["esp32s3", "unstable"] }
+esp-println = { version = "0.16.1", features = ["esp32s3", "auto"] }
+mipidsi = "0.9.0"
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = "s"
+overflow-checks = false

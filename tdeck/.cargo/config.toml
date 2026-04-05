@@ -1,0 +1,10 @@
+[target.xtensa-esp32s3-none-elf]
+linker = "/Users/vivalaakam/.rustup/toolchains/esp/xtensa-esp-elf/esp-15.2.0_20250920/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+runner = "espflash flash --chip esp32s3"
+
+[build]
+rustflags = ["-C", "link-arg=-nostartfiles"]
+target = "xtensa-esp32s3-none-elf"
+
+[unstable]
+build-std = ["alloc", "core"]

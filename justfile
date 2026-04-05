@@ -36,6 +36,14 @@ run: build
 run-release: build-release
     {{ GODOT }} --path {{ GODOT_PROJECT }}
 
+# Build and flash the LilyGO T-Deck prototype.
+tdeck:
+    cd tdeck && cargo run
+
+# Build and flash the LilyGO T-Deck prototype.
+tdeck-run:
+    cd tdeck && cargo run
+
 # Generate a map PNG + TMX (default seed).
 mapgen:
     cargo run -p rpg-tools --bin mapgen -- --generator scripts/generators/terrain.lua
