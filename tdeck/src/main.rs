@@ -16,6 +16,7 @@ mod render;
 mod screens;
 mod session;
 mod storage;
+mod system_info;
 
 use core::cell::RefCell;
 
@@ -145,6 +146,7 @@ fn main() -> ! {
     );
 
     let launch = LaunchConfig::from_env();
+    let mut system_info = system_info::SystemInfoReader::new(peripherals.ADC1, peripherals.GPIO4);
     let mut screen = initial_screen(&volume_mgr, &launch);
     let mut needs_redraw = true;
     let mut render_cache = RenderCache::default();
@@ -168,7 +170,14 @@ fn main() -> ! {
             &mut input_state,
         );
 
-        if app::handle_event(&mut screen, event, &volume_mgr, &launch, screen_size) {
+        if app::handle_event(
+            &mut screen,
+            event,
+            &volume_mgr,
+            &launch,
+            &mut system_info,
+            screen_size,
+        ) {
             needs_redraw = true;
         }
 

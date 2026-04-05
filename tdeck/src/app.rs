@@ -10,6 +10,7 @@ use crate::render::{map_view_tiles, selectable_rows};
 use crate::screens::{InteractionMode, MapSelectScreen, MapViewScreen, Screen, SplashScreen};
 use crate::session::GameSession;
 use crate::storage::{self, AppError};
+use crate::system_info::SystemInfoReader;
 
 /// Compile-time launch configuration for direct map boot.
 pub struct LaunchConfig {
@@ -82,6 +83,7 @@ pub fn handle_event<D>(
     event: InputEvent,
     volume_mgr: &embedded_sdmmc::VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
     launch: &LaunchConfig,
+    system_info: &mut SystemInfoReader<'_>,
     screen_size: Size,
 ) -> bool
 where
@@ -103,7 +105,7 @@ where
             outcome.changed
         }
         Screen::MapView(map_view) => {
-            let outcome = handle_map_view(map_view, event, volume_mgr, screen_size);
+            let outcome = handle_map_view(map_view, event, volume_mgr, system_info, screen_size);
             if let Some(next_screen) = outcome.next_screen {
                 *screen = next_screen;
             }
@@ -176,6 +178,7 @@ where
     let mut changed = false;
     let mut next_screen: Option<Screen> = None;
     match event {
+        InputEvent::Info | InputEvent::Close => {}
         InputEvent::Up => {
             if map_select.selected > 0 {
                 map_select.selected -= 1;
@@ -234,12 +237,46 @@ fn handle_map_view<D>(
     map_view: &mut MapViewScreen,
     event: InputEvent,
     volume_mgr: &embedded_sdmmc::VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
+    system_info: &mut SystemInfoReader<'_>,
     screen_size: Size,
 ) -> ScreenOutcome
 where
     D: embedded_sdmmc::BlockDevice,
 {
+    if map_view.info_overlay.is_some() {
+        return match event {
+            InputEvent::Enter | InputEvent::Close => {
+                map_view.info_overlay = None;
+                ScreenOutcome {
+                    changed: true,
+                    next_screen: None,
+                }
+            }
+            InputEvent::None => ScreenOutcome {
+                changed: false,
+                next_screen: None,
+            },
+            _ => ScreenOutcome {
+                changed: false,
+                next_screen: None,
+            },
+        };
+    }
+
     match event {
+        InputEvent::Info => {
+            map_view.info_overlay = Some(system_info.snapshot());
+            return ScreenOutcome {
+                changed: true,
+                next_screen: None,
+            };
+        }
+        InputEvent::Close => {
+            return ScreenOutcome {
+                changed: false,
+                next_screen: None,
+            };
+        }
         InputEvent::Enter => {
             map_view.mode = match map_view.mode {
                 InteractionMode::Pan => InteractionMode::Hero,
@@ -312,6 +349,7 @@ where
         view_y: launch.start_y,
         mode: InteractionMode::Pan,
         status: Some("Map loaded. Press Enter to switch between pan and hero mode".to_string()),
+        info_overlay: None,
     })
 }
 
@@ -324,6 +362,7 @@ fn pan_view(map_view: &mut MapViewScreen, event: InputEvent, screen_size: Size) 
     let previous_x = map_view.view_x;
     let previous_y = map_view.view_y;
     match event {
+        InputEvent::Info | InputEvent::Close => {}
         InputEvent::Up => map_view.view_y = map_view.view_y.saturating_sub(1),
         InputEvent::Down => map_view.view_y = (map_view.view_y + 1).min(max_y),
         InputEvent::Left => map_view.view_x = map_view.view_x.saturating_sub(1),
@@ -336,6 +375,7 @@ fn pan_view(map_view: &mut MapViewScreen, event: InputEvent, screen_size: Size) 
 
 fn move_hero_or_report(map_view: &mut MapViewScreen, event: InputEvent, screen_size: Size) -> bool {
     let direction = match event {
+        InputEvent::Info | InputEvent::Close => None,
         InputEvent::Up => Some(Direction::North),
         InputEvent::Down => Some(Direction::South),
         InputEvent::Left => Some(Direction::West),

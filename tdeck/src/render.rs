@@ -34,6 +34,7 @@ struct MapViewCache {
     visible_cols: usize,
     visible_rows: usize,
     visible_cells: Vec<u32>,
+    overlay_visible: bool,
 }
 
 /// Draws the active screen to the display.
@@ -224,6 +225,7 @@ fn draw_map_view<D>(
                 || cache.map_height != map_height
                 || cache.visible_cols != visible_cols
                 || cache.visible_rows != visible_rows
+                || cache.overlay_visible != map_view.info_overlay.is_some()
         }
         None => true,
     };
@@ -237,6 +239,7 @@ fn draw_map_view<D>(
             visible_cols,
             visible_rows,
             visible_cells: alloc::vec![EMPTY_TILE; visible_cols * visible_rows],
+            overlay_visible: map_view.info_overlay.is_some(),
         });
     }
 
@@ -244,6 +247,7 @@ fn draw_map_view<D>(
         .map_view
         .as_mut()
         .expect("map view cache must exist before drawing");
+    cache.overlay_visible = map_view.info_overlay.is_some();
 
     clear_band(
         display,
@@ -274,8 +278,8 @@ fn draw_map_view<D>(
     }
 
     let footer = match map_view.mode {
-        InteractionMode::Pan => "Enter: hero mode  Trackball/WASD: pan  Back: maps",
-        InteractionMode::Hero => "Enter: pan mode  Trackball/WASD: move hero  Back: maps",
+        InteractionMode::Pan => "I: info  Enter: hero mode  WASD: pan  Back: maps",
+        InteractionMode::Hero => "I: info  Enter: pan mode  WASD: move hero  Back: maps",
     };
     clear_band(
         display,
@@ -308,6 +312,51 @@ fn draw_map_view<D>(
     halt_on_error(
         Text::new(&summary, Point::new(4, HEADER_HEIGHT - 2), text_style).draw(display),
     );
+
+    if let Some(info_overlay) = &map_view.info_overlay {
+        draw_info_overlay(display, screen_size, info_overlay);
+    }
+}
+
+fn draw_info_overlay<D>(
+    display: &mut D,
+    screen_size: Size,
+    info_overlay: &crate::system_info::SystemInfoSnapshot,
+) where
+    D: DrawTarget<Color = Rgb565>,
+{
+    let box_width: u32 = 188;
+    let box_height: u32 = 92;
+    let origin_x = ((screen_size.width - box_width) / 2) as i32;
+    let origin_y = ((screen_size.height - box_height) / 2) as i32;
+    let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+
+    halt_on_error(
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_fill(Rgb565::new(3, 3, 6)))
+            .draw(display),
+    );
+    halt_on_error(
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_stroke(Rgb565::YELLOW, 1))
+            .draw(display),
+    );
+
+    let battery_line = format!(
+        "Battery: {}% ({} mV)",
+        info_overlay.battery_percent, info_overlay.battery_mv
+    );
+    let ram_line = format!(
+        "RAM: {}/{} KB",
+        info_overlay.ram_used_bytes / 1024,
+        info_overlay.ram_total_bytes / 1024
+    );
+    let close_line = "Enter or q: close";
+
+    halt_on_error(Text::new("System Info", Point::new(origin_x + 8, origin_y + 14), text_style).draw(display));
+    halt_on_error(Text::new(&battery_line, Point::new(origin_x + 8, origin_y + 34), text_style).draw(display));
+    halt_on_error(Text::new(&ram_line, Point::new(origin_x + 8, origin_y + 48), text_style).draw(display));
+    halt_on_error(Text::new(close_line, Point::new(origin_x + 8, origin_y + 74), text_style).draw(display));
 }
 
 fn draw_cell<D>(display: &mut D, map_view: &MapViewScreen, coord: MapCoord, top_left: Point)
