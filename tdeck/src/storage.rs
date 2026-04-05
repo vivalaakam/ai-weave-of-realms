@@ -12,8 +12,9 @@ use rpg_engine::map::game_map::{GameMap, MapCoord};
 use rpg_engine::map::tile::{Tile, Tiles};
 
 const MAPS_DIR: &str = "MAPS";
+const SAVE_DIR: &str = "SAVEGAME";
 
-/// Map list entry shown in the selector UI.
+/// Map/save list entry shown in the selector UI.
 #[derive(Clone)]
 pub struct MapEntry {
     /// Short 8.3 filename on the SD card.
@@ -46,8 +47,12 @@ pub enum AppError {
     StorageUnavailable,
     /// `/maps` or `/MAPS` directory was not found.
     MapsDirMissing,
+    /// `/savegame` directory was not found.
+    SaveDirMissing,
     /// No `.tmx` files were found.
     NoMapsFound,
+    /// No save files were found.
+    NoSavesFound,
     /// The TMX payload is malformed.
     InvalidTmx(&'static str),
     /// Compile-time requested map is not present on the SD card.
@@ -88,11 +93,7 @@ where
             let short_name = dir_entry.name.to_string();
             let display_name = long_name.unwrap_or(short_name.as_str()).to_string();
 
-    if has_tmx_extension(&display_name)
-        || has_tmx_extension(&short_name)
-        || has_save_extension(&display_name)
-        || has_save_extension(&short_name)
-    {
+    if has_tmx_extension(&display_name) || has_tmx_extension(&short_name) {
                 entries.push(MapEntry {
                     short_name,
                     display_name,
@@ -111,7 +112,64 @@ where
     Ok(entries)
 }
 
-/// Loads a TMX map or `.rpgs` save file from SD card.
+/// Discovers all save files under `/savegame`.
+pub fn discover_saves<D>(
+    volume_mgr: &VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
+) -> Result<Vec<MapEntry>, AppError>
+where
+    D: embedded_sdmmc::BlockDevice,
+{
+    let volume = volume_mgr
+        .open_volume(VolumeIdx(0))
+        .map_err(|_| AppError::StorageUnavailable)?;
+    let root_dir = volume
+        .open_root_dir()
+        .map_err(|_| AppError::StorageUnavailable)?;
+
+    let save_dir = root_dir
+        .open_dir(SAVE_DIR)
+        .or_else(|_| root_dir.open_dir("savegame"))
+        .map_err(|_| AppError::SaveDirMissing)?;
+
+    let mut entries: Vec<MapEntry> = Vec::new();
+    let mut lfn_storage: [u8; 128] = [0; 128];
+    let mut lfn_buffer = LfnBuffer::new(&mut lfn_storage);
+
+    save_dir
+        .iterate_dir_lfn(&mut lfn_buffer, |dir_entry, long_name| {
+            if dir_entry.attributes.is_directory() {
+                return;
+            }
+
+            let short_name = dir_entry.name.to_string();
+            let display_name = long_name.unwrap_or(short_name.as_str()).to_string();
+
+            entries.push(MapEntry {
+                short_name,
+                display_name,
+                size_bytes: dir_entry.size,
+            });
+        })
+        .map_err(|_| AppError::StorageUnavailable)?;
+
+    if entries.is_empty() {
+        return Err(AppError::NoSavesFound);
+    }
+
+    for entry in entries.iter_mut() {
+        if let Ok(name) = read_save_name(volume_mgr, entry) {
+            if !name.is_empty() {
+                entry.display_name = name;
+            }
+        }
+    }
+
+    entries.sort_unstable_by(|left, right| left.display_name.cmp(&right.display_name));
+
+    Ok(entries)
+}
+
+/// Loads a TMX map file from SD card.
 pub fn load_map<D>(
     volume_mgr: &VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
     entry: &MapEntry,
@@ -148,22 +206,91 @@ where
     }
 
     bytes.truncate(offset);
-    if has_save_extension(&entry.display_name) || has_save_extension(&entry.short_name) {
-        let name = GameState::read_save_name(&bytes)
-            .ok()
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| entry.display_name.to_string());
-        let state =
-            GameState::from_save_bytes(&bytes).map_err(|err| AppError::Engine(err.to_string()))?;
-        Ok(LoadedMap {
-            name,
-            payload: LoadedPayload::Save(state),
-        })
-    } else {
-        let xml =
-            core::str::from_utf8(&bytes).map_err(|_| AppError::InvalidTmx("TMX is not UTF-8"))?;
-        parse_tmx(entry.display_name.as_str(), xml)
+    let xml =
+        core::str::from_utf8(&bytes).map_err(|_| AppError::InvalidTmx("TMX is not UTF-8"))?;
+    parse_tmx(entry.display_name.as_str(), xml)
+}
+
+/// Loads a `.rpgs` save file from `/savegame`.
+pub fn load_save<D>(
+    volume_mgr: &VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
+    entry: &MapEntry,
+) -> Result<GameState, AppError>
+where
+    D: embedded_sdmmc::BlockDevice,
+{
+    let volume = volume_mgr
+        .open_volume(VolumeIdx(0))
+        .map_err(|_| AppError::StorageUnavailable)?;
+    let root_dir = volume
+        .open_root_dir()
+        .map_err(|_| AppError::StorageUnavailable)?;
+    let save_dir = root_dir
+        .open_dir(SAVE_DIR)
+        .or_else(|_| root_dir.open_dir("savegame"))
+        .map_err(|_| AppError::SaveDirMissing)?;
+    let file = save_dir
+        .open_file_in_dir(entry.short_name.as_str(), Mode::ReadOnly)
+        .map_err(|_| AppError::StorageUnavailable)?;
+
+    let file_len = file.length() as usize;
+    let mut bytes: Vec<u8> = alloc::vec![0; file_len];
+    let mut offset = 0usize;
+
+    while !file.is_eof() && offset < bytes.len() {
+        let read = file
+            .read(&mut bytes[offset..])
+            .map_err(|_| AppError::StorageUnavailable)?;
+        if read == 0 {
+            break;
+        }
+        offset += read;
     }
+
+    bytes.truncate(offset);
+    GameState::from_save_bytes(&bytes).map_err(|err| AppError::Engine(err.to_string()))
+}
+
+/// Saves the current game state into `/savegame`.
+pub fn save_game<D>(
+    volume_mgr: &VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
+    name: &str,
+    state: &GameState,
+) -> Result<(), AppError>
+where
+    D: embedded_sdmmc::BlockDevice,
+{
+    let volume = volume_mgr
+        .open_volume(VolumeIdx(0))
+        .map_err(|_| AppError::StorageUnavailable)?;
+    let root_dir = volume
+        .open_root_dir()
+        .map_err(|_| AppError::StorageUnavailable)?;
+
+    let save_dir = match root_dir.open_dir(SAVE_DIR).or_else(|_| root_dir.open_dir("savegame")) {
+        Ok(dir) => dir,
+        Err(_) => {
+            root_dir
+                .make_dir_in_dir(SAVE_DIR)
+                .map_err(|_| AppError::StorageUnavailable)?;
+            root_dir
+                .open_dir(SAVE_DIR)
+                .map_err(|_| AppError::StorageUnavailable)?
+        }
+    };
+
+    let filename = sanitize_save_filename(name);
+    let bytes = state
+        .to_save_bytes_with_name(name)
+        .map_err(|err| AppError::Engine(err.to_string()))?;
+    let mut file = save_dir
+        .open_file_in_dir(filename.as_str(), Mode::ReadWriteCreateOrTruncate)
+        .map_err(|_| AppError::StorageUnavailable)?;
+
+    file.write(&bytes)
+        .map_err(|_| AppError::StorageUnavailable)?;
+
+    Ok(())
 }
 
 /// Returns a user-facing error string.
@@ -171,7 +298,9 @@ pub fn error_message(error: AppError) -> String {
     match error {
         AppError::StorageUnavailable => "SD card is unavailable or unreadable".to_string(),
         AppError::MapsDirMissing => "Folder /maps was not found on the SD card".to_string(),
-        AppError::NoMapsFound => "No .tmx or .rpgs maps were found in /maps".to_string(),
+        AppError::SaveDirMissing => "Folder /savegame was not found on the SD card".to_string(),
+        AppError::NoMapsFound => "No .tmx maps were found in /maps".to_string(),
+        AppError::NoSavesFound => "No save files were found in /savegame".to_string(),
         AppError::InvalidTmx(message) => format!("TMX parse error: {message}"),
         AppError::InvalidConfiguredMap => {
             "TDECK_START_MAP does not match any map in /maps".to_string()
@@ -375,12 +504,50 @@ fn has_tmx_extension(name: &str) -> bool {
         && lower[lower.len() - 1].eq_ignore_ascii_case(&b'x')
 }
 
-fn has_save_extension(name: &str) -> bool {
-    let lower = name.as_bytes();
-    lower.len() >= 5
-        && lower[lower.len() - 5].eq_ignore_ascii_case(&b'.')
-        && lower[lower.len() - 4].eq_ignore_ascii_case(&b'r')
-        && lower[lower.len() - 3].eq_ignore_ascii_case(&b'p')
-        && lower[lower.len() - 2].eq_ignore_ascii_case(&b'g')
-        && lower[lower.len() - 1].eq_ignore_ascii_case(&b's')
+fn read_save_name<D>(
+    volume_mgr: &VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
+    entry: &MapEntry,
+) -> Result<String, AppError>
+where
+    D: embedded_sdmmc::BlockDevice,
+{
+    let volume = volume_mgr
+        .open_volume(VolumeIdx(0))
+        .map_err(|_| AppError::StorageUnavailable)?;
+    let root_dir = volume
+        .open_root_dir()
+        .map_err(|_| AppError::StorageUnavailable)?;
+    let save_dir = root_dir
+        .open_dir(SAVE_DIR)
+        .or_else(|_| root_dir.open_dir("savegame"))
+        .map_err(|_| AppError::SaveDirMissing)?;
+    let file = save_dir
+        .open_file_in_dir(entry.short_name.as_str(), Mode::ReadOnly)
+        .map_err(|_| AppError::StorageUnavailable)?;
+
+    let mut buffer = [0u8; 128];
+    let read = file
+        .read(&mut buffer)
+        .map_err(|_| AppError::StorageUnavailable)?;
+    GameState::read_save_name(&buffer[..read]).map_err(|err| AppError::Engine(err.to_string()))
+}
+
+fn sanitize_save_filename(name: &str) -> String {
+    let mut cleaned: Vec<u8> = Vec::new();
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            cleaned.push(ch.to_ascii_uppercase() as u8);
+        }
+    }
+
+    if cleaned.is_empty() {
+        cleaned.extend_from_slice(b"SAVE");
+    }
+
+    if cleaned.len() > 8 {
+        cleaned.truncate(8);
+    }
+
+    let base = core::str::from_utf8(&cleaned).unwrap_or("SAVE");
+    format!("{base}.RPG")
 }

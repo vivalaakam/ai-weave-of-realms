@@ -10,10 +10,8 @@ const KEYBOARD_I2C_ADDRESS: u8 = 0x55;
 pub enum InputEvent {
     /// No input this frame.
     None,
-    /// Open system info overlay.
-    Info,
-    /// Close modal overlay.
-    Close,
+    /// Keyboard character input.
+    Key(char),
     /// Confirm / primary action.
     Enter,
     /// Back / cancel.
@@ -70,14 +68,9 @@ pub fn poll_input(
     if keyboard.read(KEYBOARD_I2C_ADDRESS, &mut key_data).is_ok() {
         let key = key_data[0];
         let event = match key {
-            b'i' | b'I' => InputEvent::Info,
-            b'q' | b'Q' => InputEvent::Close,
             b'\r' | b'\n' => InputEvent::Enter,
-            b'w' | b'W' | b'k' | b'K' => InputEvent::Up,
-            b's' | b'S' | b'j' | b'J' => InputEvent::Down,
-            b'a' | b'A' | b'h' | b'H' => InputEvent::Left,
-            b'd' | b'D' | b'l' | b'L' => InputEvent::Right,
             0x08 | 0x1B | 0x7F => InputEvent::Back,
+            0x20..=0x7E => InputEvent::Key(key as char),
             _ => InputEvent::None,
         };
 

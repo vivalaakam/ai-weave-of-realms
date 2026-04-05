@@ -94,6 +94,8 @@ Update status as work progresses.
 | 5.8 | Временно отключить camera clamp для отладки системы координат | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 | 5.9 | Синхронизировать координаты ввода/камеры с реальным `TileMapLayer` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 | 5.10 | Добавить в debug-панель сброс zoom и показ текущего значения | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.11 | T-Deck: меню сохранения/загрузки по `P` с именованием файлов | Codex | DONE | Savegame dir + modal UI |
+| 5.12 | T-Deck: стартовое меню New Game / Load Game | Codex | DONE | Splash menu selects maps or saves |
 
 ---
 

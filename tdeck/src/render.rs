@@ -14,7 +14,7 @@ use rpg_engine::hero::HeroId;
 use rpg_engine::map::game_map::MapCoord;
 use rpg_engine::map::tile::Tiles;
 
-use crate::screens::{InteractionMode, MapSelectScreen, MapViewScreen, Screen, SplashScreen};
+use crate::screens::{InteractionMode, MapSelectScreen, MapViewScreen, SaveOverlay, Screen, SplashScreen};
 
 const TILE_SIZE: i32 = 16;
 const HEADER_HEIGHT: i32 = 22;
@@ -55,6 +55,10 @@ pub fn draw_screen<D>(
             render_cache.map_view = None;
             draw_map_select(display, screen_size, map_select);
         }
+        Screen::SaveSelect(save_select) => {
+            render_cache.map_view = None;
+            draw_save_select(display, screen_size, save_select);
+        }
         Screen::MapView(map_view) => draw_map_view(display, screen_size, map_view, render_cache),
     }
 }
@@ -92,20 +96,26 @@ where
         .draw(display),
     );
 
-    halt_on_error(
-        Text::with_alignment(
-            "Press Enter for map select",
-            Point::new((screen_size.width / 2) as i32, (screen_size.height / 2) as i32 + 8),
-            body_style,
-            Alignment::Center,
-        )
-        .draw(display),
-    );
+    let menu = ["New Game", "Load Game"];
+    let menu_top = (screen_size.height / 2) as i32 + 2;
+    for (idx, label) in menu.iter().enumerate() {
+        let prefix = if idx == splash.selected { ">" } else { " " };
+        let line = format!("{prefix} {label}");
+        halt_on_error(
+            Text::with_alignment(
+                &line,
+                Point::new((screen_size.width / 2) as i32, menu_top + (idx as i32 * 14)),
+                body_style,
+                Alignment::Center,
+            )
+            .draw(display),
+        );
+    }
 
     halt_on_error(
         Text::with_alignment(
-            "Trackball click also confirms",
-            Point::new((screen_size.width / 2) as i32, (screen_size.height / 2) as i32 + 22),
+            "Enter: select  W/S: move",
+            Point::new((screen_size.width / 2) as i32, menu_top + 32),
             body_style,
             Alignment::Center,
         )
@@ -187,6 +197,68 @@ where
     }
 }
 
+fn draw_save_select<D>(display: &mut D, screen_size: Size, save_select: &MapSelectScreen)
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    halt_on_error(display.clear(Rgb565::BLACK));
+
+    let title_style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+    let selected_style = PrimitiveStyle::with_fill(Rgb565::new(0, 18, 0));
+    let line_height: i32 = 14;
+    let start_y: i32 = 18;
+
+    halt_on_error(Text::new("Saves in /savegame", Point::new(6, 10), title_style).draw(display));
+
+    let max_rows = selectable_rows(screen_size);
+    let end = core::cmp::min(save_select.scroll + max_rows, save_select.maps.len());
+
+    for (row, entry_index) in (save_select.scroll..end).enumerate() {
+        let y = start_y + (row as i32 * line_height);
+        if entry_index == save_select.selected {
+            halt_on_error(
+                Rectangle::new(Point::new(2, y - 9), Size::new(screen_size.width - 4, 12))
+                    .into_styled(selected_style)
+                    .draw(display),
+            );
+        }
+
+        let prefix = if entry_index == save_select.selected {
+            ">"
+        } else {
+            " "
+        };
+        let line = format!(
+            "{} {} ({}b)",
+            prefix,
+            save_select.maps[entry_index].display_name,
+            save_select.maps[entry_index].size_bytes
+        );
+        halt_on_error(Text::new(&line, Point::new(6, y), title_style).draw(display));
+    }
+
+    let footer = "Up/Down: select  Enter: load  Back: menu";
+    halt_on_error(
+        Text::new(
+            footer,
+            Point::new(4, screen_size.height as i32 - 2),
+            title_style,
+        )
+        .draw(display),
+    );
+
+    if let Some(status_text) = save_select.status.as_deref() {
+        halt_on_error(
+            Text::new(
+                status_text,
+                Point::new(4, screen_size.height as i32 - 14),
+                title_style,
+            )
+            .draw(display),
+        );
+    }
+}
+
 fn draw_map_view<D>(
     display: &mut D,
     screen_size: Size,
@@ -225,7 +297,8 @@ fn draw_map_view<D>(
                 || cache.map_height != map_height
                 || cache.visible_cols != visible_cols
                 || cache.visible_rows != visible_rows
-                || cache.overlay_visible != map_view.info_overlay.is_some()
+                || cache.overlay_visible
+                    != (map_view.info_overlay.is_some() || map_view.save_overlay.is_some())
         }
         None => true,
     };
@@ -239,7 +312,7 @@ fn draw_map_view<D>(
             visible_cols,
             visible_rows,
             visible_cells: alloc::vec![EMPTY_TILE; visible_cols * visible_rows],
-            overlay_visible: map_view.info_overlay.is_some(),
+            overlay_visible: map_view.info_overlay.is_some() || map_view.save_overlay.is_some(),
         });
     }
 
@@ -247,7 +320,7 @@ fn draw_map_view<D>(
         .map_view
         .as_mut()
         .expect("map view cache must exist before drawing");
-    cache.overlay_visible = map_view.info_overlay.is_some();
+    cache.overlay_visible = map_view.info_overlay.is_some() || map_view.save_overlay.is_some();
 
     clear_band(
         display,
@@ -278,8 +351,8 @@ fn draw_map_view<D>(
     }
 
     let footer = match map_view.mode {
-        InteractionMode::Pan => "I: info  Enter: hero mode  WASD: pan  Back: maps",
-        InteractionMode::Hero => "I: info  Enter: pan mode  WASD: move hero  Back: maps",
+        InteractionMode::Pan => "I: info  P: save  Enter: hero mode  WASD: pan  Back: maps",
+        InteractionMode::Hero => "I: info  P: save  Enter: pan mode  WASD: move hero  Back: maps",
     };
     clear_band(
         display,
@@ -313,8 +386,99 @@ fn draw_map_view<D>(
         Text::new(&summary, Point::new(4, HEADER_HEIGHT - 2), text_style).draw(display),
     );
 
-    if let Some(info_overlay) = &map_view.info_overlay {
+    if let Some(save_overlay) = &map_view.save_overlay {
+        draw_save_overlay(display, screen_size, save_overlay);
+    } else if let Some(info_overlay) = &map_view.info_overlay {
         draw_info_overlay(display, screen_size, info_overlay);
+    }
+}
+
+fn draw_save_overlay<D>(
+    display: &mut D,
+    screen_size: Size,
+    overlay: &SaveOverlay,
+) where
+    D: DrawTarget<Color = Rgb565>,
+{
+    let box_width: u32 = 204;
+    let box_height: u32 = 120;
+    let origin_x = ((screen_size.width - box_width) / 2) as i32;
+    let origin_y = ((screen_size.height - box_height) / 2) as i32;
+    let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+    let selected_style = PrimitiveStyle::with_fill(Rgb565::new(0, 18, 0));
+
+    halt_on_error(
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_fill(Rgb565::new(3, 3, 6)))
+            .draw(display),
+    );
+    halt_on_error(
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_stroke(Rgb565::CYAN, 1))
+            .draw(display),
+    );
+
+    match overlay {
+        SaveOverlay::Menu { selected, status } => {
+            halt_on_error(Text::new("Save Menu", Point::new(origin_x + 8, origin_y + 14), text_style).draw(display));
+            let entries = ["Save Game", "Load Game", "Cancel"];
+            for (idx, label) in entries.iter().enumerate() {
+                let y = origin_y + 36 + (idx as i32 * 14);
+                if idx == *selected {
+                    halt_on_error(
+                        Rectangle::new(Point::new(origin_x + 4, y - 9), Size::new(box_width - 8, 12))
+                            .into_styled(selected_style)
+                            .draw(display),
+                    );
+                }
+                let prefix = if idx == *selected { ">" } else { " " };
+                let line = format!("{prefix} {label}");
+                halt_on_error(Text::new(&line, Point::new(origin_x + 8, y), text_style).draw(display));
+            }
+            let footer = "Enter: select  Back: close";
+            halt_on_error(Text::new(footer, Point::new(origin_x + 8, origin_y + 102), text_style).draw(display));
+            if let Some(status) = status.as_deref() {
+                halt_on_error(Text::new(status, Point::new(origin_x + 8, origin_y + 90), text_style).draw(display));
+            }
+        }
+        SaveOverlay::SaveName { name, status } => {
+            halt_on_error(Text::new("Save Name", Point::new(origin_x + 8, origin_y + 14), text_style).draw(display));
+            let name_line = format!("> {name}_");
+            halt_on_error(Text::new(&name_line, Point::new(origin_x + 8, origin_y + 38), text_style).draw(display));
+            let footer = "Type name  Enter: save  Back: delete/close";
+            halt_on_error(Text::new(footer, Point::new(origin_x + 8, origin_y + 102), text_style).draw(display));
+            if let Some(status) = status.as_deref() {
+                halt_on_error(Text::new(status, Point::new(origin_x + 8, origin_y + 74), text_style).draw(display));
+            }
+        }
+        SaveOverlay::LoadList {
+            saves,
+            selected,
+            scroll,
+            status,
+        } => {
+            halt_on_error(Text::new("Load Game", Point::new(origin_x + 8, origin_y + 14), text_style).draw(display));
+            let max_rows = ((box_height - 56) / 14) as usize;
+            let end = core::cmp::min(*scroll + max_rows, saves.len());
+            for (row, entry_index) in ((*scroll)..end).enumerate() {
+                let y = origin_y + 34 + (row as i32 * 14);
+                if entry_index == *selected {
+                    halt_on_error(
+                        Rectangle::new(Point::new(origin_x + 4, y - 9), Size::new(box_width - 8, 12))
+                            .into_styled(selected_style)
+                            .draw(display),
+                    );
+                }
+                let prefix = if entry_index == *selected { ">" } else { " " };
+                let line = format!("{prefix} {}", saves[entry_index].display_name);
+                halt_on_error(Text::new(&line, Point::new(origin_x + 8, y), text_style).draw(display));
+            }
+            let footer = "Up/Down: select  Enter: load  Back: close";
+            halt_on_error(Text::new(footer, Point::new(origin_x + 8, origin_y + 102), text_style).draw(display));
+            if let Some(status) = status.as_deref() {
+                halt_on_error(Text::new(status, Point::new(origin_x + 8, origin_y + 90), text_style).draw(display));
+            }
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 //! Engine-backed game session wrapper used by the T-Deck frontend.
 
-use alloc::{format, string::String};
+use alloc::{format, string::{String, ToString}};
 
 use rpg_engine::Direction;
 use rpg_engine::error::Error as EngineError;
