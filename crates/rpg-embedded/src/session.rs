@@ -1,14 +1,17 @@
-//! Engine-backed game session wrapper used by the T-Deck frontend.
+//! Engine-backed gameplay session shared by embedded frontends.
 
-use alloc::{format, string::{String, ToString}};
+use alloc::{
+    format,
+    string::{String, ToString},
+};
 
-use rpg_engine::Direction;
 use rpg_engine::error::Error as EngineError;
 use rpg_engine::game_state::GameState;
 use rpg_engine::hero::HeroId;
 use rpg_engine::map::game_map::MapCoord;
+use rpg_engine::Direction;
 
-/// Runtime game session stored by the map-view screen.
+/// Runtime game session stored by embedded gameplay frontends.
 pub struct GameSession {
     map_name: String,
     state: GameState,
@@ -19,14 +22,14 @@ impl GameSession {
     /// Creates a new engine session from a fully loaded save state.
     ///
     /// # Arguments
-    /// * `map_name` - Display name of the loaded save file.
+    /// * `map_name` - Display name of the loaded map or save.
     /// * `state` - Loaded engine state.
     ///
     /// # Returns
     /// A new [`GameSession`] ready for rendering and input.
     ///
     /// # Errors
-    /// Returns [`EngineError::InvalidTiles`] if the save has no heroes to select.
+    /// Returns [`EngineError::InvalidTiles`] if the state has no heroes to select.
     pub fn from_state(map_name: String, state: GameState) -> Result<Self, EngineError> {
         let selected_hero_id = select_hero(&state)
             .ok_or_else(|| EngineError::InvalidTiles("save has no heroes".to_string()))?;
@@ -47,6 +50,11 @@ impl GameSession {
         &self.state
     }
 
+    /// Returns the mutable engine state.
+    pub fn state_mut(&mut self) -> &mut GameState {
+        &mut self.state
+    }
+
     /// Returns the selected hero id.
     pub fn selected_hero_id(&self) -> HeroId {
         self.selected_hero_id
@@ -61,6 +69,15 @@ impl GameSession {
     }
 
     /// Moves the selected hero by one tile using the shared engine logic.
+    ///
+    /// # Arguments
+    /// * `direction` - Single-step movement direction.
+    ///
+    /// # Returns
+    /// The new hero position after a successful move.
+    ///
+    /// # Errors
+    /// Returns any engine move error such as impassable terrain or zero movement points.
     pub fn move_selected_hero(&mut self, direction: Direction) -> Result<MapCoord, EngineError> {
         self.state.move_hero(self.selected_hero_id, direction)?;
         Ok(self.selected_hero_position())

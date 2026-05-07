@@ -11,15 +11,19 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::OriginDimensions;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
-use embedded_graphics::primitives::{Circle, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle};
-use embedded_graphics::text::Text;
+use rpg_embedded::input::InputEvent;
+use rpg_embedded::map_view::{MapViewApp, MapViewOutcome};
+use rpg_embedded::render::{
+    MapViewTheme, RenderCache, RenderConfig, SplashTheme, draw_map_view, draw_splash_screen,
+    visible_tiles,
+};
+use rpg_embedded::session::GameSession;
+use rpg_embedded::splash::{SplashOutcome, SplashScreen};
 use rpg_engine::game_state::GameState;
 use rpg_engine::hero::Hero;
-use rpg_engine::map::game_map::{GameMap, MapCoord};
+use rpg_engine::map::game_map::GameMap;
 use rpg_engine::spawn;
 use rpg_engine::team::Team;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
@@ -27,15 +31,16 @@ use rpg_tiled::read_tmx;
 use terminal_size::{Height, Width, terminal_size};
 use tracing::{error, info};
 
-const TILE_PX: u32 = 64;
-const HEADER_HEIGHT: u32 = 28;
+const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
+    tile_width: 64,
+    tile_height: 64,
+    header_height: 28,
+    footer_height: 16,
+};
+
 const BACKGROUND: Rgb888 = Rgb888::new(20, 22, 26);
-const PANEL_TEXT: Rgb888 = Rgb888::new(235, 238, 242);
-const PANEL_MUTED: Rgb888 = Rgb888::new(130, 138, 150);
-const PLAYER_COLOR: Rgb888 = Rgb888::new(220, 50, 50);
-const ENEMY_COLOR: Rgb888 = Rgb888::new(168, 96, 214);
-const CHEST_COLOR: Rgb888 = Rgb888::new(248, 198, 66);
-const ENEMY_SPAWN_COLOR: Rgb888 = Rgb888::new(255, 120, 120);
+const SPLASH_BACKGROUND: Rgb888 = Rgb888::new(36, 0, 72);
+const TEXT: Rgb888 = Rgb888::new(235, 238, 242);
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -79,15 +84,12 @@ struct Args {
     evaluator: Option<PathBuf>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Viewport {
-    origin_x: u32,
-    origin_y: u32,
-    tiles_w: u32,
-    tiles_h: u32,
-}
-
 struct RawModeGuard;
+
+enum ConsoleScreen {
+    Splash(SplashScreen),
+    Map(MapViewApp),
+}
 
 impl RawModeGuard {
     fn new() -> AppResult<Self> {
@@ -120,30 +122,86 @@ fn main() {
 fn run() -> AppResult<()> {
     let args = Args::parse();
     let state = load_state(&args)?;
+    let session = GameSession::from_state("terminal".to_string(), state)?;
     let _raw_mode = RawModeGuard::new()?;
     let stdout = io::stdout();
     let mut handle = stdout.lock();
-    let mut previous_viewport: Option<Viewport> = None;
+    let app = MapViewApp::new(
+        session,
+        0,
+        0,
+        Some("Ctrl+Q exits. Enter toggles pan/hero mode.".to_string()),
+    );
+    let mut pending_app = Some(app);
+    let mut screen = ConsoleScreen::Splash(SplashScreen::new(0, None));
+    let mut render_cache = RenderCache::default();
+    let mut last_screen_size: Option<Size> = None;
+    let mut needs_redraw = true;
 
     loop {
-        let viewport = detect_viewport(&state);
-        if previous_viewport != Some(viewport) {
-            let framebuffer = render_state(&state, viewport)?;
-            write_frame(&mut handle, &framebuffer)?;
-            previous_viewport = Some(viewport);
+        let screen_size = detect_screen_size();
+        if last_screen_size != Some(screen_size) {
+            if let ConsoleScreen::Map(app) = &mut screen {
+                let (visible_cols, visible_rows) = visible_tiles(screen_size, MAP_RENDER_CONFIG);
+                app.clamp_view_to_map(visible_cols, visible_rows);
+            }
+            last_screen_size = Some(screen_size);
+            needs_redraw = true;
         }
 
-        if event::poll(Duration::from_millis(100))? {
+        if needs_redraw {
+            let framebuffer = render_frame(screen_size, &screen, &mut render_cache)?;
+            write_frame(&mut handle, &framebuffer)?;
+            needs_redraw = false;
+        }
+
+        if event::poll(Duration::from_millis(120))? {
             match event::read()? {
                 Event::Key(key)
                     if key.code == KeyCode::Char('q')
                         && key.modifiers.contains(KeyModifiers::CONTROL) =>
                 {
                     clear_screen(&mut handle)?;
+                    handle.flush()?;
                     break;
                 }
+                Event::Key(key) => {
+                    match &mut screen {
+                        ConsoleScreen::Splash(splash) => match splash.handle_input(map_key_event(key), 1) {
+                            SplashOutcome::Selected(_) => {
+                                if let Some(app) = pending_app.take() {
+                                    screen = ConsoleScreen::Map(app);
+                                    reset_render_cache(&mut render_cache);
+                                    needs_redraw = true;
+                                }
+                            }
+                            SplashOutcome::Changed => {
+                                needs_redraw = true;
+                            }
+                            SplashOutcome::BackRequested | SplashOutcome::NoChange => {}
+                        },
+                        ConsoleScreen::Map(app) => {
+                            let input = map_key_event(key);
+                            let (visible_cols, visible_rows) =
+                                visible_tiles(screen_size, MAP_RENDER_CONFIG);
+                            match app.handle_input(input, visible_cols, visible_rows) {
+                                MapViewOutcome::NoChange => {}
+                                MapViewOutcome::Changed => {
+                                    needs_redraw = true;
+                                }
+                                MapViewOutcome::BackRequested => {
+                                    app.set_status(Some(
+                                        "Back is reserved. Use Ctrl+Q to exit.".to_string(),
+                                    ));
+                                    needs_redraw = true;
+                                }
+                            }
+                        }
+                    }
+                }
                 Event::Resize(_, _) => {
-                    previous_viewport = None;
+                    last_screen_size = None;
+                    needs_redraw = true;
                 }
                 _ => {}
             }
@@ -248,150 +306,96 @@ fn build_default_state(map: GameMap, seed: &str) -> AppResult<GameState> {
     Ok(state)
 }
 
-fn detect_viewport(state: &GameState) -> Viewport {
-    let (terminal_width, terminal_height) = detect_terminal_pixels().unwrap_or((240, 140));
-    let available_height = terminal_height.saturating_sub(HEADER_HEIGHT);
-    let tiles_w = (terminal_width / TILE_PX).max(1).min(state.map.tile_width());
-    let tiles_h = (available_height / TILE_PX).max(1).min(state.map.tile_height());
-
-    Viewport {
-        origin_x: 0,
-        origin_y: 0,
-        tiles_w,
-        tiles_h,
+fn detect_screen_size() -> Size {
+    if let Some((Width(columns), Height(rows))) = terminal_size() {
+        let width = u32::from(columns).saturating_mul(10);
+        let height = u32::from(rows.saturating_sub(2)).saturating_mul(20);
+        Size::new(
+            width.max(MAP_RENDER_CONFIG.tile_width),
+            height.max(MAP_RENDER_CONFIG.header_height + MAP_RENDER_CONFIG.footer_height + MAP_RENDER_CONFIG.tile_height),
+        )
+    } else {
+        Size::new(240, 160)
     }
 }
 
-fn detect_terminal_pixels() -> Option<(u32, u32)> {
-    let (Width(columns), Height(rows)) = terminal_size()?;
-    let width = u32::from(columns).saturating_mul(10);
-    let height = u32::from(rows.saturating_sub(2)).saturating_mul(20);
-    Some((width.max(TILE_PX), height.max(HEADER_HEIGHT + TILE_PX)))
+fn map_key_event(key: crossterm::event::KeyEvent) -> InputEvent {
+    match key.code {
+        KeyCode::Enter => InputEvent::Enter,
+        KeyCode::Char(' ') => InputEvent::Enter,
+        KeyCode::Esc | KeyCode::Backspace => InputEvent::Back,
+        KeyCode::Up => InputEvent::Up,
+        KeyCode::Down => InputEvent::Down,
+        KeyCode::Left => InputEvent::Left,
+        KeyCode::Right => InputEvent::Right,
+        KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => InputEvent::Key(ch),
+        _ => InputEvent::None,
+    }
 }
 
-fn render_state(state: &GameState, viewport: Viewport) -> AppResult<Framebuffer> {
-    let size = Size::new(
-        viewport.tiles_w.saturating_mul(TILE_PX),
-        HEADER_HEIGHT + viewport.tiles_h.saturating_mul(TILE_PX),
-    );
-    let mut framebuffer = Framebuffer::new(size, BACKGROUND)?;
-
-    draw_header(&mut framebuffer, state, viewport);
-    draw_map(&mut framebuffer, state, viewport)?;
-
+fn render_frame(
+    screen_size: Size,
+    screen: &ConsoleScreen,
+    render_cache: &mut RenderCache,
+) -> AppResult<Framebuffer> {
+    let mut framebuffer = Framebuffer::new(screen_size, BACKGROUND)?;
+    match screen {
+        ConsoleScreen::Splash(splash) => draw_splash(&mut framebuffer, screen_size, splash),
+        ConsoleScreen::Map(app) => draw_map_view(
+            &mut framebuffer,
+            screen_size,
+            app,
+            render_cache,
+            MAP_RENDER_CONFIG,
+            map_theme(),
+        ),
+    }
     Ok(framebuffer)
 }
 
-fn draw_header(framebuffer: &mut Framebuffer, state: &GameState, viewport: Viewport) {
-    let title_style = MonoTextStyle::new(&FONT_6X10, PANEL_TEXT);
-    let subtitle_style = MonoTextStyle::new(&FONT_6X10, PANEL_MUTED);
-    let hero_count = state.living_heroes(true).len() + state.living_heroes(false).len();
-    let title = format!(
-        "weave of realms sixel  map={}x{}  view={}x{}  tile=64px",
-        state.map.tile_width(),
-        state.map.tile_height(),
-        viewport.tiles_w,
-        viewport.tiles_h
+fn draw_splash(framebuffer: &mut Framebuffer, screen_size: Size, splash: &SplashScreen) {
+    draw_splash_screen(
+        framebuffer,
+        screen_size,
+        splash,
+        "weave of realms",
+        &["Start"],
+        "Enter: start  Ctrl+Q: exit",
+        SplashTheme {
+            background: SPLASH_BACKGROUND,
+            text: TEXT,
+        },
     );
-    let subtitle = format!(
-        "heroes={} enemy-spawns={} chests={}  ctrl+q exit",
-        hero_count,
-        state.map.enemy_spawns().len(),
-        state.map.chest_spawns().len()
-    );
-
-    let _ = Text::new(&title, Point::new(4, 10), title_style).draw(framebuffer);
-    let _ = Text::new(&subtitle, Point::new(4, 22), subtitle_style).draw(framebuffer);
 }
 
-fn draw_map(framebuffer: &mut Framebuffer, state: &GameState, viewport: Viewport) -> AppResult<()> {
-    let x_end = viewport.origin_x.saturating_add(viewport.tiles_w);
-    let y_end = viewport.origin_y.saturating_add(viewport.tiles_h);
-
-    for map_y in viewport.origin_y..y_end {
-        for map_x in viewport.origin_x..x_end {
-            let coord = MapCoord::new(map_x, map_y);
-            let tile = state.map.get_tile(coord)?;
-            let screen_x = (map_x - viewport.origin_x) * TILE_PX;
-            let screen_y = HEADER_HEIGHT + (map_y - viewport.origin_y) * TILE_PX;
-            let top_left = Point::new(screen_x as i32, screen_y as i32);
-            let rect = Rectangle::new(top_left, Size::new(TILE_PX, TILE_PX));
-
-            rect.into_styled(
-                PrimitiveStyleBuilder::new()
-                    .fill_color(tile_color(tile.kind))
-                    .stroke_color(Rgb888::new(0, 0, 0))
-                    .stroke_width(1)
-                    .build(),
-            )
-            .draw(framebuffer)?;
-
-            if state.map.has_enemy_spawn(coord) {
-                draw_marker(framebuffer, top_left, ENEMY_SPAWN_COLOR)?;
-            }
-            if state.map.has_chest_spawn(coord) {
-                draw_marker(framebuffer, top_left, CHEST_COLOR)?;
-            }
-        }
+fn map_theme() -> MapViewTheme<Rgb888> {
+    MapViewTheme {
+        background: BACKGROUND,
+        text: TEXT,
+        selected_hero: Rgb888::new(255, 255, 120),
+        hero: Rgb888::new(255, 255, 255),
+        enemy_spawn: Rgb888::new(255, 120, 120),
+        chest: Rgb888::new(248, 198, 66),
+        tile_color,
+        team_color,
     }
-
-    for hero in state.living_heroes(true) {
-        draw_hero(framebuffer, hero.position, viewport, PLAYER_COLOR)?;
-    }
-    for hero in state.living_heroes(false) {
-        draw_hero(framebuffer, hero.position, viewport, ENEMY_COLOR)?;
-    }
-
-    Ok(())
 }
 
-fn draw_marker(framebuffer: &mut Framebuffer, top_left: Point, color: Rgb888) -> AppResult<()> {
-    let diameter = TILE_PX / 2;
-    let center_x = top_left.x + (TILE_PX as i32 / 2) - (diameter as i32 / 2);
-    let center_y = top_left.y + (TILE_PX as i32 / 2) - (diameter as i32 / 2);
-    Circle::new(Point::new(center_x, center_y), diameter)
-        .into_styled(PrimitiveStyle::with_fill(color))
-        .draw(framebuffer)?;
-    Ok(())
-}
-
-fn draw_hero(
-    framebuffer: &mut Framebuffer,
-    coord: MapCoord,
-    viewport: Viewport,
-    color: Rgb888,
-) -> AppResult<()> {
-    if coord.x < viewport.origin_x
-        || coord.y < viewport.origin_y
-        || coord.x >= viewport.origin_x + viewport.tiles_w
-        || coord.y >= viewport.origin_y + viewport.tiles_h
-    {
-        return Ok(());
-    }
-
-    let inset = 8;
-    let size = TILE_PX.saturating_sub(inset * 2);
-    let rect = Rectangle::new(
-        Point::new(
-            ((coord.x - viewport.origin_x) * TILE_PX + inset) as i32,
-            (HEADER_HEIGHT + (coord.y - viewport.origin_y) * TILE_PX + inset) as i32,
-        ),
-        Size::new(size, size),
-    );
-    rect.into_styled(
-        PrimitiveStyleBuilder::new()
-            .fill_color(color)
-            .stroke_color(Rgb888::new(255, 255, 255))
-            .stroke_width(2)
-            .build(),
-    )
-    .draw(framebuffer)?;
-    Ok(())
+fn reset_render_cache(render_cache: &mut RenderCache) {
+    *render_cache = RenderCache::default();
 }
 
 fn tile_color(tile: rpg_engine::map::tile::Tiles) -> Rgb888 {
     let (r, g, b) = tile.as_color();
     Rgb888::new(r, g, b)
+}
+
+fn team_color(team_id: usize) -> Rgb888 {
+    match team_id {
+        0 => Rgb888::new(220, 50, 50),
+        1 => Rgb888::new(50, 100, 220),
+        _ => Rgb888::new(140, 140, 140),
+    }
 }
 
 fn write_frame<W: Write>(writer: &mut W, framebuffer: &Framebuffer) -> AppResult<()> {

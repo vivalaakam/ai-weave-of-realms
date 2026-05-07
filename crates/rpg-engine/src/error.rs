@@ -53,12 +53,20 @@ impl fmt::Display for Error {
                 )
             }
             Error::InvalidTilesSize { expected, got } => {
-                write!(formatter, "invalid game state: expected {expected} tiles got {got}")
+                write!(
+                    formatter,
+                    "invalid game state: expected {expected} tiles got {got}"
+                )
             }
-            Error::PipelineEmpty => formatter.write_str("pipeline must have at least one generator"),
+            Error::PipelineEmpty => {
+                formatter.write_str("pipeline must have at least one generator")
+            }
             #[cfg(feature = "std")]
             Error::ValidationRuleDir { path, err } => {
-                write!(formatter, "cannot read validation rule directory '{path}': {err}")
+                write!(
+                    formatter,
+                    "cannot read validation rule directory '{path}': {err}"
+                )
             }
             Error::UnreachableTile { x, y } => write!(formatter, "unreachable tile at ({x}, {y})"),
             Error::OccupiedTile { x, y } => {

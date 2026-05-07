@@ -13,9 +13,9 @@
 //!
 //! Movement is 4-directional (N/S/E/W).
 
+use alloc::collections::BinaryHeap;
 use alloc::{collections::BTreeMap, vec, vec::Vec};
 use core::cmp::Reverse;
-use alloc::collections::BinaryHeap;
 
 use crate::error::Error;
 use crate::map::game_map::{GameMap, MapCoord};

@@ -1110,6 +1110,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpg-embedded"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "rpg-engine",
+]
+
+[[package]]
 name = "rpg-engine"
 version = "0.1.0"
 dependencies = [
@@ -1370,6 +1378,7 @@ dependencies = [
  "esp-hal",
  "esp-println",
  "mipidsi",
+ "rpg-embedded",
  "rpg-engine",
 ]
 

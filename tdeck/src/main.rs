@@ -14,7 +14,6 @@ mod app;
 mod input;
 mod render;
 mod screens;
-mod session;
 mod storage;
 mod system_info;
 

@@ -191,10 +191,7 @@ impl SeededRng {
     }
 
     /// Returns a random `f64` in the closed range `[range.start, range.end]`.
-    pub fn random_range_f64_inclusive(
-        &mut self,
-        range: core::ops::RangeInclusive<f64>,
-    ) -> f64 {
+    pub fn random_range_f64_inclusive(&mut self, range: core::ops::RangeInclusive<f64>) -> f64 {
         let start = *range.start();
         let end = *range.end();
         let len = end - start;

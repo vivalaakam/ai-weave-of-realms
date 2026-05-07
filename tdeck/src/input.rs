@@ -2,29 +2,9 @@
 
 use esp_hal::gpio::Input;
 use esp_hal::i2c::master::I2c;
+pub use rpg_embedded::input::InputEvent;
 
 const KEYBOARD_I2C_ADDRESS: u8 = 0x55;
-
-/// Discrete input events used by the app state machine.
-#[derive(Clone, Copy)]
-pub enum InputEvent {
-    /// No input this frame.
-    None,
-    /// Keyboard character input.
-    Key(char),
-    /// Confirm / primary action.
-    Enter,
-    /// Back / cancel.
-    Back,
-    /// Up direction.
-    Up,
-    /// Down direction.
-    Down,
-    /// Left direction.
-    Left,
-    /// Right direction.
-    Right,
-}
 
 /// Edge-trigger bookkeeping for trackball buttons.
 pub struct InputState {

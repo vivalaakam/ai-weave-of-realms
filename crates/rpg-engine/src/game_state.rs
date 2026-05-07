@@ -750,8 +750,7 @@ impl GameState {
         let mut tiles = Vec::with_capacity(tile_count);
         for _ in 0..tile_count {
             let tile_id = reader.read_u8()?;
-            let kind =
-                Tiles::from_id(tile_id as u32).map_err(|_| save_error("invalid tile id"))?;
+            let kind = Tiles::from_id(tile_id as u32).map_err(|_| save_error("invalid tile id"))?;
             tiles.push(crate::map::tile::Tile::new(kind));
         }
 
@@ -800,7 +799,11 @@ impl GameState {
         for _ in 0..active_count {
             let team_id = reader.read_u8()?;
             let has_hero = reader.read_u8()? == 1;
-            let hero_id = if has_hero { Some(reader.read_u8()?) } else { None };
+            let hero_id = if has_hero {
+                Some(reader.read_u8()?)
+            } else {
+                None
+            };
             active_hero.insert(team_id, hero_id);
         }
 
@@ -824,8 +827,16 @@ impl GameState {
             if rng_position > 32 {
                 return Err(save_error("invalid hero RNG position"));
             }
-            let mut hero =
-                Hero::new(hero_id, name, hp, atk, def, spd, MapCoord::new(x, y), team_id);
+            let mut hero = Hero::new(
+                hero_id,
+                name,
+                hp,
+                atk,
+                def,
+                spd,
+                MapCoord::new(x, y),
+                team_id,
+            );
             hero.max_hp = max_hp;
             hero.mov = mov;
             hero.mov_remaining = mov_remaining;

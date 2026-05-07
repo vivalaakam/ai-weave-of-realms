@@ -1,10 +1,11 @@
 [workspace]
 members = [
     "crates/rpg-engine",
+    "crates/rpg-embedded",
     "crates/rpg-mapgen",
     "crates/rpg-tiled",
     "crates/rpg-godot",
-    "crates/rpg-tools",
+    "crates/rpg-tools"
 ]
 exclude = ["tdeck", "sixel-console"]
 resolver = "2"

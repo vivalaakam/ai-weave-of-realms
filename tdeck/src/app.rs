@@ -3,14 +3,24 @@
 use alloc::{boxed::Box, format, string::{String, ToString}};
 
 use embedded_graphics::prelude::Size;
-use rpg_engine::Direction;
+use rpg_embedded::list::{ListEntry, ListOutcome, ListScreen};
+use rpg_embedded::map_view::{MapViewApp, MapViewOutcome};
+use rpg_embedded::render::{RenderConfig, visible_tiles};
+use rpg_embedded::session::GameSession;
+use rpg_embedded::splash::{SplashOutcome, SplashScreen};
 
 use crate::input::InputEvent;
-use crate::render::{map_view_tiles, selectable_rows};
-use crate::screens::{InteractionMode, MapSelectScreen, MapViewScreen, SaveOverlay, Screen, SplashScreen};
-use crate::session::GameSession;
+use crate::render::selectable_rows;
+use crate::screens::{MapViewScreen, SaveOverlay, Screen};
 use crate::storage::{self, AppError};
 use crate::system_info::SystemInfoReader;
+
+const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
+    tile_width: 16,
+    tile_height: 16,
+    header_height: 22,
+    footer_height: 12,
+};
 
 /// Compile-time launch configuration for direct map boot.
 pub struct LaunchConfig {
@@ -50,35 +60,28 @@ where
                 }) {
                     return match build_map_view(volume_mgr, entry, launch) {
                         Ok(screen) => Screen::MapView(Box::new(screen)),
-                        Err(err) => Screen::MapSelect(MapSelectScreen {
-                            maps,
-                            selected: 0,
-                            scroll: 0,
-                            status: Some(storage::error_message(err)),
-                        }),
+                        Err(err) => Screen::MapSelect(make_list_screen(
+                            &maps,
+                            Some(storage::error_message(err)),
+                        )),
                     };
                 }
 
-                return Screen::MapSelect(MapSelectScreen {
-                    maps,
-                    selected: 0,
-                    scroll: 0,
-                    status: Some(storage::error_message(AppError::InvalidConfiguredMap)),
-                });
+                return Screen::MapSelect(make_list_screen(
+                    &maps,
+                    Some(storage::error_message(AppError::InvalidConfiguredMap)),
+                ));
             }
             Err(err) => {
-                return Screen::Splash(SplashScreen {
-                    selected: 0,
-                    status: Some(storage::error_message(err)),
-                });
+                return Screen::Splash(SplashScreen::new(
+                    0,
+                    Some(storage::error_message(err)),
+                ));
             }
         }
     }
 
-    Screen::Splash(SplashScreen {
-        selected: 0,
-        status: None,
-    })
+    Screen::Splash(SplashScreen::new(0, None))
 }
 
 /// Applies a single input event to the current screen.
@@ -140,71 +143,54 @@ where
     D: embedded_sdmmc::BlockDevice,
 {
     splash.status = None;
-    let event = map_select_event(event);
-    match event {
-        InputEvent::Up => {
-            splash.selected = splash.selected.saturating_sub(1);
-            return ScreenOutcome {
-                changed: true,
-                next_screen: None,
-            };
-        }
-        InputEvent::Down => {
-            splash.selected = (splash.selected + 1).min(1);
-            return ScreenOutcome {
-                changed: true,
-                next_screen: None,
-            };
-        }
-        InputEvent::Enter => {
-            let next_screen = match splash.selected {
+    match splash.handle_input(event, 2) {
+        SplashOutcome::Changed => ScreenOutcome {
+            changed: true,
+            next_screen: None,
+        },
+        SplashOutcome::Selected(selected) => {
+            let next_screen = match selected {
                 0 => match storage::discover_maps(volume_mgr) {
-                    Ok(maps) => Screen::MapSelect(MapSelectScreen {
-                        maps,
-                        selected: 0,
-                        scroll: 0,
-                        status: Some("Select a map and press Enter".to_string()),
-                    }),
+                    Ok(maps) => Screen::MapSelect(make_list_screen(
+                        &maps,
+                        Some("Select a map and press Enter".to_string()),
+                    )),
                     Err(err) => {
                         splash.status = Some(storage::error_message(err));
-                        Screen::Splash(SplashScreen {
-                            selected: splash.selected,
-                            status: splash.status.clone(),
-                        })
+                        Screen::Splash(SplashScreen::new(
+                            splash.selected,
+                            splash.status.clone(),
+                        ))
                     }
                 },
                 _ => match storage::discover_saves(volume_mgr) {
-                    Ok(saves) => Screen::SaveSelect(MapSelectScreen {
-                        maps: saves,
-                        selected: 0,
-                        scroll: 0,
-                        status: Some("Select a save and press Enter".to_string()),
-                    }),
+                    Ok(saves) => Screen::SaveSelect(make_list_screen(
+                        &saves,
+                        Some("Select a save and press Enter".to_string()),
+                    )),
                     Err(err) => {
                         splash.status = Some(storage::error_message(err));
-                        Screen::Splash(SplashScreen {
-                            selected: splash.selected,
-                            status: splash.status.clone(),
-                        })
+                        Screen::Splash(SplashScreen::new(
+                            splash.selected,
+                            splash.status.clone(),
+                        ))
                     }
                 },
             };
-            return ScreenOutcome {
+            ScreenOutcome {
                 changed: true,
                 next_screen: Some(next_screen),
-            };
+            }
         }
-        _ => {}
-    }
-
-    ScreenOutcome {
-        changed: false,
-        next_screen: None,
+        SplashOutcome::BackRequested | SplashOutcome::NoChange => ScreenOutcome {
+            changed: false,
+            next_screen: None,
+        },
     }
 }
 
 fn handle_map_select<D>(
-    map_select: &mut MapSelectScreen,
+    map_select: &mut ListScreen,
     event: InputEvent,
     volume_mgr: &embedded_sdmmc::VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
     launch: &LaunchConfig,
@@ -213,14 +199,14 @@ fn handle_map_select<D>(
 where
     D: embedded_sdmmc::BlockDevice,
 {
-    if map_select.maps.is_empty() {
+    if map_select.entries.is_empty() {
         if matches!(event, InputEvent::Enter) {
             return ScreenOutcome {
                 changed: true,
-                next_screen: Some(Screen::Splash(SplashScreen {
-                    selected: 0,
-                    status: Some("No .rpgs maps found in /maps".to_string()),
-                })),
+                next_screen: Some(Screen::Splash(SplashScreen::new(
+                    0,
+                    Some("No .rpgs maps found in /maps".to_string()),
+                ))),
             };
         }
         return ScreenOutcome {
@@ -229,69 +215,46 @@ where
         };
     }
 
-    let mut changed = false;
-    let mut next_screen: Option<Screen> = None;
-    let event = map_select_event(event);
-    match event {
-        InputEvent::Up => {
-            if map_select.selected > 0 {
-                map_select.selected -= 1;
-                changed = true;
-            }
-        }
-        InputEvent::Down => {
-            if map_select.selected + 1 < map_select.maps.len() {
-                map_select.selected += 1;
-                changed = true;
-            }
-        }
-        InputEvent::Enter => match build_map_view(volume_mgr, &map_select.maps[map_select.selected], launch) {
-            Ok(map_view) => {
-                next_screen = Some(Screen::MapView(Box::new(map_view)));
-                changed = true;
-            }
+    match map_select.handle_input(event, selectable_rows(screen_size)) {
+        ListOutcome::NoChange => ScreenOutcome {
+            changed: false,
+            next_screen: None,
+        },
+        ListOutcome::Changed => ScreenOutcome {
+            changed: true,
+            next_screen: None,
+        },
+        ListOutcome::BackRequested => ScreenOutcome {
+            changed: true,
+            next_screen: Some(Screen::Splash(SplashScreen::new(0, None))),
+        },
+        ListOutcome::Selected(selected) => match storage::discover_maps(volume_mgr) {
+            Ok(maps) => match build_map_view(volume_mgr, &maps[selected], launch) {
+                Ok(map_view) => ScreenOutcome {
+                    changed: true,
+                    next_screen: Some(Screen::MapView(Box::new(map_view))),
+                },
+                Err(err) => {
+                    map_select.status = Some(storage::error_message(err));
+                    ScreenOutcome {
+                        changed: true,
+                        next_screen: None,
+                    }
+                }
+            },
             Err(err) => {
                 map_select.status = Some(storage::error_message(err));
-                changed = true;
+                ScreenOutcome {
+                    changed: true,
+                    next_screen: None,
+                }
             }
         },
-        InputEvent::Back => {
-            return ScreenOutcome {
-                changed: true,
-                next_screen: Some(Screen::Splash(SplashScreen {
-                    selected: 0,
-                    status: None,
-                })),
-            };
-        }
-        InputEvent::Left | InputEvent::Right | InputEvent::None | InputEvent::Key(_) => {}
-    }
-
-    if next_screen.is_some() {
-        return ScreenOutcome {
-            changed,
-            next_screen,
-        };
-    }
-
-    let previous_scroll = map_select.scroll;
-    let visible_rows = selectable_rows(screen_size);
-    if map_select.selected < map_select.scroll {
-        map_select.scroll = map_select.selected;
-    } else if map_select.selected >= map_select.scroll + visible_rows {
-        map_select.scroll = map_select
-            .selected
-            .saturating_sub(visible_rows.saturating_sub(1));
-    }
-
-    ScreenOutcome {
-        changed: changed || map_select.scroll != previous_scroll,
-        next_screen: None,
     }
 }
 
 fn handle_save_select<D>(
-    save_select: &mut MapSelectScreen,
+    save_select: &mut ListScreen,
     event: InputEvent,
     volume_mgr: &embedded_sdmmc::VolumeManager<D, crate::DummyTimesource, 4, 4, 1>,
     screen_size: Size,
@@ -299,14 +262,14 @@ fn handle_save_select<D>(
 where
     D: embedded_sdmmc::BlockDevice,
 {
-    if save_select.maps.is_empty() {
+    if save_select.entries.is_empty() {
         if matches!(event, InputEvent::Enter) {
             return ScreenOutcome {
                 changed: true,
-                next_screen: Some(Screen::Splash(SplashScreen {
-                    selected: 1,
-                    status: Some("No save files found in /savegame".to_string()),
-                })),
+                next_screen: Some(Screen::Splash(SplashScreen::new(
+                    1,
+                    Some("No save files found in /savegame".to_string()),
+                ))),
             };
         }
         return ScreenOutcome {
@@ -315,76 +278,67 @@ where
         };
     }
 
-    let mut changed = false;
-    let mut next_screen: Option<Screen> = None;
-    let event = map_select_event(event);
-    match event {
-        InputEvent::Up => {
-            if save_select.selected > 0 {
-                save_select.selected -= 1;
-                changed = true;
-            }
-        }
-        InputEvent::Down => {
-            if save_select.selected + 1 < save_select.maps.len() {
-                save_select.selected += 1;
-                changed = true;
-            }
-        }
-        InputEvent::Enter => {
-            let entry = &save_select.maps[save_select.selected];
-            match storage::load_save(volume_mgr, entry) {
-                Ok(state) => match GameSession::from_state(entry.display_name.clone(), state) {
-                    Ok(session) => {
-                        let mut map_view = MapViewScreen {
-                            session,
-                            view_x: 0,
-                            view_y: 0,
-                            mode: InteractionMode::Pan,
-                            status: Some("Save loaded".to_string()),
-                            info_overlay: None,
-                            save_overlay: None,
-                        };
-                        clamp_view_to_map(&mut map_view, screen_size);
-                        next_screen = Some(Screen::MapView(Box::new(map_view)));
-                        changed = true;
-                    }
+    match save_select.handle_input(event, selectable_rows(screen_size)) {
+        ListOutcome::NoChange => ScreenOutcome {
+            changed: false,
+            next_screen: None,
+        },
+        ListOutcome::Changed => ScreenOutcome {
+            changed: true,
+            next_screen: None,
+        },
+        ListOutcome::BackRequested => ScreenOutcome {
+            changed: true,
+            next_screen: Some(Screen::Splash(SplashScreen::new(1, None))),
+        },
+        ListOutcome::Selected(selected) => match storage::discover_saves(volume_mgr) {
+            Ok(saves) => {
+                let entry = &saves[selected];
+                match storage::load_save(volume_mgr, entry) {
+                    Ok(state) => match GameSession::from_state(entry.display_name.clone(), state) {
+                        Ok(session) => {
+                            let mut map_view = MapViewScreen {
+                                app: MapViewApp::new(
+                                    session,
+                                    0,
+                                    0,
+                                    Some("Save loaded".to_string()),
+                                ),
+                                status: Some("Save loaded".to_string()),
+                                info_overlay: None,
+                                save_overlay: None,
+                            };
+                            clamp_view_to_map(&mut map_view, screen_size);
+                            ScreenOutcome {
+                                changed: true,
+                                next_screen: Some(Screen::MapView(Box::new(map_view))),
+                            }
+                        }
+                        Err(err) => {
+                            save_select.status = Some(err.to_string());
+                            ScreenOutcome {
+                                changed: true,
+                                next_screen: None,
+                            }
+                        }
+                    },
                     Err(err) => {
-                        save_select.status = Some(err.to_string());
-                        changed = true;
+                        save_select.status = Some(storage::error_message(err));
+                        ScreenOutcome {
+                            changed: true,
+                            next_screen: None,
+                        }
                     }
-                },
-                Err(err) => {
-                    save_select.status = Some(storage::error_message(err));
-                    changed = true;
                 }
             }
-        }
-        InputEvent::Back => {
-            return ScreenOutcome {
-                changed: true,
-                next_screen: Some(Screen::Splash(SplashScreen {
-                    selected: 1,
-                    status: None,
-                })),
-            };
-        }
-        InputEvent::Left | InputEvent::Right | InputEvent::None | InputEvent::Key(_) => {}
-    }
-
-    let previous_scroll = save_select.scroll;
-    let visible_rows = selectable_rows(screen_size);
-    if save_select.selected < save_select.scroll {
-        save_select.scroll = save_select.selected;
-    } else if save_select.selected >= save_select.scroll + visible_rows {
-        save_select.scroll = save_select
-            .selected
-            .saturating_sub(visible_rows.saturating_sub(1));
-    }
-
-    ScreenOutcome {
-        changed: changed || save_select.scroll != previous_scroll,
-        next_screen,
+            Err(err) => {
+                save_select.status = Some(storage::error_message(err));
+                ScreenOutcome {
+                    changed: true,
+                    next_screen: None,
+                }
+            }
+        },
     }
 }
 
@@ -435,60 +389,40 @@ where
         };
     }
 
-    let event = map_view_event(event);
-    match event {
-        InputEvent::Enter => {
-            map_view.mode = match map_view.mode {
-                InteractionMode::Pan => InteractionMode::Hero,
-                InteractionMode::Hero => InteractionMode::Pan,
-            };
-            map_view.status = Some(match map_view.mode {
-                InteractionMode::Pan => "Pan mode: arrows move the viewport".to_string(),
-                InteractionMode::Hero => "Hero mode: arrows move the selected hero".to_string(),
-            });
-            return ScreenOutcome {
+    let (visible_cols, visible_rows) = visible_tiles(screen_size, MAP_RENDER_CONFIG);
+    match map_view.app.handle_input(event, visible_cols, visible_rows) {
+        MapViewOutcome::NoChange => ScreenOutcome {
+            changed: false,
+            next_screen: None,
+        },
+        MapViewOutcome::Changed => {
+            map_view.status = map_view.app.status().map(ToString::to_string);
+            ScreenOutcome {
                 changed: true,
                 next_screen: None,
-            };
+            }
         }
-        InputEvent::Back => {
+        MapViewOutcome::BackRequested => {
             let next_screen = match storage::discover_maps(volume_mgr) {
-                Ok(maps) => Screen::MapSelect(MapSelectScreen {
-                    selected: maps
+                Ok(maps) => {
+                    let mut screen =
+                        make_list_screen(&maps, Some("Returned to map selection".to_string()));
+                    screen.selected = maps
                         .iter()
-                        .position(|entry| entry.display_name == map_view.session.map_name())
-                        .unwrap_or(0),
-                    scroll: 0,
-                    maps,
-                    status: Some("Returned to map selection".to_string()),
-                }),
-                Err(err) => Screen::Splash(SplashScreen {
-                    selected: 0,
-                    status: Some(storage::error_message(err)),
-                }),
+                        .position(|entry| entry.display_name == map_view.app.session().map_name())
+                        .unwrap_or(0);
+                    screen.scroll = screen.selected;
+                    Screen::MapSelect(screen)
+                }
+                Err(err) => {
+                    Screen::Splash(SplashScreen::new(0, Some(storage::error_message(err))))
+                }
             };
-            return ScreenOutcome {
+            ScreenOutcome {
                 changed: true,
                 next_screen: Some(next_screen),
-            };
+            }
         }
-        InputEvent::None | InputEvent::Key(_) => {
-            return ScreenOutcome {
-                changed: false,
-                next_screen: None,
-            };
-        }
-        InputEvent::Up | InputEvent::Down | InputEvent::Left | InputEvent::Right => {}
-    }
-
-    let changed = match map_view.mode {
-        InteractionMode::Pan => pan_view(map_view, event, screen_size),
-        InteractionMode::Hero => move_hero_or_report(map_view, event, screen_size),
-    };
-
-    ScreenOutcome {
-        changed,
-        next_screen: None,
     }
 }
 
@@ -505,10 +439,12 @@ where
         .map_err(|err| AppError::Engine(err.to_string()))?;
 
     Ok(MapViewScreen {
-        session,
-        view_x: launch.start_x,
-        view_y: launch.start_y,
-        mode: InteractionMode::Pan,
+        app: MapViewApp::new(
+            session,
+            launch.start_x,
+            launch.start_y,
+            Some("Map loaded. Press Enter to switch between pan and hero mode".to_string()),
+        ),
         status: Some("Map loaded. Press Enter to switch between pan and hero mode".to_string()),
         info_overlay: None,
         save_overlay: None,
@@ -610,7 +546,7 @@ where
                         status = Some("Enter a save name".to_string());
                         (Some(SaveOverlay::SaveName { name, status }), true)
                     } else {
-                        match storage::save_game(volume_mgr, trimmed, map_view.session.state()) {
+                        match storage::save_game(volume_mgr, trimmed, map_view.app.session().state()) {
                             Ok(_) => {
                                 map_view.status =
                                     Some(format!("Saved game: {trimmed}"));
@@ -650,8 +586,12 @@ where
                                 let map_name = entry.display_name.clone();
                                 match GameSession::from_state(map_name, state) {
                                     Ok(session) => {
-                                        map_view.session = session;
-                                        map_view.mode = InteractionMode::Pan;
+                                        map_view.app = MapViewApp::new(
+                                            session,
+                                            map_view.app.view_x(),
+                                            map_view.app.view_y(),
+                                            Some("Save loaded".to_string()),
+                                        );
                                         clamp_view_to_map(map_view, screen_size);
                                         map_view.status = Some("Save loaded".to_string());
                                         return ScreenOutcome {
@@ -712,16 +652,8 @@ fn save_list_rows(screen_size: Size) -> usize {
 }
 
 fn clamp_view_to_map(map_view: &mut MapViewScreen, screen_size: Size) {
-    let (visible_cols, visible_rows) = map_view_tiles(screen_size);
-    let map = &map_view.session.state().map;
-    let max_x = map
-        .tile_width()
-        .saturating_sub(visible_cols as u32) as usize;
-    let max_y = map
-        .tile_height()
-        .saturating_sub(visible_rows as u32) as usize;
-    map_view.view_x = map_view.view_x.min(max_x);
-    map_view.view_y = map_view.view_y.min(max_y);
+    let (visible_cols, visible_rows) = visible_tiles(screen_size, MAP_RENDER_CONFIG);
+    map_view.app.clamp_view_to_map(visible_cols, visible_rows);
 }
 
 fn normalize_save_char(ch: char) -> Option<char> {
@@ -739,32 +671,6 @@ fn is_key(event: InputEvent, key: char) -> bool {
     }
 }
 
-fn map_select_event(event: InputEvent) -> InputEvent {
-    match event {
-        InputEvent::Key(ch) => match ch.to_ascii_lowercase() {
-            'w' | 'k' => InputEvent::Up,
-            's' | 'j' => InputEvent::Down,
-            'q' => InputEvent::Back,
-            _ => InputEvent::None,
-        },
-        other => other,
-    }
-}
-
-fn map_view_event(event: InputEvent) -> InputEvent {
-    match event {
-        InputEvent::Key(ch) => match ch.to_ascii_lowercase() {
-            'w' | 'k' => InputEvent::Up,
-            's' | 'j' => InputEvent::Down,
-            'a' | 'h' => InputEvent::Left,
-            'd' | 'l' => InputEvent::Right,
-            'q' => InputEvent::Back,
-            _ => InputEvent::None,
-        },
-        other => other,
-    }
-}
-
 fn menu_event(event: InputEvent) -> InputEvent {
     match event {
         InputEvent::Key(ch) => match ch.to_ascii_lowercase() {
@@ -777,83 +683,20 @@ fn menu_event(event: InputEvent) -> InputEvent {
     }
 }
 
-fn pan_view(map_view: &mut MapViewScreen, event: InputEvent, screen_size: Size) -> bool {
-    let (visible_cols, visible_rows) = map_view_tiles(screen_size);
-    let map = &map_view.session.state().map;
-    let max_x = map.tile_width().saturating_sub(visible_cols as u32) as usize;
-    let max_y = map.tile_height().saturating_sub(visible_rows as u32) as usize;
-
-    let previous_x = map_view.view_x;
-    let previous_y = map_view.view_y;
-    match event {
-        InputEvent::Key(_) | InputEvent::None => {}
-        InputEvent::Up => map_view.view_y = map_view.view_y.saturating_sub(1),
-        InputEvent::Down => map_view.view_y = (map_view.view_y + 1).min(max_y),
-        InputEvent::Left => map_view.view_x = map_view.view_x.saturating_sub(1),
-        InputEvent::Right => map_view.view_x = (map_view.view_x + 1).min(max_x),
-        InputEvent::Enter | InputEvent::Back => {}
-    }
-
-    map_view.view_x != previous_x || map_view.view_y != previous_y
-}
-
-fn move_hero_or_report(map_view: &mut MapViewScreen, event: InputEvent, screen_size: Size) -> bool {
-    let direction = match event {
-        InputEvent::Key(_) | InputEvent::None => None,
-        InputEvent::Up => Some(Direction::North),
-        InputEvent::Down => Some(Direction::South),
-        InputEvent::Left => Some(Direction::West),
-        InputEvent::Right => Some(Direction::East),
-        InputEvent::Enter | InputEvent::Back => None,
-    };
-
-    let Some(direction) = direction else {
-        return false;
-    };
-
-    match map_view.session.move_selected_hero(direction) {
-        Ok(position) => {
-            map_view.status = Some(map_view.session.summary());
-            keep_hero_visible(
-                map_view,
-                position.x as usize,
-                position.y as usize,
-                screen_size,
-            )
-        }
-        Err(err) => {
-            map_view.status = Some(err.to_string());
-            true
-        }
-    }
-}
-
-fn keep_hero_visible(
-    map_view: &mut MapViewScreen,
-    hero_x: usize,
-    hero_y: usize,
-    screen_size: Size,
-) -> bool {
-    let (visible_cols, visible_rows) = map_view_tiles(screen_size);
-    let old_x = map_view.view_x;
-    let old_y = map_view.view_y;
-
-    if hero_x < map_view.view_x {
-        map_view.view_x = hero_x;
-    } else if hero_x >= map_view.view_x + visible_cols {
-        map_view.view_x = hero_x.saturating_sub(visible_cols.saturating_sub(1));
-    }
-
-    if hero_y < map_view.view_y {
-        map_view.view_y = hero_y;
-    } else if hero_y >= map_view.view_y + visible_rows {
-        map_view.view_y = hero_y.saturating_sub(visible_rows.saturating_sub(1));
-    }
-
-    let _ = (old_x, old_y);
-    true
-}
-
 fn parse_env_usize(value: Option<&'static str>) -> Option<usize> {
     value.and_then(|item| item.parse::<usize>().ok())
+}
+
+fn make_list_screen(
+    entries: &[crate::storage::MapEntry],
+    status: Option<String>,
+) -> ListScreen {
+    let list_entries = entries
+        .iter()
+        .map(|entry| ListEntry {
+            label: entry.display_name.clone(),
+            meta: entry.size_bytes,
+        })
+        .collect();
+    ListScreen::new(list_entries, status)
 }

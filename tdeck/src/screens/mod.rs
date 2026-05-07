@@ -1,23 +1,21 @@
 //! Screen state definitions for the T-Deck app.
 
-mod map_select;
 mod map_view;
-mod splash;
 
 use alloc::boxed::Box;
 
-pub use map_select::MapSelectScreen;
-pub use map_view::{InteractionMode, MapViewScreen, SaveOverlay};
-pub use splash::SplashScreen;
+pub use map_view::{MapViewScreen, SaveOverlay};
+pub use rpg_embedded::list::ListScreen;
+pub use rpg_embedded::splash::SplashScreen;
 
 /// Top-level screen state.
 pub enum Screen {
     /// Initial splash screen.
     Splash(SplashScreen),
     /// Map selection screen backed by SD card content.
-    MapSelect(MapSelectScreen),
+    MapSelect(ListScreen),
     /// Save selection screen backed by SD card content.
-    SaveSelect(MapSelectScreen),
+    SaveSelect(ListScreen),
     /// Active gameplay and map rendering screen.
     MapView(Box<MapViewScreen>),
 }

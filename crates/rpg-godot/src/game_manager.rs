@@ -42,10 +42,7 @@ pub struct GameManager {
 #[godot_api]
 impl INode for GameManager {
     fn init(base: Base<Node>) -> Self {
-        Self {
-            base,
-            state: None,
-        }
+        Self { base, state: None }
     }
 }
 
