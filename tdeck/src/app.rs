@@ -1,6 +1,6 @@
 //! App state machine and screen transitions.
 
-use alloc::{format, string::{String, ToString}};
+use alloc::{boxed::Box, format, string::{String, ToString}};
 
 use embedded_graphics::prelude::Size;
 use rpg_engine::Direction;
@@ -49,7 +49,7 @@ where
                         || storage::names_match(&entry.short_name, requested_map)
                 }) {
                     return match build_map_view(volume_mgr, entry, launch) {
-                        Ok(screen) => Screen::MapView(screen),
+                        Ok(screen) => Screen::MapView(Box::new(screen)),
                         Err(err) => Screen::MapSelect(MapSelectScreen {
                             maps,
                             selected: 0,
@@ -116,7 +116,8 @@ where
             outcome.changed
         }
         Screen::MapView(map_view) => {
-            let outcome = handle_map_view(map_view, event, volume_mgr, system_info, screen_size);
+            let outcome =
+                handle_map_view(map_view.as_mut(), event, volume_mgr, system_info, screen_size);
             if let Some(next_screen) = outcome.next_screen {
                 *screen = next_screen;
             }
@@ -218,7 +219,7 @@ where
                 changed: true,
                 next_screen: Some(Screen::Splash(SplashScreen {
                     selected: 0,
-                    status: Some("No .tmx maps found in /maps".to_string()),
+                    status: Some("No .rpgs maps found in /maps".to_string()),
                 })),
             };
         }
@@ -246,7 +247,7 @@ where
         }
         InputEvent::Enter => match build_map_view(volume_mgr, &map_select.maps[map_select.selected], launch) {
             Ok(map_view) => {
-                next_screen = Some(Screen::MapView(map_view));
+                next_screen = Some(Screen::MapView(Box::new(map_view)));
                 changed = true;
             }
             Err(err) => {
@@ -345,7 +346,7 @@ where
                             save_overlay: None,
                         };
                         clamp_view_to_map(&mut map_view, screen_size);
-                        next_screen = Some(Screen::MapView(map_view));
+                        next_screen = Some(Screen::MapView(Box::new(map_view)));
                         changed = true;
                     }
                     Err(err) => {
@@ -500,13 +501,8 @@ where
     D: embedded_sdmmc::BlockDevice,
 {
     let loaded = storage::load_map(volume_mgr, entry)?;
-    let session = match loaded.payload {
-        crate::storage::LoadedPayload::Map(map) => {
-            GameSession::new(loaded.name, map).map_err(|err| AppError::Engine(err.to_string()))?
-        }
-        crate::storage::LoadedPayload::Save(state) => GameSession::from_state(loaded.name, state)
-            .map_err(|err| AppError::Engine(err.to_string()))?,
-    };
+    let session = GameSession::from_state(loaded.name, loaded.state)
+        .map_err(|err| AppError::Engine(err.to_string()))?;
 
     Ok(MapViewScreen {
         session,
@@ -537,8 +533,7 @@ where
     };
 
     let outcome = match overlay {
-        SaveOverlay::Menu { mut selected, mut status } => {
-            status = None;
+        SaveOverlay::Menu { mut selected, status } => {
             match menu_event(event) {
                 InputEvent::Up => {
                     selected = selected.saturating_sub(1);
@@ -580,9 +575,9 @@ where
                 _ => (Some(SaveOverlay::Menu { selected, status }), false),
             }
         }
-        SaveOverlay::SaveName { mut name, mut status } => {
+        SaveOverlay::SaveName { mut name, status } => {
             const MAX_NAME_LEN: usize = 24;
-            status = None;
+            let mut status = status;
             match event {
                 InputEvent::Key(ch) => {
                     if name.len() < MAX_NAME_LEN {
@@ -632,12 +627,12 @@ where
             }
         }
         SaveOverlay::LoadList {
-            mut saves,
+            saves,
             mut selected,
             mut scroll,
-            mut status,
+            status,
         } => {
-            status = None;
+            let mut status = status;
             let visible_rows = save_list_rows(screen_size);
             match menu_event(event) {
                 InputEvent::Up => {
@@ -730,9 +725,7 @@ fn clamp_view_to_map(map_view: &mut MapViewScreen, screen_size: Size) {
 }
 
 fn normalize_save_char(ch: char) -> Option<char> {
-    if ch.is_ascii_alphanumeric() {
-        Some(ch)
-    } else if ch == '_' || ch == '-' || ch == ' ' {
+    if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == ' ' {
         Some(ch)
     } else {
         None

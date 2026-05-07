@@ -59,7 +59,9 @@ pub fn draw_screen<D>(
             render_cache.map_view = None;
             draw_save_select(display, screen_size, save_select);
         }
-        Screen::MapView(map_view) => draw_map_view(display, screen_size, map_view, render_cache),
+        Screen::MapView(map_view) => {
+            draw_map_view(display, screen_size, map_view.as_ref(), render_cache)
+        }
     }
 }
 
@@ -615,7 +617,7 @@ fn cell_signature(map_view: &MapViewScreen, coord: MapCoord) -> u32 {
 
 fn tile_color(tile: Tiles) -> Rgb565 {
     let (r, g, b) = tile.as_color();
-    Rgb565::new((r >> 3) as u8, (g >> 2) as u8, (b >> 3) as u8)
+    Rgb565::new(r >> 3, g >> 2, b >> 3)
 }
 
 fn team_color(team_id: usize) -> Rgb565 {

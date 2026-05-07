@@ -96,6 +96,9 @@ Update status as work progresses.
 | 5.10 | Добавить в debug-панель сброс zoom и показ текущего значения | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 | 5.11 | T-Deck: меню сохранения/загрузки по `P` с именованием файлов | Codex | DONE | Savegame dir + modal UI |
 | 5.12 | T-Deck: стартовое меню New Game / Load Game | Codex | DONE | Splash menu selects maps or saves |
+| 5.13 | T-Deck: убрать TMX-парсер и clippy warnings | Codex | DONE | Cleanup storage module |
+| 5.14 | T-Deck: сохранение с верификацией и .rpgs/.rpg фильтр | Codex | DONE | Save hash verify + extension handling |
+| 5.15 | T-Deck: единое расширение .rpgs | Codex | DONE | Save/map filters and filenames |
 
 ---
 

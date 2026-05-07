@@ -5,10 +5,8 @@ use alloc::{format, string::{String, ToString}};
 use rpg_engine::Direction;
 use rpg_engine::error::Error as EngineError;
 use rpg_engine::game_state::GameState;
-use rpg_engine::hero::{Hero, HeroId};
-use rpg_engine::map::game_map::{GameMap, MapCoord};
-use rpg_engine::spawn;
-use rpg_engine::team::Team;
+use rpg_engine::hero::HeroId;
+use rpg_engine::map::game_map::MapCoord;
 
 /// Runtime game session stored by the map-view screen.
 pub struct GameSession {
@@ -18,39 +16,6 @@ pub struct GameSession {
 }
 
 impl GameSession {
-    /// Creates a new engine session from a loaded map.
-    ///
-    /// The session starts with one player-controlled team and one hero placed
-    /// on the best city entrance spawn available on the map.
-    pub fn new(map_name: String, map: GameMap) -> Result<Self, EngineError> {
-        let spawn = spawn::find_city_entrance_spawns(&map, 1)
-            .first()
-            .copied()
-            .map(Ok)
-            .unwrap_or_else(|| spawn::find_player_spawn(&map))?;
-
-        let mut state = GameState::new(map, &map_name);
-        let team_id = state.add_team(Team::red());
-        let hero_id = state.add_hero(Hero::new(
-            0,
-            "Герой",
-            100,
-            20,
-            10,
-            15,
-            spawn,
-            team_id,
-        ));
-        state.set_city_owner(spawn, Some(team_id));
-        let _ = state.on_turn();
-
-        Ok(Self {
-            map_name,
-            state,
-            selected_hero_id: hero_id,
-        })
-    }
-
     /// Creates a new engine session from a fully loaded save state.
     ///
     /// # Arguments
