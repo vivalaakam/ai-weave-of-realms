@@ -217,3 +217,11 @@ Update status as work progresses.
 | 12.1 | Интегрировать `tdeck` с `rpg-engine`, загрузкой карты и стартовой инициализацией игрока/команды, а также разнести экранную логику по отдельным файлам | Codex | DONE | `tdeck` теперь грузит TMX в `rpg_engine::GameMap`, создаёт стартовую команду `Team::red()` и героя на city spawn, поддерживает режимы pan/hero move; экранная логика вынесена в `app.rs`, `render.rs`, `storage.rs`, `session.rs`, `screens/*` |
 | 12.2 | Добавить в `tdeck` info-окно по кнопке `i` с зарядом батареи и использованием RAM, закрываемое по `Enter` или `q` | Codex | DONE | Overlay в `MapView`; RAM читается из `esp_alloc::HEAP.stats()`, батарея через ADC1 на `GPIO4` (`BOARD_BAT_ADC` у LilyGO T-Deck), `Enter`/`q` закрывают окно |
 | 12.3 | Исправить исчезновение info-overlay в `tdeck` при закрытии по `Enter`/`q` | Codex | DONE | В `RenderCache` добавлен учёт `overlay_visible`; при открытии/закрытии overlay делается полный redraw `MapView`, поэтому окно корректно пропадает |
+
+## Phase 13 — Console Sixel Launcher
+
+| ID | Task | Assignee | Status | Notes |
+|----|------|----------|--------|-------|
+| 13.1 | Добавить хостовый консольный запуск через sixel с рендером карты через `embedded-graphics` | Codex | DONE | Отдельный standalone package `sixel-console/` по аналогии с `tdeck`; поддерживает `--save`, `--tmx` и генерацию по seed, рисует в framebuffer через `embedded-graphics` и кодирует sixel в stdout |
+| 13.2 | Подогнать `sixel-console` под все доступное место терминала при запуске | Codex | DONE | Размер viewport теперь по умолчанию берется из terminal size; `--max-width/--max-height` остались как manual override |
+| 13.3 | Зафиксировать размер клетки `64px` и добавить интерактивный цикл с выходом по `Ctrl+Q` | Codex | DONE | `sixel-console` теперь рендерит viewport фиксированными `64px` тайлами, держит процесс живым, слушает raw keyboard input через `crossterm` и завершает loop по `Ctrl+Q` |
