@@ -24,10 +24,11 @@ use rpg_engine::spawn;
 use rpg_engine::team::Team;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
 use rpg_tiled::read_tmx;
+use sdl2::controller::{Axis, Button, GameController};
 use sdl2::event::Event;
 use sdl2::keyboard::{Keycode, Mod};
 use sdl2::pixels::PixelFormatEnum;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
     tile_width: 64,
@@ -115,6 +116,7 @@ fn main() {
 
 fn run() -> AppResult<()> {
     let sdl = sdl2::init().map_err(boxed_error)?;
+    let game_controller = sdl.game_controller().map_err(boxed_error)?;
     let video = sdl.video().map_err(boxed_error)?;
     let window = video
         .window("weave of realms", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT)
@@ -151,6 +153,7 @@ fn run() -> AppResult<()> {
     let mut last_output_size = initial_size;
     let mut needs_redraw = true;
     let mut framebuffer = Framebuffer::new(initial_render_size, BACKGROUND)?;
+    let mut controllers: Vec<GameController> = open_controllers(&game_controller);
     app_state.clamp_view_to_layout(app_layout(initial_render_size));
 
     'running: loop {
@@ -184,6 +187,48 @@ fn run() -> AppResult<()> {
                     ..
                 } => {
                     let input = map_key_event(keycode, keymod);
+                    if app_state.handle_input(
+                        &mut host,
+                        input,
+                        app_layout(logical_render_size(last_output_size)),
+                    ) {
+                        needs_redraw = true;
+                    }
+                }
+                Event::ControllerDeviceAdded { which, .. } => {
+                    if game_controller.is_game_controller(which) {
+                        match game_controller.open(which) {
+                            Ok(c) => {
+                                info!(name = c.name(), "controller connected");
+                                controllers.push(c);
+                            }
+                            Err(e) => warn!("failed to open controller {which}: {e}"),
+                        }
+                    }
+                }
+                Event::ControllerDeviceRemoved { which, .. } => {
+                    controllers.retain(|c| c.instance_id() != which);
+                    info!(id = which, "controller disconnected");
+                }
+                Event::ControllerButtonDown { button, .. } => {
+                    let input = map_controller_button(button);
+                    if app_state.handle_input(
+                        &mut host,
+                        input,
+                        app_layout(logical_render_size(last_output_size)),
+                    ) {
+                        needs_redraw = true;
+                    }
+                }
+                Event::ControllerAxisMotion { axis, value, .. } => {
+                    const DEAD_ZONE: i16 = 16_000;
+                    let input = match axis {
+                        Axis::LeftX if value > DEAD_ZONE => InputEvent::Right,
+                        Axis::LeftX if value < -DEAD_ZONE => InputEvent::Left,
+                        Axis::LeftY if value > DEAD_ZONE => InputEvent::Down,
+                        Axis::LeftY if value < -DEAD_ZONE => InputEvent::Up,
+                        _ => InputEvent::None,
+                    };
                     if app_state.handle_input(
                         &mut host,
                         input,
@@ -654,6 +699,35 @@ fn minimum_output_size() -> Size {
         logical_minimum.width * OUTPUT_SCALE as u32,
         logical_minimum.height * OUTPUT_SCALE as u32,
     )
+}
+
+fn open_controllers(subsystem: &sdl2::GameControllerSubsystem) -> Vec<GameController> {
+    let count = subsystem.num_joysticks().unwrap_or(0);
+    let mut out = Vec::new();
+    for i in 0..count {
+        if subsystem.is_game_controller(i) {
+            match subsystem.open(i) {
+                Ok(c) => {
+                    info!(name = c.name(), "controller connected");
+                    out.push(c);
+                }
+                Err(e) => warn!("failed to open controller {i}: {e}"),
+            }
+        }
+    }
+    out
+}
+
+fn map_controller_button(button: Button) -> InputEvent {
+    match button {
+        Button::DPadUp => InputEvent::Up,
+        Button::DPadDown => InputEvent::Down,
+        Button::DPadLeft => InputEvent::Left,
+        Button::DPadRight => InputEvent::Right,
+        Button::A | Button::Start => InputEvent::Enter,
+        Button::B | Button::Back => InputEvent::Back,
+        _ => InputEvent::None,
+    }
 }
 
 fn boxed_error<E>(error: E) -> Box<dyn std::error::Error>
