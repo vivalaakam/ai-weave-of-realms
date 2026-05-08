@@ -37,10 +37,10 @@ const TILESET_TILE_H: usize = 16;
 const TILESET_MASK_BYTES: usize = (TILESET_TILE_W * TILESET_TILE_H + 7) / 8; // 25
 
 // Grass tile indices within the atlas (tiles 5, 6, 7 from monochrome-transparent_packed.png).
-const GRASS_INDICES: [usize; 3] = [6, 7, 8];
+const GRASS_INDICES: [usize; 3] = [5, 6, 7];
 const GRASS_TILE_COUNT: usize = GRASS_INDICES.len();
 
-const FOREST_INDICES: [usize; 6] = [56, 57, 58, 59, 60, 61];
+const FOREST_INDICES: [usize; 6] = [49, 50, 51, 52, 53, 54];
 const FOREST_TILE_COUNT: usize = FOREST_INDICES.len();
 
 const TILE_WIDTH: u32 = 32;
