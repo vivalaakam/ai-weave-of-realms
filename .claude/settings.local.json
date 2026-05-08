@@ -7,7 +7,8 @@
       "Bash(cargo run:*)",
       "Bash(just build:*)",
       "Bash(git *)",
-      "Bash(cargo tree *)"
+      "Bash(cargo tree *)",
+      "Bash(grep -E \"\\\\.\\(png|jpg|bmp\\)$\")"
     ]
   }
 }

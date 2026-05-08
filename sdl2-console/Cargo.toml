@@ -7,6 +7,7 @@ description = "Standalone SDL2 launcher for AI RPG using embedded-graphics."
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 embedded-graphics = "0.8.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
 rpg-embedded = { path = "../crates/rpg-embedded" }
 rpg-engine = { path = "../crates/rpg-engine" }
 rpg-mapgen = { path = "../crates/rpg-mapgen" }
