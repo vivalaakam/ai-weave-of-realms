@@ -1,9 +1,11 @@
 //! Runtime system information for the T-Deck.
 
+use alloc::{format, string::ToString, vec};
 use esp_hal::Blocking;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::analog::adc::AdcCalCurve;
 use esp_hal::peripherals::{ADC1, GPIO4};
+use rpg_embedded::info_overlay::InfoOverlay;
 
 const BATTERY_DIVIDER_RATIO: u32 = 2;
 const BATTERY_EMPTY_MV: u32 = 3300;
@@ -19,6 +21,24 @@ pub struct SystemInfoSnapshot {
     pub ram_used_bytes: usize,
     /// Total configured heap bytes.
     pub ram_total_bytes: usize,
+}
+
+impl SystemInfoSnapshot {
+    /// Converts this snapshot into the shared modal overlay model.
+    pub fn to_info_overlay(&self) -> InfoOverlay {
+        InfoOverlay::new(
+            "System Info".to_string(),
+            vec![
+                format!("Battery: {}% ({} mV)", self.battery_percent, self.battery_mv),
+                format!(
+                    "RAM: {}/{} KB",
+                    self.ram_used_bytes / 1024,
+                    self.ram_total_bytes / 1024
+                ),
+            ],
+            "Enter or q: close".to_string(),
+        )
+    }
 }
 
 /// Reads system metrics from ADC and heap allocator state.

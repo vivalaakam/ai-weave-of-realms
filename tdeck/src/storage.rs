@@ -43,8 +43,6 @@ pub enum AppError {
     NoMapsFound,
     /// No save files were found.
     NoSavesFound,
-    /// Compile-time requested map is not present on the SD card.
-    InvalidConfiguredMap,
     /// The parsed map could not be accepted by `rpg-engine`.
     Engine(String),
 }
@@ -304,16 +302,8 @@ pub fn error_message(error: AppError) -> String {
         AppError::SaveDirMissing => "Folder /savegame was not found on the SD card".to_string(),
         AppError::NoMapsFound => "No .rpgs maps were found in /maps".to_string(),
         AppError::NoSavesFound => "No save files were found in /savegame".to_string(),
-        AppError::InvalidConfiguredMap => {
-            "TDECK_START_MAP does not match any map in /maps".to_string()
-        }
         AppError::Engine(message) => format!("Engine error: {message}"),
     }
-}
-
-/// Returns `true` when both names match case-insensitively.
-pub fn names_match(left: &str, right: &str) -> bool {
-    left.eq_ignore_ascii_case(right)
 }
 
 fn read_save_name_in_dir<D>(

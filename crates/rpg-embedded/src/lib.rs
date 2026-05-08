@@ -7,9 +7,12 @@
 
 extern crate alloc;
 
+pub mod app;
+pub mod info_overlay;
 pub mod input;
 pub mod list;
 pub mod map_view;
 pub mod render;
+pub mod save_overlay;
 pub mod session;
 pub mod splash;

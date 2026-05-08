@@ -1,14 +1,10 @@
-//! Standalone console launcher that renders AI RPG maps as sixel graphics.
+//! Standalone SDL2 launcher that renders AI RPG maps via `embedded-graphics`.
 
-use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::Parser;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::OriginDimensions;
 use embedded_graphics::pixelcolor::Rgb888;
@@ -28,7 +24,9 @@ use rpg_engine::spawn;
 use rpg_engine::team::Team;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
 use rpg_tiled::read_tmx;
-use terminal_size::{Height, Width, terminal_size};
+use sdl2::event::Event;
+use sdl2::keyboard::{Keycode, Mod};
+use sdl2::pixels::PixelFormatEnum;
 use tracing::{error, info};
 
 const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
@@ -41,12 +39,16 @@ const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
 const BACKGROUND: Rgb888 = Rgb888::new(20, 22, 26);
 const SPLASH_BACKGROUND: Rgb888 = Rgb888::new(36, 0, 72);
 const TEXT: Rgb888 = Rgb888::new(235, 238, 242);
-const OUTPUT_SCALE: usize = 2;
+const OUTPUT_SCALE: usize = 4;
+const INITIAL_WINDOW_WIDTH: u32 = 720;
+const INITIAL_WINDOW_HEIGHT: u32 = 720;
+const MIN_WINDOW_WIDTH: u32 = 320;
+const MIN_WINDOW_HEIGHT: u32 = 240;
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Clone, Debug, Parser)]
-#[command(name = "weave-of-realms-sixel", author, version, about)]
+#[command(name = "weave-of-realms-sdl2", author, version, about)]
 struct Args {
     /// Load a saved game state from an .rpgs file.
     #[arg(long)]
@@ -85,30 +87,16 @@ struct Args {
     evaluator: Option<PathBuf>,
 }
 
-struct RawModeGuard;
-
-struct ConsoleHost {
+struct SdlHost {
     args: Args,
+    screen_size: Size,
 }
 
 #[derive(Debug)]
-enum ConsoleHostError {
+enum HostError {
     Message(String),
-    Io(io::Error),
+    Io(std::io::Error),
     Engine(String),
-}
-
-impl RawModeGuard {
-    fn new() -> AppResult<Self> {
-        enable_raw_mode()?;
-        Ok(Self)
-    }
-}
-
-impl Drop for RawModeGuard {
-    fn drop(&mut self) {
-        let _ = disable_raw_mode();
-    }
 }
 
 fn main() {
@@ -117,20 +105,40 @@ fn main() {
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
-        .with_writer(io::stderr)
         .init();
 
     if let Err(error) = run() {
-        error!(%error, "sixel launcher failed");
+        error!(%error, "sdl2 launcher failed");
         std::process::exit(1);
     }
 }
 
 fn run() -> AppResult<()> {
-    let mut host = ConsoleHost { args: Args::parse() };
-    let _raw_mode = RawModeGuard::new()?;
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
+    let sdl = sdl2::init().map_err(boxed_error)?;
+    let video = sdl.video().map_err(boxed_error)?;
+    let window = video
+        .window("weave of realms", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT)
+        .position_centered()
+        .resizable()
+        .allow_highdpi()
+        .build()
+        .map_err(boxed_error)?;
+    let mut canvas = window
+        .into_canvas()
+        .accelerated()
+        .present_vsync()
+        .build()
+        .map_err(boxed_error)?;
+    let texture_creator = canvas.texture_creator();
+    let mut event_pump = sdl.event_pump().map_err(boxed_error)?;
+
+    let size = canvas.output_size().map_err(boxed_error)?;
+    let initial_size = window_size(size.0, size.1);
+    let initial_render_size = logical_render_size(initial_size);
+    let mut host = SdlHost {
+        args: Args::parse(),
+        screen_size: initial_size,
+    };
     let mut app_state = EmbeddedApp::new(
         &mut host,
         LaunchConfig {
@@ -140,47 +148,64 @@ fn run() -> AppResult<()> {
         },
     );
     let mut render_cache = AppRenderCache::default();
-    let mut last_output_size: Option<Size> = None;
+    let mut last_output_size = initial_size;
     let mut needs_redraw = true;
+    app_state.clamp_view_to_layout(app_layout(initial_render_size));
 
-    loop {
-        let output_size = detect_screen_size();
-        let render_size = logical_render_size(output_size);
-        if last_output_size != Some(output_size) {
-            app_state.clamp_view_to_layout(app_layout(render_size));
-            last_output_size = Some(output_size);
-            needs_redraw = true;
-        }
-
-        if needs_redraw {
-            let framebuffer = render_frame(render_size, app_state.screen(), &mut render_cache)?;
-            write_frame(&mut handle, &framebuffer)?;
-            needs_redraw = false;
-        }
-
-        if event::poll(Duration::from_millis(120))? {
-            match event::read()? {
-                Event::Key(key)
-                    if key.code == KeyCode::Char('q')
-                        && key.modifiers.contains(KeyModifiers::CONTROL) =>
-                {
-                    clear_screen(&mut handle)?;
-                    handle.flush()?;
-                    break;
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. } => break 'running,
+                Event::Window {
+                    win_event: sdl2::event::WindowEvent::SizeChanged(width, height),
+                    ..
                 }
-                Event::Key(key) => {
-                    if app_state.handle_input(&mut host, map_key_event(key), app_layout(render_size))
-                    {
+                | Event::Window {
+                    win_event: sdl2::event::WindowEvent::Resized(width, height),
+                    ..
+                } => {
+                    let output_size = window_size(width as u32, height as u32);
+                    host.screen_size = output_size;
+                    app_state.clamp_view_to_layout(app_layout(logical_render_size(output_size)));
+                    last_output_size = output_size;
+                    needs_redraw = true;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Q),
+                    keymod,
+                    repeat: false,
+                    ..
+                } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => break 'running,
+                Event::KeyDown {
+                    keycode: Some(keycode),
+                    keymod,
+                    repeat: false,
+                    ..
+                } => {
+                    let input = map_key_event(keycode, keymod);
+                    if app_state.handle_input(
+                        &mut host,
+                        input,
+                        app_layout(logical_render_size(last_output_size)),
+                    ) {
                         needs_redraw = true;
                     }
-                }
-                Event::Resize(_, _) => {
-                    last_output_size = None;
-                    needs_redraw = true;
                 }
                 _ => {}
             }
         }
+
+        if needs_redraw {
+            let framebuffer = render_frame(
+                logical_render_size(last_output_size),
+                app_state.screen(),
+                &mut render_cache,
+            )?;
+            present_frame(&mut canvas, &texture_creator, &framebuffer)?;
+            needs_redraw = false;
+        }
+
+        std::thread::sleep(Duration::from_millis(16));
     }
 
     Ok(())
@@ -204,8 +229,8 @@ fn load_state(args: &Args, map_path: Option<&Path>) -> AppResult<GameState> {
     build_default_state(map, &args.seed)
 }
 
-impl AppHost for ConsoleHost {
-    type Error = ConsoleHostError;
+impl AppHost for SdlHost {
+    type Error = HostError;
 
     fn discover_maps(&mut self) -> Result<Vec<ListEntry>, Self::Error> {
         let mut entries = discover_rpgs_dir(Path::new("maps"), "map:")?;
@@ -235,40 +260,40 @@ impl AppHost for ConsoleHost {
     fn load_map(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error> {
         if let Some(path) = entry.id.strip_prefix("tmx:") {
             let state = load_state(&self.args, Some(Path::new(path)))
-                .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
+                .map_err(|error| HostError::Engine(error.to_string()))?;
             return Ok(LoadedGame {
                 map_name: entry.label.clone(),
                 state,
             });
         }
         if entry.id.starts_with("generated:") {
-            let state =
-                load_state(&self.args, None).map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
+            let state = load_state(&self.args, None)
+                .map_err(|error| HostError::Engine(error.to_string()))?;
             return Ok(LoadedGame {
                 map_name: entry.label.clone(),
                 state,
             });
         }
         if let Some(path) = entry.id.strip_prefix("map:") {
-            let bytes = fs::read(path).map_err(ConsoleHostError::Io)?;
+            let bytes = fs::read(path).map_err(HostError::Io)?;
             let state = GameState::from_save_bytes(&bytes)
-                .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
+                .map_err(|error| HostError::Engine(error.to_string()))?;
             return Ok(LoadedGame {
                 map_name: entry.label.clone(),
                 state,
             });
         }
-        Err(ConsoleHostError::Message("Unknown map entry".to_string()))
+        Err(HostError::Message("Unknown map entry".to_string()))
     }
 
     fn load_save(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error> {
         let path = entry
             .id
             .strip_prefix("save:")
-            .ok_or_else(|| ConsoleHostError::Message("Unknown save entry".to_string()))?;
-        let bytes = fs::read(path).map_err(ConsoleHostError::Io)?;
+            .ok_or_else(|| HostError::Message("Unknown save entry".to_string()))?;
+        let bytes = fs::read(path).map_err(HostError::Io)?;
         let state = GameState::from_save_bytes(&bytes)
-            .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
+            .map_err(|error| HostError::Engine(error.to_string()))?;
         Ok(LoadedGame {
             map_name: entry.label.clone(),
             state,
@@ -277,21 +302,20 @@ impl AppHost for ConsoleHost {
 
     fn save_game(&mut self, name: &str, state: &GameState) -> Result<(), Self::Error> {
         let dir = Path::new("savegame");
-        fs::create_dir_all(dir).map_err(ConsoleHostError::Io)?;
+        fs::create_dir_all(dir).map_err(HostError::Io)?;
         let file_name = sanitize_save_filename(name);
         let path = dir.join(file_name);
         let bytes = state
             .to_save_bytes_with_name(name)
-            .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-        fs::write(path, bytes).map_err(ConsoleHostError::Io)
+            .map_err(|error| HostError::Engine(error.to_string()))?;
+        fs::write(path, bytes).map_err(HostError::Io)
     }
 
     fn info_overlay(&mut self) -> Option<InfoOverlay> {
-        let screen_size = detect_screen_size();
         Some(InfoOverlay::new(
             "System Info".to_string(),
             vec![
-                format!("Viewport: {}x{}", screen_size.width, screen_size.height),
+                format!("Viewport: {}x{}", self.screen_size.width, self.screen_size.height),
                 format!("Seed: {}", self.args.seed),
             ],
             "Enter or q: close".to_string(),
@@ -300,27 +324,27 @@ impl AppHost for ConsoleHost {
 
     fn error_message(&self, error: Self::Error) -> String {
         match error {
-            ConsoleHostError::Message(message) => message,
-            ConsoleHostError::Io(error) => format!("I/O error: {error}"),
-            ConsoleHostError::Engine(message) => format!("Engine error: {message}"),
+            HostError::Message(message) => message,
+            HostError::Io(error) => format!("I/O error: {error}"),
+            HostError::Engine(message) => format!("Engine error: {message}"),
         }
     }
 }
 
-fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>, ConsoleHostError> {
+fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>, HostError> {
     let mut entries: Vec<ListEntry> = Vec::new();
     if !dir.is_dir() {
         return Ok(entries);
     }
 
-    let read_dir = fs::read_dir(dir).map_err(ConsoleHostError::Io)?;
+    let read_dir = fs::read_dir(dir).map_err(HostError::Io)?;
     for entry in read_dir {
-        let entry = entry.map_err(ConsoleHostError::Io)?;
+        let entry = entry.map_err(HostError::Io)?;
         let path = entry.path();
         if !is_rpgs_path(&path) {
             continue;
         }
-        let metadata = entry.metadata().map_err(ConsoleHostError::Io)?;
+        let metadata = entry.metadata().map_err(HostError::Io)?;
         let label = read_save_name(&path).unwrap_or_else(|| file_label(&path));
         entries.push(ListEntry {
             id: format!("{prefix}{}", path.display()),
@@ -331,8 +355,8 @@ fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>, Console
     Ok(entries)
 }
 
-fn file_entry(prefix: &str, path: &Path) -> Result<ListEntry, ConsoleHostError> {
-    let metadata = fs::metadata(path).map_err(ConsoleHostError::Io)?;
+fn file_entry(prefix: &str, path: &Path) -> Result<ListEntry, HostError> {
+    let metadata = fs::metadata(path).map_err(HostError::Io)?;
     Ok(ListEntry {
         id: format!("{prefix}{}", path.display()),
         label: file_label(path),
@@ -450,48 +474,53 @@ fn build_default_state(map: GameMap, seed: &str) -> AppResult<GameState> {
     Ok(state)
 }
 
-fn detect_screen_size() -> Size {
-    let minimum = minimum_output_size();
-    if let Some((Width(columns), Height(rows))) = terminal_size() {
-        let width = u32::from(columns).saturating_mul(10);
-        let height = u32::from(rows.saturating_sub(2)).saturating_mul(20);
-        Size::new(
-            width.max(minimum.width),
-            height.max(minimum.height),
-        )
-    } else {
-        Size::new(minimum.width.max(240), minimum.height.max(160))
-    }
-}
-
-fn logical_render_size(output_size: Size) -> Size {
-    let minimum_width = MAP_RENDER_CONFIG.tile_width;
-    let minimum_height =
-        MAP_RENDER_CONFIG.header_height + MAP_RENDER_CONFIG.footer_height + MAP_RENDER_CONFIG.tile_height;
-    Size::new(
-        (output_size.width / OUTPUT_SCALE as u32).max(minimum_width),
-        (output_size.height / OUTPUT_SCALE as u32).max(minimum_height),
-    )
-}
-
-fn minimum_output_size() -> Size {
-    let logical_minimum = logical_render_size(Size::new(0, 0));
-    Size::new(
-        logical_minimum.width * OUTPUT_SCALE as u32,
-        logical_minimum.height * OUTPUT_SCALE as u32,
-    )
-}
-
-fn map_key_event(key: crossterm::event::KeyEvent) -> InputEvent {
-    match key.code {
-        KeyCode::Enter => InputEvent::Enter,
-        KeyCode::Char(' ') => InputEvent::Enter,
-        KeyCode::Esc | KeyCode::Backspace => InputEvent::Back,
-        KeyCode::Up => InputEvent::Up,
-        KeyCode::Down => InputEvent::Down,
-        KeyCode::Left => InputEvent::Left,
-        KeyCode::Right => InputEvent::Right,
-        KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => InputEvent::Key(ch),
+fn map_key_event(keycode: Keycode, keymod: Mod) -> InputEvent {
+    match keycode {
+        Keycode::Return | Keycode::Space => InputEvent::Enter,
+        Keycode::Escape | Keycode::Backspace => InputEvent::Back,
+        Keycode::Up => InputEvent::Up,
+        Keycode::Down => InputEvent::Down,
+        Keycode::Left => InputEvent::Left,
+        Keycode::Right => InputEvent::Right,
+        Keycode::A if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('a'),
+        Keycode::B if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('b'),
+        Keycode::C if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('c'),
+        Keycode::D if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('d'),
+        Keycode::E if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('e'),
+        Keycode::F if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('f'),
+        Keycode::G if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('g'),
+        Keycode::H if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('h'),
+        Keycode::I if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('i'),
+        Keycode::J if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('j'),
+        Keycode::K if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('k'),
+        Keycode::L if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('l'),
+        Keycode::M if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('m'),
+        Keycode::N if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('n'),
+        Keycode::O if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('o'),
+        Keycode::P if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('p'),
+        Keycode::Q if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('q'),
+        Keycode::R if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('r'),
+        Keycode::S if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('s'),
+        Keycode::T if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('t'),
+        Keycode::U if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('u'),
+        Keycode::V if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('v'),
+        Keycode::W if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('w'),
+        Keycode::X if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('x'),
+        Keycode::Y if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('y'),
+        Keycode::Z if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('z'),
+        Keycode::Num0 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('0'),
+        Keycode::Num1 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('1'),
+        Keycode::Num2 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('2'),
+        Keycode::Num3 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('3'),
+        Keycode::Num4 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('4'),
+        Keycode::Num5 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('5'),
+        Keycode::Num6 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('6'),
+        Keycode::Num7 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('7'),
+        Keycode::Num8 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('8'),
+        Keycode::Num9 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('9'),
+        Keycode::Minus if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('-'),
+        Keycode::Underscore if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('_'),
+        Keycode::Period if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('.'),
         _ => InputEvent::None,
     }
 }
@@ -573,153 +602,63 @@ fn team_color(team_id: usize) -> Rgb888 {
     }
 }
 
-fn write_frame<W: Write>(writer: &mut W, framebuffer: &Framebuffer) -> AppResult<()> {
-    clear_screen(writer)?;
-    write_sixel(writer, framebuffer)?;
-    writer.flush()?;
-    Ok(())
-}
-
-fn clear_screen<W: Write>(writer: &mut W) -> io::Result<()> {
-    writer.write_all(b"\x1b[2J\x1b[H")
-}
-
-fn write_sixel<W: Write>(writer: &mut W, framebuffer: &Framebuffer) -> AppResult<()> {
-    let width = framebuffer.size.width as usize * OUTPUT_SCALE;
-    let height = framebuffer.size.height as usize * OUTPUT_SCALE;
-    let (palette, indices) = palette_indexed_pixels_scaled(framebuffer, OUTPUT_SCALE)?;
-
-    writer.write_all(b"\x1bPq")?;
-    for (index, color) in palette.iter().enumerate() {
-        let r = sixel_percent(color.r());
-        let g = sixel_percent(color.g());
-        let b = sixel_percent(color.b());
-        write!(writer, "#{index};2;{r};{g};{b}")?;
-    }
-
-    for band_y in (0..height).step_by(6) {
-        let colors_in_band = colors_in_band(&indices, width, height, band_y, palette.len());
-        for (color_pos, color_index) in colors_in_band.iter().enumerate() {
-            write!(writer, "#{color_index}")?;
-            let mut runs: Vec<(u8, usize)> = Vec::with_capacity(width);
-
-            for x in 0..width {
-                let mut pattern = 0u8;
-                for bit in 0..6usize {
-                    let y = band_y + bit;
-                    if y >= height {
-                        continue;
-                    }
-                    let pixel_index = y * width + x;
-                    if indices[pixel_index] == *color_index as u16 {
-                        pattern |= 1u8 << bit;
-                    }
-                }
-                push_run(&mut runs, pattern.saturating_add(63));
-            }
-
-            for (value, count) in runs {
-                if count >= 4 {
-                    write!(writer, "!{count}{}", char::from(value))?;
-                } else {
-                    for _ in 0..count {
-                        writer.write_all(&[value])?;
-                    }
-                }
-            }
-
-            if color_pos + 1 < colors_in_band.len() {
-                writer.write_all(b"$")?;
-            }
-        }
-        writer.write_all(b"-")?;
-    }
-
-    writer.write_all(b"\x1b\\")?;
-    Ok(())
-}
-
-fn palette_indexed_pixels_scaled(
+fn present_frame(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    texture_creator: &sdl2::render::TextureCreator<sdl2::video::WindowContext>,
     framebuffer: &Framebuffer,
-    scale: usize,
-) -> AppResult<(Vec<Rgb888>, Vec<u16>)> {
-    let mut palette: Vec<Rgb888> = Vec::new();
-    let mut palette_map: HashMap<u32, u16> = HashMap::new();
-    let src_width = framebuffer.size.width as usize;
-    let src_height = framebuffer.size.height as usize;
-    let scaled_len = src_width
-        .checked_mul(scale)
-        .and_then(|value| value.checked_mul(src_height))
-        .and_then(|value| value.checked_mul(scale))
-        .ok_or("scaled framebuffer size overflow")?;
-    let mut indices = Vec::with_capacity(scaled_len);
-
-    for y in 0..src_height {
-        let row_start = y * src_width;
-        let row = &framebuffer.pixels[row_start..row_start + src_width];
-        for _ in 0..scale {
-            for color in row {
-                let key = ((color.r() as u32) << 16) | ((color.g() as u32) << 8) | color.b() as u32;
-                let index = if let Some(index) = palette_map.get(&key) {
-                    *index
-                } else {
-                    let next = u16::try_from(palette.len())?;
-                    if next >= 256 {
-                        return Err("sixel palette exceeded 256 colors".into());
-                    }
-                    palette.push(*color);
-                    palette_map.insert(key, next);
-                    next
-                };
-                for _ in 0..scale {
-                    indices.push(index);
-                }
-            }
-        }
-    }
-
-    Ok((palette, indices))
+) -> AppResult<()> {
+    let mut texture = texture_creator
+        .create_texture_streaming(
+            PixelFormatEnum::RGB24,
+            framebuffer.size.width * OUTPUT_SCALE as u32,
+            framebuffer.size.height * OUTPUT_SCALE as u32,
+        )
+        .map_err(boxed_error)?;
+    let bytes = framebuffer.rgb_bytes_scaled(OUTPUT_SCALE);
+    texture
+        .update(
+            None,
+            &bytes,
+            framebuffer.size.width as usize * OUTPUT_SCALE * 3,
+        )
+        .map_err(boxed_error)?;
+    canvas.clear();
+    canvas.copy(&texture, None, None).map_err(boxed_error)?;
+    canvas.present();
+    Ok(())
 }
 
-fn colors_in_band(
-    indices: &[u16],
-    width: usize,
-    height: usize,
-    band_y: usize,
-    palette_len: usize,
-) -> Vec<usize> {
-    let mut seen = vec![false; palette_len];
-    for bit in 0..6usize {
-        let y = band_y + bit;
-        if y >= height {
-            continue;
-        }
-        for x in 0..width {
-            let color = indices[y * width + x] as usize;
-            if color < seen.len() {
-                seen[color] = true;
-            }
-        }
-    }
-
-    seen.into_iter()
-        .enumerate()
-        .filter_map(|(index, present)| present.then_some(index))
-        .collect()
+fn window_size(width: u32, height: u32) -> Size {
+    let minimum = minimum_output_size();
+    Size::new(width.max(MIN_WINDOW_WIDTH).max(minimum.width), height.max(MIN_WINDOW_HEIGHT).max(minimum.height))
 }
 
-fn push_run(runs: &mut Vec<(u8, usize)>, value: u8) {
-    if let Some((last, count)) = runs.last_mut() {
-        if *last == value {
-            *count += 1;
-            return;
-        }
-    }
-    runs.push((value, 1));
+fn logical_render_size(output_size: Size) -> Size {
+    let minimum_width = MAP_RENDER_CONFIG.tile_width;
+    let minimum_height =
+        MAP_RENDER_CONFIG.header_height + MAP_RENDER_CONFIG.footer_height + MAP_RENDER_CONFIG.tile_height;
+    Size::new(
+        (output_size.width / OUTPUT_SCALE as u32).max(minimum_width),
+        (output_size.height / OUTPUT_SCALE as u32).max(minimum_height),
+    )
 }
 
-fn sixel_percent(component: u8) -> u8 {
-    (((component as u16) * 100) / 255) as u8
+fn minimum_output_size() -> Size {
+    let logical_minimum = logical_render_size(Size::new(0, 0));
+    Size::new(
+        logical_minimum.width * OUTPUT_SCALE as u32,
+        logical_minimum.height * OUTPUT_SCALE as u32,
+    )
+}
+
+fn boxed_error<E>(error: E) -> Box<dyn std::error::Error>
+where
+    E: ToString,
+{
+    Box::new(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        error.to_string(),
+    ))
 }
 
 struct Framebuffer {
@@ -729,28 +668,40 @@ struct Framebuffer {
 
 impl Framebuffer {
     fn new(size: Size, background: Rgb888) -> AppResult<Self> {
-        let len = usize::try_from(size.width)?
-            .checked_mul(usize::try_from(size.height)?)
-            .ok_or("framebuffer size overflow")?;
+        let len = usize::try_from(size.width)
+            .ok()
+            .and_then(|width| usize::try_from(size.height).ok().map(|height| width.saturating_mul(height)))
+            .ok_or_else(|| "framebuffer dimensions overflow".to_string())?;
         Ok(Self {
             size,
             pixels: vec![background; len],
         })
     }
 
-    fn index_of(&self, point: Point) -> Option<usize> {
-        if point.x < 0 || point.y < 0 {
-            return None;
+    fn rgb_bytes_scaled(&self, scale: usize) -> Vec<u8> {
+        let src_width = self.size.width as usize;
+        let src_height = self.size.height as usize;
+        let mut bytes = Vec::with_capacity(src_width * src_height * scale * scale * 3);
+        for y in 0..src_height {
+            let row_start = y * src_width;
+            let row = &self.pixels[row_start..row_start + src_width];
+            for _ in 0..scale {
+                for color in row {
+                    for _ in 0..scale {
+                        bytes.push(color.r());
+                        bytes.push(color.g());
+                        bytes.push(color.b());
+                    }
+                }
+            }
         }
+        bytes
+    }
+}
 
-        let x = usize::try_from(point.x).ok()?;
-        let y = usize::try_from(point.y).ok()?;
-        let width = usize::try_from(self.size.width).ok()?;
-        let height = usize::try_from(self.size.height).ok()?;
-        if x >= width || y >= height {
-            return None;
-        }
-        Some(y * width + x)
+impl OriginDimensions for Framebuffer {
+    fn size(&self) -> Size {
+        self.size
     }
 }
 
@@ -763,16 +714,23 @@ impl DrawTarget for Framebuffer {
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
         for Pixel(point, color) in pixels {
-            if let Some(index) = self.index_of(point) {
-                self.pixels[index] = color;
+            if point.x < 0
+                || point.y < 0
+                || point.x >= self.size.width as i32
+                || point.y >= self.size.height as i32
+            {
+                continue;
+            }
+            let index = point.y as usize * self.size.width as usize + point.x as usize;
+            if let Some(pixel) = self.pixels.get_mut(index) {
+                *pixel = color;
             }
         }
         Ok(())
     }
-}
 
-impl OriginDimensions for Framebuffer {
-    fn size(&self) -> Size {
-        self.size
+    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
+        self.pixels.fill(color);
+        Ok(())
     }
 }

@@ -13,13 +13,12 @@ extern crate alloc;
 mod app;
 mod input;
 mod render;
-mod screens;
 mod storage;
 mod system_info;
 
 use core::cell::RefCell;
 
-use app::{LaunchConfig, initial_screen};
+use app::LaunchConfig;
 use embedded_graphics::prelude::Dimensions;
 use embedded_hal_bus::spi::RefCellDevice;
 use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeManager};
@@ -146,7 +145,7 @@ fn main() -> ! {
 
     let launch = LaunchConfig::from_env();
     let mut system_info = system_info::SystemInfoReader::new(peripherals.ADC1, peripherals.GPIO4);
-    let mut screen = initial_screen(&volume_mgr, &launch);
+    let mut app_state = app::initial_screen(&volume_mgr, &launch, &mut system_info);
     let mut needs_redraw = true;
     let mut render_cache = RenderCache::default();
     let mut input_state = input::InputState::new(
@@ -169,11 +168,12 @@ fn main() -> ! {
             &mut input_state,
         );
 
+        app::clamp_to_screen(&mut app_state, screen_size);
+
         if app::handle_event(
-            &mut screen,
+            &mut app_state,
             event,
             &volume_mgr,
-            &launch,
             &mut system_info,
             screen_size,
         ) {
@@ -181,7 +181,7 @@ fn main() -> ! {
         }
 
         if needs_redraw {
-            render::draw_screen(&mut display, &screen, screen_size, &mut render_cache);
+            render::draw_screen(&mut display, &app_state, screen_size, &mut render_cache);
             needs_redraw = false;
         }
 

@@ -14,8 +14,14 @@ use rpg_engine::hero::HeroId;
 use rpg_engine::map::game_map::MapCoord;
 use rpg_engine::map::tile::Tiles;
 
-use crate::map_view::{InteractionMode, MapViewApp};
+use crate::app::{
+    AppScreen, MapViewScreen, APP_TITLE, MAP_LIST_FOOTER, MAP_LIST_TITLE, SAVE_LIST_FOOTER,
+    SAVE_LIST_TITLE, SPLASH_FOOTER, SPLASH_OPTIONS,
+};
+use crate::info_overlay::InfoOverlay;
 use crate::list::ListScreen;
+use crate::map_view::{InteractionMode, MapViewApp};
+use crate::save_overlay::SaveOverlay;
 use crate::splash::SplashScreen;
 
 const EMPTY_TILE: u32 = u32::MAX;
@@ -83,10 +89,47 @@ where
     pub selected_fill: C,
 }
 
+/// Shared theme colors for save-overlay rendering.
+#[derive(Clone, Copy)]
+pub struct SaveOverlayTheme<C>
+where
+    C: PixelColor + Copy,
+{
+    /// Background fill color.
+    pub panel_fill: C,
+    /// Border stroke color.
+    pub panel_stroke: C,
+    /// Main text color.
+    pub text: C,
+    /// Highlight fill for selected rows.
+    pub selected_fill: C,
+}
+
+/// Shared theme colors for info-overlay rendering.
+#[derive(Clone, Copy)]
+pub struct InfoOverlayTheme<C>
+where
+    C: PixelColor + Copy,
+{
+    /// Background fill color.
+    pub panel_fill: C,
+    /// Border stroke color.
+    pub panel_stroke: C,
+    /// Main text color.
+    pub text: C,
+}
+
 /// Cached state used to avoid redrawing unchanged map cells.
 #[derive(Default)]
 pub struct RenderCache {
     map_view: Option<MapViewCache>,
+}
+
+/// Shared cache used by the top-level screen renderer.
+#[derive(Default)]
+pub struct AppRenderCache {
+    map_view: RenderCache,
+    overlay_visible: bool,
 }
 
 struct MapViewCache {
@@ -118,6 +161,142 @@ pub fn reset_cache(render_cache: &mut RenderCache) {
     render_cache.map_view = None;
 }
 
+/// Shared theme bundle for all top-level screens.
+#[derive(Clone, Copy)]
+pub struct AppTheme<C>
+where
+    C: PixelColor + Copy,
+{
+    /// Splash-screen colors.
+    pub splash: SplashTheme<C>,
+    /// Shared list colors.
+    pub list: ListTheme<C>,
+    /// Shared gameplay colors.
+    pub map_view: MapViewTheme<C>,
+    /// Shared save-overlay colors.
+    pub save_overlay: SaveOverlayTheme<C>,
+    /// Shared info-overlay colors.
+    pub info_overlay: InfoOverlayTheme<C>,
+}
+
+/// Draws the current shared top-level app screen.
+///
+/// # Arguments
+/// * `display` - Platform draw target.
+/// * `screen_size` - Full drawable screen size in pixels.
+/// * `screen` - Shared current screen state.
+/// * `render_cache` - Shared app render cache.
+/// * `config` - Shared map-view geometry.
+/// * `theme` - Device-specific color bundle.
+/// * `list_rows` - Number of visible rows in selector screens.
+/// * `save_rows` - Number of visible rows in the save overlay load-list.
+pub fn draw_app_screen<D, C>(
+    display: &mut D,
+    screen_size: Size,
+    screen: &AppScreen,
+    render_cache: &mut AppRenderCache,
+    config: RenderConfig,
+    theme: AppTheme<C>,
+    list_rows: usize,
+    save_rows: usize,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    match screen {
+        AppScreen::Splash(splash) => {
+            reset_cache(&mut render_cache.map_view);
+            render_cache.overlay_visible = false;
+            draw_splash_screen(
+                display,
+                screen_size,
+                splash,
+                APP_TITLE,
+                &SPLASH_OPTIONS,
+                SPLASH_FOOTER,
+                theme.splash,
+            );
+        }
+        AppScreen::MapSelect(map_select) => {
+            reset_cache(&mut render_cache.map_view);
+            render_cache.overlay_visible = false;
+            draw_list_screen(
+                display,
+                screen_size,
+                map_select,
+                MAP_LIST_TITLE,
+                MAP_LIST_FOOTER,
+                list_rows,
+                theme.list,
+            );
+        }
+        AppScreen::SaveSelect(save_select) => {
+            reset_cache(&mut render_cache.map_view);
+            render_cache.overlay_visible = false;
+            draw_list_screen(
+                display,
+                screen_size,
+                save_select,
+                SAVE_LIST_TITLE,
+                SAVE_LIST_FOOTER,
+                list_rows,
+                theme.list,
+            );
+        }
+        AppScreen::MapView(map_view) => {
+            draw_app_map_view(
+                display,
+                screen_size,
+                map_view.as_ref(),
+                render_cache,
+                config,
+                theme,
+                save_rows,
+            );
+        }
+    }
+}
+
+fn draw_app_map_view<D, C>(
+    display: &mut D,
+    screen_size: Size,
+    map_view: &MapViewScreen,
+    render_cache: &mut AppRenderCache,
+    config: RenderConfig,
+    theme: AppTheme<C>,
+    save_rows: usize,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    let overlay_visible = map_view.info_overlay.is_some() || map_view.save_overlay.is_some();
+    if render_cache.overlay_visible != overlay_visible {
+        reset_cache(&mut render_cache.map_view);
+        render_cache.overlay_visible = overlay_visible;
+    }
+
+    draw_map_view(
+        display,
+        screen_size,
+        &map_view.app,
+        &mut render_cache.map_view,
+        config,
+        theme.map_view,
+    );
+
+    if let Some(save_overlay) = &map_view.save_overlay {
+        draw_save_overlay(
+            display,
+            screen_size,
+            save_overlay,
+            theme.save_overlay,
+            save_rows,
+        );
+    } else if let Some(info_overlay) = &map_view.info_overlay {
+        draw_info_overlay(display, screen_size, info_overlay, theme.info_overlay);
+    }
+}
+
 /// Draws a shared splash screen with a centered title and menu.
 ///
 /// # Arguments
@@ -142,7 +321,8 @@ pub fn draw_splash_screen<D, C>(
 {
     halt_on_error(display.clear(theme.background));
 
-    let title_style = MonoTextStyle::new(&embedded_graphics::mono_font::ascii::FONT_10X20, theme.text);
+    let title_style =
+        MonoTextStyle::new(&embedded_graphics::mono_font::ascii::FONT_10X20, theme.text);
     let body_style = MonoTextStyle::new(&FONT_6X10, theme.text);
 
     let center_x = (screen_size.width / 2) as i32;
@@ -238,14 +418,23 @@ pub fn draw_list_screen<D, C>(
             );
         }
 
-        let prefix = if entry_index == list.selected { ">" } else { " " };
+        let prefix = if entry_index == list.selected {
+            ">"
+        } else {
+            " "
+        };
         let entry = &list.entries[entry_index];
         let line = format!("{prefix} {} ({}b)", entry.label, entry.meta);
         halt_on_error(Text::new(&line, Point::new(6, y), text_style).draw(display));
     }
 
     halt_on_error(
-        Text::new(footer, Point::new(4, screen_size.height as i32 - 2), text_style).draw(display),
+        Text::new(
+            footer,
+            Point::new(4, screen_size.height as i32 - 2),
+            text_style,
+        )
+        .draw(display),
     );
 
     if let Some(status_text) = list.status.as_deref() {
@@ -258,6 +447,238 @@ pub fn draw_list_screen<D, C>(
             .draw(display),
         );
     }
+}
+
+/// Draws a shared save/load overlay.
+///
+/// # Arguments
+/// * `display` - Platform draw target.
+/// * `screen_size` - Full drawable screen size in pixels.
+/// * `overlay` - Save overlay state.
+/// * `theme` - Device-specific panel colors.
+/// * `visible_rows` - Number of rows visible in the load-list panel.
+pub fn draw_save_overlay<D, C>(
+    display: &mut D,
+    screen_size: Size,
+    overlay: &SaveOverlay,
+    theme: SaveOverlayTheme<C>,
+    visible_rows: usize,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    let box_width: u32 = 204;
+    let box_height: u32 = 120;
+    let origin_x = ((screen_size.width - box_width) / 2) as i32;
+    let origin_y = ((screen_size.height - box_height) / 2) as i32;
+    let text_style = MonoTextStyle::new(&FONT_6X10, theme.text);
+    let selected_style = PrimitiveStyle::with_fill(theme.selected_fill);
+
+    halt_on_error(
+        Rectangle::new(
+            Point::new(origin_x, origin_y),
+            Size::new(box_width, box_height),
+        )
+        .into_styled(PrimitiveStyle::with_fill(theme.panel_fill))
+        .draw(display),
+    );
+    halt_on_error(
+        Rectangle::new(
+            Point::new(origin_x, origin_y),
+            Size::new(box_width, box_height),
+        )
+        .into_styled(PrimitiveStyle::with_stroke(theme.panel_stroke, 1))
+        .draw(display),
+    );
+
+    match overlay {
+        SaveOverlay::Menu { selected, status } => {
+            halt_on_error(
+                Text::new(
+                    "Save Menu",
+                    Point::new(origin_x + 8, origin_y + 14),
+                    text_style,
+                )
+                .draw(display),
+            );
+            let entries = ["Save Game", "Load Game", "Cancel"];
+            for (idx, label) in entries.iter().enumerate() {
+                let y = origin_y + 36 + (idx as i32 * 14);
+                if idx == *selected {
+                    halt_on_error(
+                        Rectangle::new(
+                            Point::new(origin_x + 4, y - 9),
+                            Size::new(box_width - 8, 12),
+                        )
+                        .into_styled(selected_style)
+                        .draw(display),
+                    );
+                }
+                let prefix = if idx == *selected { ">" } else { " " };
+                let line = format!("{prefix} {label}");
+                halt_on_error(
+                    Text::new(&line, Point::new(origin_x + 8, y), text_style).draw(display),
+                );
+            }
+            halt_on_error(
+                Text::new(
+                    "Enter: select  Back: close",
+                    Point::new(origin_x + 8, origin_y + 102),
+                    text_style,
+                )
+                .draw(display),
+            );
+            if let Some(status) = status.as_deref() {
+                halt_on_error(
+                    Text::new(status, Point::new(origin_x + 8, origin_y + 90), text_style)
+                        .draw(display),
+                );
+            }
+        }
+        SaveOverlay::SaveName { name, status } => {
+            halt_on_error(
+                Text::new(
+                    "Save Name",
+                    Point::new(origin_x + 8, origin_y + 14),
+                    text_style,
+                )
+                .draw(display),
+            );
+            let name_line = format!("> {name}_");
+            halt_on_error(
+                Text::new(
+                    &name_line,
+                    Point::new(origin_x + 8, origin_y + 38),
+                    text_style,
+                )
+                .draw(display),
+            );
+            halt_on_error(
+                Text::new(
+                    "Type name  Enter: save  Back: delete/close",
+                    Point::new(origin_x + 8, origin_y + 102),
+                    text_style,
+                )
+                .draw(display),
+            );
+            if let Some(status) = status.as_deref() {
+                halt_on_error(
+                    Text::new(status, Point::new(origin_x + 8, origin_y + 74), text_style)
+                        .draw(display),
+                );
+            }
+        }
+        SaveOverlay::LoadList { list } => {
+            halt_on_error(
+                Text::new(
+                    "Load Game",
+                    Point::new(origin_x + 8, origin_y + 14),
+                    text_style,
+                )
+                .draw(display),
+            );
+            let end = core::cmp::min(list.scroll + visible_rows, list.entries.len());
+            for (row, entry_index) in (list.scroll..end).enumerate() {
+                let y = origin_y + 34 + (row as i32 * 14);
+                if entry_index == list.selected {
+                    halt_on_error(
+                        Rectangle::new(
+                            Point::new(origin_x + 4, y - 9),
+                            Size::new(box_width - 8, 12),
+                        )
+                        .into_styled(selected_style)
+                        .draw(display),
+                    );
+                }
+                let prefix = if entry_index == list.selected {
+                    ">"
+                } else {
+                    " "
+                };
+                let line = format!("{prefix} {}", list.entries[entry_index].label);
+                halt_on_error(
+                    Text::new(&line, Point::new(origin_x + 8, y), text_style).draw(display),
+                );
+            }
+            halt_on_error(
+                Text::new(
+                    "Up/Down: select  Enter: load  Back: close",
+                    Point::new(origin_x + 8, origin_y + 102),
+                    text_style,
+                )
+                .draw(display),
+            );
+            if let Some(status) = list.status.as_deref() {
+                halt_on_error(
+                    Text::new(status, Point::new(origin_x + 8, origin_y + 90), text_style)
+                        .draw(display),
+                );
+            }
+        }
+    }
+}
+
+/// Draws a shared informational overlay.
+///
+/// # Arguments
+/// * `display` - Platform draw target.
+/// * `screen_size` - Full drawable screen size in pixels.
+/// * `overlay` - Informational overlay state.
+/// * `theme` - Device-specific panel colors.
+pub fn draw_info_overlay<D, C>(
+    display: &mut D,
+    screen_size: Size,
+    overlay: &InfoOverlay,
+    theme: InfoOverlayTheme<C>,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    let box_width: u32 = 188;
+    let box_height: u32 = 92;
+    let origin_x = ((screen_size.width - box_width) / 2) as i32;
+    let origin_y = ((screen_size.height - box_height) / 2) as i32;
+    let text_style = MonoTextStyle::new(&FONT_6X10, theme.text);
+
+    halt_on_error(
+        Rectangle::new(
+            Point::new(origin_x, origin_y),
+            Size::new(box_width, box_height),
+        )
+        .into_styled(PrimitiveStyle::with_fill(theme.panel_fill))
+        .draw(display),
+    );
+    halt_on_error(
+        Rectangle::new(
+            Point::new(origin_x, origin_y),
+            Size::new(box_width, box_height),
+        )
+        .into_styled(PrimitiveStyle::with_stroke(theme.panel_stroke, 1))
+        .draw(display),
+    );
+
+    halt_on_error(
+        Text::new(
+            &overlay.title,
+            Point::new(origin_x + 8, origin_y + 14),
+            text_style,
+        )
+        .draw(display),
+    );
+
+    for (index, line) in overlay.lines.iter().enumerate() {
+        let y = origin_y + 34 + (index as i32 * 14);
+        halt_on_error(Text::new(line, Point::new(origin_x + 8, y), text_style).draw(display));
+    }
+
+    halt_on_error(
+        Text::new(
+            &overlay.footer,
+            Point::new(origin_x + 8, origin_y + 74),
+            text_style,
+        )
+        .draw(display),
+    );
 }
 
 /// Draws the shared gameplay map view.

@@ -1,5 +1,6 @@
 /target/
 /output/
 /tmp/
-/tdeck/target/
-/sixel-console/target/
+/**/target/
+/maps/
+/savegame/

@@ -7,7 +7,7 @@ members = [
     "crates/rpg-godot",
     "crates/rpg-tools"
 ]
-exclude = ["tdeck", "sixel-console"]
+exclude = ["tdeck", "sixel-console", "sdl2-console"]
 resolver = "2"
 
 [workspace.dependencies]
