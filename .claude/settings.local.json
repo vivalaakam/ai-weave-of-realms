@@ -8,7 +8,8 @@
       "Bash(just build:*)",
       "Bash(git *)",
       "Bash(cargo tree *)",
-      "Bash(grep -E \"\\\\.\\(png|jpg|bmp\\)$\")"
+      "Bash(grep -E \"\\\\.\\(png|jpg|bmp\\)$\")",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute"
     ]
   }
 }

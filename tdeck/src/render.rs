@@ -40,6 +40,15 @@ fn tile_color(tile: rpg_engine::map::tile::Tiles) -> Rgb565 {
     Rgb565::new(r >> 3, g >> 2, b >> 3)
 }
 
+fn tile_sprite_color(tile: rpg_engine::map::tile::Tiles) -> Rgb565 {
+    let (r, g, b) = tile.as_color();
+    Rgb565::new(
+        r.saturating_add(40) >> 3,
+        g.saturating_add(30) >> 2,
+        b.saturating_add(10) >> 3,
+    )
+}
+
 fn team_color(team_id: usize) -> Rgb565 {
     match team_id {
         0 => Rgb565::new(27, 12, 12),
@@ -67,6 +76,7 @@ fn app_theme() -> AppTheme<Rgb565> {
             enemy_spawn: Rgb565::RED,
             chest: Rgb565::YELLOW,
             tile_color,
+            tile_sprite_color,
             team_color,
         },
         save_overlay: SaveOverlayTheme {

@@ -8,6 +8,10 @@ description = "Development tools for the AI RPG project (map generation tester, 
 name = "mapgen"
 path = "src/bin/mapgen.rs"
 
+[[bin]]
+name = "pack-tiles"
+path = "src/bin/pack_tiles.rs"
+
 [dependencies]
 rpg-engine = { path = "../rpg-engine" }
 rpg-mapgen = { path = "../rpg-mapgen" }

@@ -14,12 +14,12 @@ use rpg_embedded::info_overlay::InfoOverlay;
 use rpg_embedded::input::InputEvent;
 use rpg_embedded::list::ListEntry;
 use rpg_embedded::render::{
-    AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme, MapViewTheme, RenderConfig,
-    SaveOverlayTheme, SplashTheme, draw_app_screen, visible_tiles,
+    draw_app_screen, visible_tiles, AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme,
+    MapViewTheme, RenderConfig, SaveOverlayTheme, SplashTheme,
 };
 use rpg_engine::game_state::GameState;
 use rpg_engine::hero::Hero;
-use rpg_engine::map::game_map::{GameMap, MapCoord};
+use rpg_engine::map::game_map::GameMap;
 use rpg_engine::map::tile::Tiles;
 use rpg_engine::spawn;
 use rpg_engine::team::Team;
@@ -32,8 +32,6 @@ use sdl2::pixels::PixelFormatEnum;
 use tracing::{error, info, warn};
 
 const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
-    tile_width: 64,
-    tile_height: 64,
     header_height: 28,
     footer_height: 16,
 };
@@ -120,7 +118,11 @@ fn run() -> AppResult<()> {
     let game_controller = sdl.game_controller().map_err(boxed_error)?;
     let video = sdl.video().map_err(boxed_error)?;
     let window = video
-        .window("weave of realms", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT)
+        .window(
+            "weave of realms",
+            INITIAL_WINDOW_WIDTH,
+            INITIAL_WINDOW_HEIGHT,
+        )
         .position_centered()
         .resizable()
         .allow_highdpi()
@@ -155,7 +157,6 @@ fn run() -> AppResult<()> {
     let mut needs_redraw = true;
     let mut framebuffer = Framebuffer::new(initial_render_size, BACKGROUND)?;
     let mut controllers: Vec<GameController> = open_controllers(&game_controller);
-    let tileset = Tileset::load(Path::new("assets/monochrome-transparent_packed.png"));
     app_state.clamp_view_to_layout(app_layout(initial_render_size));
 
     'running: loop {
@@ -253,7 +254,6 @@ fn run() -> AppResult<()> {
                 app_state.screen(),
                 &mut render_cache,
                 &mut framebuffer,
-                tileset.as_ref(),
             );
             present_frame(&mut canvas, &texture_creator, &framebuffer)?;
             needs_redraw = false;
@@ -369,7 +369,10 @@ impl AppHost for SdlHost {
         Some(InfoOverlay::new(
             "System Info".to_string(),
             vec![
-                format!("Viewport: {}x{}", self.screen_size.width, self.screen_size.height),
+                format!(
+                    "Viewport: {}x{}",
+                    self.screen_size.width, self.screen_size.height
+                ),
                 format!("Seed: {}", self.args.seed),
             ],
             "Enter or q: close".to_string(),
@@ -573,8 +576,12 @@ fn map_key_event(keycode: Keycode, keymod: Mod) -> InputEvent {
         Keycode::Num8 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('8'),
         Keycode::Num9 if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('9'),
         Keycode::Minus if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('-'),
-        Keycode::Underscore if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('_'),
-        Keycode::Period if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('.'),
+        Keycode::Underscore if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
+            InputEvent::Key('_')
+        }
+        Keycode::Period if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
+            InputEvent::Key('.')
+        }
         _ => InputEvent::None,
     }
 }
@@ -584,7 +591,6 @@ fn render_frame(
     screen: &AppScreen,
     render_cache: &mut AppRenderCache,
     framebuffer: &mut Framebuffer,
-    tileset: Option<&Tileset>,
 ) {
     draw_app_screen(
         framebuffer,
@@ -596,9 +602,6 @@ fn render_frame(
         app_layout(screen_size).list_rows,
         app_layout(screen_size).save_rows,
     );
-    if let Some(ts) = tileset {
-        draw_tile_sprites(screen, framebuffer, ts, screen_size);
-    }
 }
 
 fn app_layout(screen_size: Size) -> AppLayout {
@@ -630,6 +633,7 @@ fn app_theme() -> AppTheme<Rgb888> {
             enemy_spawn: Rgb888::new(255, 120, 120),
             chest: Rgb888::new(248, 198, 66),
             tile_color,
+            tile_sprite_color,
             team_color,
         },
         save_overlay: SaveOverlayTheme {
@@ -646,9 +650,18 @@ fn app_theme() -> AppTheme<Rgb888> {
     }
 }
 
-fn tile_color(tile: rpg_engine::map::tile::Tiles) -> Rgb888 {
+fn tile_color(tile: Tiles) -> Rgb888 {
     let (r, g, b) = tile.as_color();
     Rgb888::new(r, g, b)
+}
+
+fn tile_sprite_color(tile: Tiles) -> Rgb888 {
+    let (r, g, b) = tile.as_color();
+    Rgb888::new(
+        r.saturating_add(40),
+        g.saturating_add(30),
+        b.saturating_add(10),
+    )
 }
 
 fn team_color(team_id: usize) -> Rgb888 {
@@ -687,13 +700,15 @@ fn present_frame(
 
 fn window_size(width: u32, height: u32) -> Size {
     let minimum = minimum_output_size();
-    Size::new(width.max(MIN_WINDOW_WIDTH).max(minimum.width), height.max(MIN_WINDOW_HEIGHT).max(minimum.height))
+    Size::new(
+        width.max(MIN_WINDOW_WIDTH).max(minimum.width),
+        height.max(MIN_WINDOW_HEIGHT).max(minimum.height),
+    )
 }
 
 fn logical_render_size(output_size: Size) -> Size {
-    let minimum_width = MAP_RENDER_CONFIG.tile_width;
-    let minimum_height =
-        MAP_RENDER_CONFIG.header_height + MAP_RENDER_CONFIG.footer_height + MAP_RENDER_CONFIG.tile_height;
+    let minimum_width = 32;
+    let minimum_height = MAP_RENDER_CONFIG.header_height + MAP_RENDER_CONFIG.footer_height + 32;
     Size::new(
         (output_size.width / OUTPUT_SCALE as u32).max(minimum_width),
         (output_size.height / OUTPUT_SCALE as u32).max(minimum_height),
@@ -747,118 +762,6 @@ where
     ))
 }
 
-struct Tileset {
-    pixels: Vec<[u8; 4]>,
-    img_width: usize,
-    tile_size: usize,
-    cols: usize,
-}
-
-impl Tileset {
-    fn load(path: &Path) -> Option<Self> {
-        let img = image::open(path).ok()?.into_rgba8();
-        let img_width = img.width() as usize;
-        let tile_size = 16;
-        let cols = img_width / tile_size;
-        let pixels = img.pixels().map(|p| p.0).collect();
-        Some(Self { pixels, img_width, tile_size, cols })
-    }
-
-    fn draw_tile(
-        &self,
-        fb_pixels: &mut Vec<Rgb888>,
-        fb_width: usize,
-        fb_height: usize,
-        tile_index: usize,
-        dest_x: i32,
-        dest_y: i32,
-        dest_size: u32,
-        tint: Rgb888,
-    ) {
-        let col = tile_index % self.cols;
-        let row = tile_index / self.cols;
-        let src_x = col * self.tile_size;
-        let src_y = row * self.tile_size;
-        let scale = (dest_size as usize / self.tile_size).max(1);
-
-        for sy in 0..self.tile_size {
-            for sx in 0..self.tile_size {
-                let px_idx = (src_y + sy) * self.img_width + (src_x + sx);
-                let Some([_r, _g, _b, a]) = self.pixels.get(px_idx).copied() else { continue };
-                if a < 128 { continue; }
-
-                for dy in 0..scale {
-                    for dx in 0..scale {
-                        let px = dest_x + (sx * scale + dx) as i32;
-                        let py = dest_y + (sy * scale + dy) as i32;
-                        if px < 0 || py < 0 || px >= fb_width as i32 || py >= fb_height as i32 {
-                            continue;
-                        }
-                        let idx = py as usize * fb_width + px as usize;
-                        if let Some(pixel) = fb_pixels.get_mut(idx) {
-                            *pixel = tint;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-const GRASS_TILE_INDICES: [usize; 3] = [5, 6, 7];
-
-fn draw_tile_sprites(
-    screen: &AppScreen,
-    framebuffer: &mut Framebuffer,
-    tileset: &Tileset,
-    screen_size: Size,
-) {
-    let AppScreen::MapView(map_view_screen) = screen else { return };
-    let map_view = &map_view_screen.app;
-    let (visible_cols, visible_rows) = visible_tiles(screen_size, MAP_RENDER_CONFIG);
-    let map = &map_view.session().state().map;
-    let map_width = map.tile_width() as usize;
-    let map_height = map.tile_height() as usize;
-    let fb_width = framebuffer.size.width as usize;
-    let fb_height = framebuffer.size.height as usize;
-
-    for row in 0..visible_rows {
-        for col in 0..visible_cols {
-            let map_x = map_view.view_x() + col;
-            let map_y = map_view.view_y() + row;
-            if map_x >= map_width || map_y >= map_height { continue; }
-
-            let coord = MapCoord::new(map_x as u32, map_y as u32);
-            let Ok(tile) = map.get_tile(coord) else { continue };
-
-            let tile_index = match tile.kind {
-                Tiles::Meadow => GRASS_TILE_INDICES[(map_x * 31 + map_y * 17) % 3],
-                _ => continue,
-            };
-
-            let x = (col as u32 * MAP_RENDER_CONFIG.tile_width) as i32;
-            let y = (MAP_RENDER_CONFIG.header_height + row as u32 * MAP_RENDER_CONFIG.tile_height) as i32;
-            let (r, g, b) = tile.kind.as_color();
-            let tint = Rgb888::new(
-                r.saturating_add(40),
-                g.saturating_add(30),
-                b.saturating_add(10),
-            );
-
-            tileset.draw_tile(
-                &mut framebuffer.pixels,
-                fb_width,
-                fb_height,
-                tile_index,
-                x,
-                y,
-                MAP_RENDER_CONFIG.tile_width,
-                tint,
-            );
-        }
-    }
-}
-
 struct Framebuffer {
     size: Size,
     pixels: Vec<Rgb888>,
@@ -868,7 +771,11 @@ impl Framebuffer {
     fn new(size: Size, background: Rgb888) -> AppResult<Self> {
         let len = usize::try_from(size.width)
             .ok()
-            .and_then(|width| usize::try_from(size.height).ok().map(|height| width.saturating_mul(height)))
+            .and_then(|width| {
+                usize::try_from(size.height)
+                    .ok()
+                    .map(|height| width.saturating_mul(height))
+            })
             .ok_or_else(|| "framebuffer dimensions overflow".to_string())?;
         Ok(Self {
             size,

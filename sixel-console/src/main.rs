@@ -544,6 +544,7 @@ fn app_theme() -> AppTheme<Rgb888> {
             enemy_spawn: Rgb888::new(255, 120, 120),
             chest: Rgb888::new(248, 198, 66),
             tile_color,
+            tile_sprite_color,
             team_color,
         },
         save_overlay: SaveOverlayTheme {
@@ -563,6 +564,11 @@ fn app_theme() -> AppTheme<Rgb888> {
 fn tile_color(tile: rpg_engine::map::tile::Tiles) -> Rgb888 {
     let (r, g, b) = tile.as_color();
     Rgb888::new(r, g, b)
+}
+
+fn tile_sprite_color(tile: rpg_engine::map::tile::Tiles) -> Rgb888 {
+    let (r, g, b) = tile.as_color();
+    Rgb888::new(r.saturating_add(40), g.saturating_add(30), b.saturating_add(10))
 }
 
 fn team_color(team_id: usize) -> Rgb888 {
