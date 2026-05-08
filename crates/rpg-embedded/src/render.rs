@@ -138,6 +138,8 @@ struct MapViewCache {
     map_height: usize,
     visible_cols: usize,
     visible_rows: usize,
+    view_x: usize,
+    view_y: usize,
     visible_cells: Vec<u32>,
 }
 
@@ -728,6 +730,8 @@ pub fn draw_map_view<D, C>(
                 || cache.map_height != map_height
                 || cache.visible_cols != visible_cols
                 || cache.visible_rows != visible_rows
+                || cache.view_x != map_view.view_x()
+                || cache.view_y != map_view.view_y()
         }
         None => true,
     };
@@ -740,6 +744,8 @@ pub fn draw_map_view<D, C>(
             map_height,
             visible_cols,
             visible_rows,
+            view_x: map_view.view_x(),
+            view_y: map_view.view_y(),
             visible_cells: vec![EMPTY_TILE; visible_cols * visible_rows],
         });
     }

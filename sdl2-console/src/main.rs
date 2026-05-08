@@ -39,7 +39,7 @@ const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
 const BACKGROUND: Rgb888 = Rgb888::new(20, 22, 26);
 const SPLASH_BACKGROUND: Rgb888 = Rgb888::new(36, 0, 72);
 const TEXT: Rgb888 = Rgb888::new(235, 238, 242);
-const OUTPUT_SCALE: usize = 4;
+const OUTPUT_SCALE: usize = 2;
 const INITIAL_WINDOW_WIDTH: u32 = 720;
 const INITIAL_WINDOW_HEIGHT: u32 = 720;
 const MIN_WINDOW_WIDTH: u32 = 320;
@@ -150,6 +150,7 @@ fn run() -> AppResult<()> {
     let mut render_cache = AppRenderCache::default();
     let mut last_output_size = initial_size;
     let mut needs_redraw = true;
+    let mut framebuffer = Framebuffer::new(initial_render_size, BACKGROUND)?;
     app_state.clamp_view_to_layout(app_layout(initial_render_size));
 
     'running: loop {
@@ -196,11 +197,16 @@ fn run() -> AppResult<()> {
         }
 
         if needs_redraw {
-            let framebuffer = render_frame(
-                logical_render_size(last_output_size),
+            let render_size = logical_render_size(last_output_size);
+            if framebuffer.size != render_size {
+                framebuffer = Framebuffer::new(render_size, BACKGROUND)?;
+            }
+            render_frame(
+                render_size,
                 app_state.screen(),
                 &mut render_cache,
-            )?;
+                &mut framebuffer,
+            );
             present_frame(&mut canvas, &texture_creator, &framebuffer)?;
             needs_redraw = false;
         }
@@ -529,10 +535,10 @@ fn render_frame(
     screen_size: Size,
     screen: &rpg_embedded::app::AppScreen,
     render_cache: &mut AppRenderCache,
-) -> AppResult<Framebuffer> {
-    let mut framebuffer = Framebuffer::new(screen_size, BACKGROUND)?;
+    framebuffer: &mut Framebuffer,
+) {
     draw_app_screen(
-        &mut framebuffer,
+        framebuffer,
         screen_size,
         screen,
         render_cache,
@@ -541,7 +547,6 @@ fn render_frame(
         app_layout(screen_size).list_rows,
         app_layout(screen_size).save_rows,
     );
-    Ok(framebuffer)
 }
 
 fn app_layout(screen_size: Size) -> AppLayout {

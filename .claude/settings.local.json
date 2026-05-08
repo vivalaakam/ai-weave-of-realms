@@ -5,7 +5,8 @@
       "Bash(cargo test:*)",
       "Bash(cargo build:*)",
       "Bash(cargo run:*)",
-      "Bash(just build:*)"
+      "Bash(just build:*)",
+      "Bash(git *)"
     ]
   }
 }

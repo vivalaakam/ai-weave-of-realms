@@ -101,19 +101,38 @@ pub fn generate_chunk(seed: [u8; 32], script: &LuaScript) -> Result<Chunk, Error
 
 ---
 
+## Build & Development Commands
+
+```sh
+just build          # debug GDExtension + sync assets → godot/bin/
+just build-release  # release build
+just test           # cargo test --workspace
+just run            # build + launch Godot
+just editor         # build + open Godot editor
+just mapgen         # generate map PNG+TMX via scripts/generators/terrain.lua
+just clean          # cargo clean + remove godot/bin and godot/scripts
+```
+
+Run a single test: `cargo test -p <crate> <test_name>`
+
+---
+
 ## Project Structure
 
 ```
 ai-rpg-v2/
-├── PLAN.md          # Architecture and phase plan
-├── TASKS.md         # Task tracking (always up to date)
 ├── AGENTS.md        # This file
+├── TASKS.md         # Task tracking (always up to date)
+├── MAP_GENERATION_RULES.md  # Authoritative map gen spec
 ├── Cargo.toml       # Workspace root
+├── justfile         # All dev commands
 ├── crates/
-│   ├── rpg-engine/  # Pure game logic, zero Godot deps
-│   ├── rpg-mapgen/  # Map generator with Lua scripting
-│   ├── rpg-tiled/   # TMX import/export
-│   └── rpg-godot/   # Godot wrapper (gdext bridge)
+│   ├── rpg-engine/   # Pure game logic, zero Godot deps
+│   ├── rpg-mapgen/   # Map generator with Lua scripting
+│   ├── rpg-tiled/    # TMX import/export
+│   ├── rpg-godot/    # Godot wrapper (gdext bridge)
+│   ├── rpg-embedded/ # embedded-graphics primitives for T-Deck / terminal
+│   └── rpg-tools/    # CLI dev tools (mapgen bin)
 ├── godot/           # Godot 4 project
 └── scripts/         # Lua scripts (generation rules, validators, evaluators)
     ├── generators/
@@ -130,3 +149,5 @@ ai-rpg-v2/
 | `rpg-mapgen` | Chunk generation, stitching, Lua loader, evaluator, validator | No |
 | `rpg-tiled` | TMX parse/serialize, chunk↔TMX conversion | No |
 | `rpg-godot` | GodotNode wrappers, signals, scene bridging | Yes |
+| `rpg-embedded` | embedded-graphics UI primitives (T-Deck, sixel, SDL2) | No |
+| `rpg-tools` | `mapgen` CLI — renders map PNG+TMX for testing | No |
