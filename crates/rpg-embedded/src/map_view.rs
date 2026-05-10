@@ -45,13 +45,7 @@ impl MapViewApp {
     /// * `view_y` - Initial topmost visible tile row.
     /// * `status` - Initial status line.
     pub fn new(session: GameSession, view_x: usize, view_y: usize, status: Option<String>) -> Self {
-        Self {
-            session,
-            view_x,
-            view_y,
-            mode: InteractionMode::Pan,
-            status,
-        }
+        Self { session, view_x, view_y, mode: InteractionMode::Pan, status }
     }
 
     /// Returns the shared gameplay session.

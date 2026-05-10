@@ -63,9 +63,7 @@ pub fn game_map_to_lua_table(lua: &Lua, map: &GameMap) -> mlua::Result<Table> {
             return Ok("out_of_bounds".to_string());
         }
         let lua_idx = y * tw as i64 + x + 1;
-        let kind: String = tiles_for_get
-            .get(lua_idx)
-            .unwrap_or_else(|_| "unknown".to_string());
+        let kind: String = tiles_for_get.get(lua_idx).unwrap_or_else(|_| "unknown".to_string());
         Ok(kind)
     })?;
 

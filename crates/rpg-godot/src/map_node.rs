@@ -25,10 +25,7 @@ pub struct MapNode {
 #[godot_api]
 impl INode for MapNode {
     fn init(base: Base<Node>) -> Self {
-        Self {
-            base,
-            game_manager_path: NodePath::from("/root/GameManager"),
-        }
+        Self { base, game_manager_path: NodePath::from("/root/GameManager") }
     }
 }
 
@@ -43,10 +40,7 @@ impl MapNode {
     pub fn populate_tilemap(&mut self, tilemap: Gd<TileMapLayer>) {
         let manager = self.resolve_manager();
         let Some(gm) = manager else {
-            godot_warn!(
-                "MapNode: GameManager not found at {:?}",
-                self.game_manager_path
-            );
+            godot_warn!("MapNode: GameManager not found at {:?}", self.game_manager_path);
             return;
         };
 
@@ -72,26 +66,19 @@ impl MapNode {
                 let atlas_cols = Self::atlas_cols();
                 let col = ((gid - 1) as i32).clamp(0, atlas_cols - 1);
                 let cell = Vector2i::new(x as i32, y as i32);
-                tm.set_cell_ex(cell)
-                    .source_id(0)
-                    .atlas_coords(Vector2i::new(col, 0))
-                    .done();
+                tm.set_cell_ex(cell).source_id(0).atlas_coords(Vector2i::new(col, 0)).done();
             }
         }
         tm.update_internals();
 
-        self.base_mut().emit_signal(
-            "tilemap_populated",
-            &[width.to_variant(), height.to_variant()],
-        );
+        self.base_mut()
+            .emit_signal("tilemap_populated", &[width.to_variant(), height.to_variant()]);
     }
 
     /// Returns the tile kind string at `(x, y)` from `GameManager`.
     #[func]
     pub fn get_tile_kind(&self, x: i64, y: i64) -> GString {
-        self.resolve_manager()
-            .map(|gm| gm.bind().get_tile_kind(x, y))
-            .unwrap_or_default()
+        self.resolve_manager().map(|gm| gm.bind().get_tile_kind(x, y)).unwrap_or_default()
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

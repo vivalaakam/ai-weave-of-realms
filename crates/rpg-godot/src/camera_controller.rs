@@ -306,9 +306,7 @@ impl CameraController {
     }
 
     fn inside_polygon(point: Vector2, planes: &[HalfPlane; 4]) -> bool {
-        planes
-            .iter()
-            .all(|plane| plane.normal.dot(point) <= plane.constant + 0.001)
+        planes.iter().all(|plane| plane.normal.dot(point) <= plane.constant + 0.001)
     }
 
     fn closest_point_on_polygon(point: Vector2, polygon: &[Vector2]) -> Vector2 {

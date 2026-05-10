@@ -109,20 +109,14 @@ impl TileHighlight {
 
     fn map_tile_to_world(&self, tile: Vector2i) -> Option<Vector2> {
         let mut tilemap = self.tilemap_layer()?;
-        let local = tilemap
-            .call("map_to_local", &[tile.to_variant()])
-            .try_to::<Vector2>()
-            .ok()?;
+        let local = tilemap.call("map_to_local", &[tile.to_variant()]).try_to::<Vector2>().ok()?;
         Some(tilemap.to_global(local))
     }
 
     fn world_to_map_tile(&self, world: Vector2) -> Option<Vector2i> {
         let mut tilemap = self.tilemap_layer()?;
         let local = tilemap.to_local(world);
-        tilemap
-            .call("local_to_map", &[local.to_variant()])
-            .try_to::<Vector2i>()
-            .ok()
+        tilemap.call("local_to_map", &[local.to_variant()]).try_to::<Vector2i>().ok()
     }
 
     fn tilemap_layer(&self) -> Option<Gd<godot::classes::TileMapLayer>> {

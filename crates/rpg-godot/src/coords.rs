@@ -13,10 +13,7 @@ pub const TILE_H: f32 = 32.0;
 
 /// Converts tile grid coordinates to isometric world position.
 pub fn tile_to_world(tx: i32, ty: i32) -> Vector2 {
-    Vector2::new(
-        (tx - ty) as f32 * TILE_W * 0.5,
-        (tx + ty) as f32 * TILE_H * 0.5,
-    )
+    Vector2::new((tx - ty) as f32 * TILE_W * 0.5, (tx + ty) as f32 * TILE_H * 0.5)
 }
 
 /// Converts an isometric world position to the nearest tile grid coordinate.

@@ -103,20 +103,14 @@ mod tests {
     #[test]
     fn city_capture_awards_correct_points() {
         let mut board = ScoreBoard::new();
-        board.record(ScoreEvent::CityCapture {
-            city: MapCoord::new(5, 5),
-        });
+        board.record(ScoreEvent::CityCapture { city: MapCoord::new(5, 5) });
         assert_eq!(board.total(), CITY_CAPTURE_POINTS);
     }
 
     #[test]
     fn gold_awards_more_than_resource() {
-        let gold = ScoreEvent::GoldCollected {
-            coord: MapCoord::new(0, 0),
-        };
-        let res = ScoreEvent::ResourceCollected {
-            coord: MapCoord::new(0, 0),
-        };
+        let gold = ScoreEvent::GoldCollected { coord: MapCoord::new(0, 0) };
+        let res = ScoreEvent::ResourceCollected { coord: MapCoord::new(0, 0) };
         assert!(gold.points() > res.points());
     }
 }

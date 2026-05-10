@@ -33,11 +33,7 @@ impl GameSession {
     pub fn from_state(map_name: String, state: GameState) -> Result<Self, EngineError> {
         let selected_hero_id = select_hero(&state)
             .ok_or_else(|| EngineError::InvalidTiles("save has no heroes".to_string()))?;
-        Ok(Self {
-            map_name,
-            state,
-            selected_hero_id,
-        })
+        Ok(Self { map_name, state, selected_hero_id })
     }
 
     /// Returns the display name of the loaded map.
@@ -85,11 +81,7 @@ impl GameSession {
 
     /// Returns a short one-line status summary for HUD rendering.
     pub fn summary(&self) -> String {
-        let team = self
-            .state
-            .get_active_team()
-            .map(|active| active.name.as_str())
-            .unwrap_or("?");
+        let team = self.state.get_active_team().map(|active| active.name.as_str()).unwrap_or("?");
         let hero = self
             .state
             .hero(self.selected_hero_id)

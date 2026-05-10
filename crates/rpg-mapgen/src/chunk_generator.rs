@@ -48,14 +48,10 @@ impl ChunkGenerator {
         let source = std::fs::read_to_string(path)?;
         let lua = Lua::new();
 
-        let func: Function = lua
-            .load(&source)
-            .set_name(path.to_string_lossy().as_ref())
-            .eval()
-            .map_err(|source| Error::ScriptLoad {
-                path: path.to_string_lossy().into_owned(),
-                source,
-            })?;
+        let func: Function =
+            lua.load(&source).set_name(path.to_string_lossy().as_ref()).eval().map_err(
+                |source| Error::ScriptLoad { path: path.to_string_lossy().into_owned(), source },
+            )?;
 
         debug!(path = %path.display(), "chunk generator script loaded");
         Ok(Self { lua, func })
@@ -98,30 +94,20 @@ impl ChunkGenerator {
         base: Option<&Chunk>,
     ) -> Result<Chunk, Error> {
         let chunk_seed = derive_seed(map_seed, &coord.to_seed_context());
-        let rng = self
-            .lua
-            .create_userdata(LuaRng::new(chunk_seed))
-            .map_err(|source| Error::LuaExecution {
-                function: "create_userdata(LuaRng)".into(),
-                source,
-            })?;
+        let rng = self.lua.create_userdata(LuaRng::new(chunk_seed)).map_err(|source| {
+            Error::LuaExecution { function: "create_userdata(LuaRng)".into(), source }
+        })?;
 
         // Build base_value: a 1-indexed Lua table of tile kind strings, or Nil
         let base_value: Value = match base {
             Some(chunk) => {
-                let table = self
-                    .lua
-                    .create_table_with_capacity(CHUNK_TILE_COUNT, 0)
-                    .map_err(|source| Error::LuaExecution {
-                        function: "create_table(base_tiles)".into(),
-                        source,
+                let table =
+                    self.lua.create_table_with_capacity(CHUNK_TILE_COUNT, 0).map_err(|source| {
+                        Error::LuaExecution { function: "create_table(base_tiles)".into(), source }
                     })?;
                 for (i, tile) in chunk.tiles().iter().enumerate() {
                     table.raw_set(i + 1, tile.kind.as_str()).map_err(|source| {
-                        Error::LuaExecution {
-                            function: "base_table.set".into(),
-                            source,
-                        }
+                        Error::LuaExecution { function: "base_table.set".into(), source }
                     })?;
                 }
                 Value::Table(table)
@@ -132,10 +118,7 @@ impl ChunkGenerator {
         let tiles_table: Table = self
             .func
             .call((rng, coord.x, coord.y, base_value))
-            .map_err(|source| Error::LuaExecution {
-                function: "generate_chunk".into(),
-                source,
-            })?;
+            .map_err(|source| Error::LuaExecution { function: "generate_chunk".into(), source })?;
 
         debug!(cx = coord.x, cy = coord.y, "chunk generated, parsing tiles");
         parse_tiles_table(tiles_table, coord)
@@ -285,9 +268,8 @@ mod tests {
         let base_chunk = base_gen.generate(ChunkCoord::new(0, 0), &seed).unwrap();
 
         // Now generate with base — should copy through
-        let result = gen
-            .generate_with_base(ChunkCoord::new(0, 0), &seed, Some(&base_chunk))
-            .unwrap();
+        let result =
+            gen.generate_with_base(ChunkCoord::new(0, 0), &seed, Some(&base_chunk)).unwrap();
         assert_eq!(result.tiles(), base_chunk.tiles());
     }
 }

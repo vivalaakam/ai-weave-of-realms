@@ -95,9 +95,7 @@ impl GameManager {
         // Convert res:// path to an OS-absolute path so the Lua engine can open it.
         let gen_str = generator.to_string();
         let gen_abs = if gen_str.starts_with("res://") {
-            ProjectSettings::singleton()
-                .globalize_path(&gen_str)
-                .to_string()
+            ProjectSettings::singleton().globalize_path(&gen_str).to_string()
         } else {
             gen_str
         };
@@ -130,12 +128,9 @@ impl GameManager {
         self.state = Some(state);
 
         // Defer signal emission to avoid borrow conflicts in signal handlers
-        self.base_mut().call_deferred(
-            "emit_signal",
-            &["score_changed".to_variant(), 0i64.to_variant()],
-        );
         self.base_mut()
-            .call_deferred("emit_signal", &["map_ready".to_variant()]);
+            .call_deferred("emit_signal", &["score_changed".to_variant(), 0i64.to_variant()]);
+        self.base_mut().call_deferred("emit_signal", &["map_ready".to_variant()]);
         true
     }
 
@@ -150,9 +145,7 @@ impl GameManager {
     pub fn load_save(&mut self, path: GString) -> bool {
         let path_str = path.to_string();
         let abs_path = if path_str.starts_with("res://") || path_str.starts_with("user://") {
-            ProjectSettings::singleton()
-                .globalize_path(&path_str)
-                .to_string()
+            ProjectSettings::singleton().globalize_path(&path_str).to_string()
         } else {
             path_str
         };
@@ -175,12 +168,9 @@ impl GameManager {
 
         let score = state.score.total() as i64;
         self.state = Some(state);
-        self.base_mut().call_deferred(
-            "emit_signal",
-            &["score_changed".to_variant(), score.to_variant()],
-        );
         self.base_mut()
-            .call_deferred("emit_signal", &["map_ready".to_variant()]);
+            .call_deferred("emit_signal", &["score_changed".to_variant(), score.to_variant()]);
+        self.base_mut().call_deferred("emit_signal", &["map_ready".to_variant()]);
         true
     }
 
@@ -200,9 +190,7 @@ impl GameManager {
 
         let path_str = path.to_string();
         let abs_path = if path_str.starts_with("res://") || path_str.starts_with("user://") {
-            ProjectSettings::singleton()
-                .globalize_path(&path_str)
-                .to_string()
+            ProjectSettings::singleton().globalize_path(&path_str).to_string()
         } else {
             path_str
         };
@@ -402,8 +390,7 @@ impl GameManager {
                     );
                 }
                 TurnEvent::HeroDefeated { hero_id } => {
-                    self.base_mut()
-                        .emit_signal("hero_defeated", &[(*hero_id as i64).to_variant()]);
+                    self.base_mut().emit_signal("hero_defeated", &[(*hero_id as i64).to_variant()]);
                 }
                 _ => {}
             }
@@ -419,20 +406,14 @@ impl GameManager {
             None => return,
         };
 
-        let score = self
-            .state
-            .as_ref()
-            .map(|s| s.score.total() as i64)
-            .unwrap_or(0);
+        let score = self.state.as_ref().map(|s| s.score.total() as i64).unwrap_or(0);
 
         for ev in &events {
             if let TurnEvent::TurnAdvanced { turn } = ev {
-                self.base_mut()
-                    .emit_signal("turn_advanced", &[(*turn as i64).to_variant()]);
+                self.base_mut().emit_signal("turn_advanced", &[(*turn as i64).to_variant()]);
             }
         }
-        self.base_mut()
-            .emit_signal("score_changed", &[score.to_variant()]);
+        self.base_mut().emit_signal("score_changed", &[score.to_variant()]);
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -440,39 +421,27 @@ impl GameManager {
     /// Returns the current turn number (starts at 1).
     #[func]
     pub fn get_turn(&self) -> i64 {
-        self.state
-            .as_ref()
-            .map(|s| s.get_turn() as i64)
-            .unwrap_or(0)
+        self.state.as_ref().map(|s| s.get_turn() as i64).unwrap_or(0)
     }
 
     /// Returns the movement points remaining for hero `hero_id`, or -1 if not found.
     #[func]
     pub fn get_hero_mov_remaining(&self, hero_id: i64) -> i64 {
         let Some(state) = &self.state else { return -1 };
-        state
-            .hero(hero_id as HeroId)
-            .map(|h| h.mov_remaining as i64)
-            .unwrap_or(-1)
+        state.hero(hero_id as HeroId).map(|h| h.mov_remaining as i64).unwrap_or(-1)
     }
 
     /// Returns the maximum movement points for hero `hero_id`, or -1 if not found.
     #[func]
     pub fn get_hero_mov_max(&self, hero_id: i64) -> i64 {
         let Some(state) = &self.state else { return -1 };
-        state
-            .hero(hero_id as HeroId)
-            .map(|h| h.mov as i64)
-            .unwrap_or(-1)
+        state.hero(hero_id as HeroId).map(|h| h.mov as i64).unwrap_or(-1)
     }
 
     /// Returns the current total score.
     #[func]
     pub fn get_score(&self) -> i64 {
-        self.state
-            .as_ref()
-            .map(|s| s.score.total() as i64)
-            .unwrap_or(0)
+        self.state.as_ref().map(|s| s.score.total() as i64).unwrap_or(0)
     }
 
     /// Returns the tile kind string at `(x, y)`, e.g. `"meadow"`.
@@ -502,19 +471,13 @@ impl GameManager {
     /// Returns the map width in tiles.
     #[func]
     pub fn get_map_width(&self) -> i64 {
-        self.state
-            .as_ref()
-            .map(|s| s.map.tile_width() as i64)
-            .unwrap_or(0)
+        self.state.as_ref().map(|s| s.map.tile_width() as i64).unwrap_or(0)
     }
 
     /// Returns the map height in tiles.
     #[func]
     pub fn get_map_height(&self) -> i64 {
-        self.state
-            .as_ref()
-            .map(|s| s.map.tile_height() as i64)
-            .unwrap_or(0)
+        self.state.as_ref().map(|s| s.map.tile_height() as i64).unwrap_or(0)
     }
 
     /// Returns all tiles reachable by hero `hero_id` this turn as `Array[Vector2i]`.
@@ -539,10 +502,7 @@ impl GameManager {
     pub fn get_hero_id_at_position(&self, x: i64, y: i64) -> i64 {
         let Some(state) = &self.state else { return -1 };
         let coord = MapCoord::new(x as u32, y as u32);
-        state
-            .hero_at(coord)
-            .map(|h| h.get_id() as i64)
-            .unwrap_or(-1)
+        state.hero_at(coord).map(|h| h.get_id() as i64).unwrap_or(-1)
     }
 
     /// Returns the current position of hero `hero_id`, or `(-1, -1)` if not found.
@@ -563,10 +523,7 @@ impl GameManager {
         let Some(state) = &self.state else {
             return false;
         };
-        state
-            .hero(hero_id as HeroId)
-            .map(|h| h.is_alive())
-            .unwrap_or(false)
+        state.hero(hero_id as HeroId).map(|h| h.is_alive()).unwrap_or(false)
     }
 
     /// Returns the recommended player spawn tile, or `(-1, -1)` if unavailable.
@@ -602,11 +559,7 @@ impl GameManager {
             return Array::new();
         };
 
-        state
-            .get_team_alive_heroes_ids(active_team)
-            .iter()
-            .map(|h| *h as i64)
-            .collect()
+        state.get_team_alive_heroes_ids(active_team).iter().map(|h| *h as i64).collect()
     }
 
     /// Returns `true` if the tile at `(x, y)` is a [`Tiles::City`] or [`Tiles::CityEntrance`].
@@ -647,22 +600,15 @@ impl GameManager {
     #[func]
     pub fn set_city_owner(&mut self, x: i64, y: i64, team_id: i64) {
         let coord = MapCoord::new(x as u32, y as u32);
-        let tid = if team_id >= 0 {
-            Some(team_id as u8)
-        } else {
-            None
-        };
+        let tid = if team_id >= 0 { Some(team_id as u8) } else { None };
         let changed = {
             let Some(state) = &mut self.state else { return };
             state.set_city_owner(coord, tid)
         };
         let team_name = match tid {
-            Some(id) => self
-                .state
-                .as_ref()
-                .and_then(|s| s.team_name_by_id(id))
-                .unwrap_or("")
-                .to_string(),
+            Some(id) => {
+                self.state.as_ref().and_then(|s| s.team_name_by_id(id)).unwrap_or("").to_string()
+            }
             None => String::new(),
         };
         for c in changed {
@@ -755,32 +701,21 @@ impl GameManager {
             return Array::new();
         };
 
-        state
-            .get_team_alive_heroes_ids(active_team)
-            .iter()
-            .map(|h| *h as i64)
-            .collect()
+        state.get_team_alive_heroes_ids(active_team).iter().map(|h| *h as i64).collect()
     }
 
     /// Returns the last active hero ID for `team_id`, or -1 if not set.
     #[func]
     pub fn get_active_hero(&self, team_id: i64) -> i64 {
         let Some(state) = &self.state else { return -1 };
-        state
-            .get_active_hero(team_id as u8)
-            .map(|id| id as i64)
-            .unwrap_or(-1)
+        state.get_active_hero(team_id as u8).map(|id| id as i64).unwrap_or(-1)
     }
 
     /// Sets the active hero for `team_id`.
     #[func]
     pub fn set_active_hero(&mut self, team_id: i64, hero_id: i64) {
         let Some(state) = &mut self.state else { return };
-        let id = if hero_id >= 0 {
-            Some(hero_id as HeroId)
-        } else {
-            None
-        };
+        let id = if hero_id >= 0 { Some(hero_id as HeroId) } else { None };
         state.set_active_hero(team_id as u8, id);
     }
 
@@ -788,10 +723,7 @@ impl GameManager {
     #[func]
     pub fn get_next_hero(&self, team_id: i64) -> i64 {
         let Some(state) = &self.state else { return -1 };
-        state
-            .get_next_hero(team_id as u8)
-            .map(|id| id as i64)
-            .unwrap_or(-1)
+        state.get_next_hero(team_id as u8).map(|id| id as i64).unwrap_or(-1)
     }
 
     /// Clears all active hero selections.
@@ -817,12 +749,7 @@ impl GameManager {
         let Some(state) = &self.state else {
             return GString::new();
         };
-        GString::from(
-            state
-                .get_active_team()
-                .map(|t| t.name.as_str())
-                .unwrap_or(""),
-        )
+        GString::from(state.get_active_team().map(|t| t.name.as_str()).unwrap_or(""))
     }
 
     /// Returns the number of teams.
@@ -836,10 +763,7 @@ impl GameManager {
     #[func]
     pub fn get_team_id(&self, index: i64) -> i64 {
         let Some(state) = &self.state else { return -1 };
-        state
-            .get_team(index as TeamId)
-            .map(|t| t.get_id() as i64)
-            .unwrap_or(-1)
+        state.get_team(index as TeamId).map(|t| t.get_id() as i64).unwrap_or(-1)
     }
 
     /// Returns team name by id.
@@ -848,10 +772,7 @@ impl GameManager {
         let Some(state) = &self.state else {
             return GString::new();
         };
-        state
-            .get_team(team_id as u8)
-            .map(|t| GString::from(t.name.as_str()))
-            .unwrap_or_default()
+        state.get_team(team_id as u8).map(|t| GString::from(t.name.as_str())).unwrap_or_default()
     }
 
     /// Returns team color as RGB tuple packed into i64 (R << 16 | G << 8 | B).
@@ -870,10 +791,7 @@ impl GameManager {
         let Some(state) = &self.state else {
             return false;
         };
-        state
-            .get_team(team_id as u8)
-            .map(|t| t.is_player_controlled())
-            .unwrap_or(false)
+        state.get_team(team_id as u8).map(|t| t.is_player_controlled()).unwrap_or(false)
     }
 
     /// Advances to the next player team.
@@ -901,9 +819,6 @@ impl GameManager {
     #[func]
     pub fn get_team_turn(&self, team_id: i64) -> i64 {
         let Some(state) = &self.state else { return 0 };
-        state
-            .get_team(team_id as u8)
-            .map(|t| t.get_turn() as i64)
-            .unwrap_or(0)
+        state.get_team(team_id as u8).map(|t| t.get_turn() as i64).unwrap_or(0)
     }
 }

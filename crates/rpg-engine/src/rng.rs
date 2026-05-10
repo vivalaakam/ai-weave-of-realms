@@ -45,10 +45,7 @@ impl SeededRng {
         let limit = seed_bytes.len().min(32);
         data[32..32 + limit].copy_from_slice(&seed_bytes[..limit]);
         let new_state = hash_bytes(&data);
-        Self {
-            state: new_state,
-            position: 0,
-        }
+        Self { state: new_state, position: 0 }
     }
 
     /// Derives a child [`SeededRng`] bound to a specific hero.
@@ -61,10 +58,7 @@ impl SeededRng {
 
     /// Creates a [`SeededRng`] directly from a raw 32-byte seed.
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
-        Self {
-            state: bytes,
-            position: 0,
-        }
+        Self { state: bytes, position: 0 }
     }
 
     /// Returns the current raw 32-byte state of the generator.
@@ -93,10 +87,7 @@ impl SeededRng {
     ///
     /// The caller must ensure `position <= 32`.
     pub fn from_state_and_position(state: [u8; 32], position: u8) -> Self {
-        Self {
-            state,
-            position: position as usize,
-        }
+        Self { state, position: position as usize }
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────
@@ -246,12 +237,8 @@ fn hash_bytes(bytes: &[u8]) -> [u8; 32] {
 
 #[cfg(not(feature = "std"))]
 fn fallback_hash(bytes: &[u8]) -> [u8; 32] {
-    const SEEDS: [u64; 4] = [
-        0xcbf29ce484222325,
-        0x9e3779b97f4a7c15,
-        0xd6e8feb86659fd93,
-        0x94d049bb133111eb,
-    ];
+    const SEEDS: [u64; 4] =
+        [0xcbf29ce484222325, 0x9e3779b97f4a7c15, 0xd6e8feb86659fd93, 0x94d049bb133111eb];
     const PRIME: u64 = 0x100000001b3;
 
     let mut output = [0u8; 32];

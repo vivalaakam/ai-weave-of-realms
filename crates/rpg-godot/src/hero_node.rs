@@ -34,12 +34,7 @@ pub struct HeroNode {
 #[godot_api]
 impl INode2D for HeroNode {
     fn init(base: Base<Node2D>) -> Self {
-        Self {
-            base,
-            hero_id: 0,
-            team_name: GString::default(),
-            player_controlled: false,
-        }
+        Self { base, hero_id: 0, team_name: GString::default(), player_controlled: false }
     }
 
     fn ready(&mut self) {
@@ -58,11 +53,8 @@ impl HeroNode {
     // ── Sprite setup ──────────────────────────────────────────────────────────
 
     fn setup_sprite(&mut self) {
-        let texture_path = if self.player_controlled {
-            "res://assets/hero.png"
-        } else {
-            "res://assets/enemy.png"
-        };
+        let texture_path =
+            if self.player_controlled { "res://assets/hero.png" } else { "res://assets/enemy.png" };
 
         let texture = match ResourceLoader::singleton().load(texture_path) {
             Some(res) => res,
@@ -94,11 +86,7 @@ impl HeroNode {
         };
         sprite.set_modulate(modulate);
 
-        let sprite_name = if self.player_controlled {
-            "HeroSprite"
-        } else {
-            "EnemySprite"
-        };
+        let sprite_name = if self.player_controlled { "HeroSprite" } else { "EnemySprite" };
         self.base_mut().add_child(&sprite.clone());
         sprite.set_name(&StringName::from(sprite_name));
     }

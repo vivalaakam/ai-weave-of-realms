@@ -47,18 +47,12 @@ pub enum SaveOverlayOutcome {
 impl SaveOverlay {
     /// Creates the root save menu.
     pub fn menu() -> Self {
-        Self::Menu {
-            selected: 0,
-            status: None,
-        }
+        Self::Menu { selected: 0, status: None }
     }
 
     /// Creates a save-name entry screen.
     pub fn save_name() -> Self {
-        Self::SaveName {
-            name: String::new(),
-            status: None,
-        }
+        Self::SaveName { name: String::new(), status: None }
     }
 
     /// Creates a load-list screen from a shared list.
@@ -139,10 +133,7 @@ impl SaveOverlay {
                 ListOutcome::NoChange => SaveOverlayOutcome::NoChange,
                 ListOutcome::Changed => SaveOverlayOutcome::Changed,
                 ListOutcome::BackRequested => {
-                    *self = SaveOverlay::Menu {
-                        selected: 1,
-                        status: None,
-                    };
+                    *self = SaveOverlay::Menu { selected: 1, status: None };
                     SaveOverlayOutcome::Changed
                 }
                 ListOutcome::Selected(selected) => SaveOverlayOutcome::RequestLoad(selected),

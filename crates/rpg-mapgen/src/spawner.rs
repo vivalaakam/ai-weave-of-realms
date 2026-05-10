@@ -80,14 +80,10 @@ impl EnemySpawner {
         let source = std::fs::read_to_string(path)?;
         let lua = Lua::new();
 
-        let func: Function = lua
-            .load(&source)
-            .set_name(path.to_string_lossy().as_ref())
-            .eval()
-            .map_err(|source| Error::ScriptLoad {
-                path: path.to_string_lossy().into_owned(),
-                source,
-            })?;
+        let func: Function =
+            lua.load(&source).set_name(path.to_string_lossy().as_ref()).eval().map_err(
+                |source| Error::ScriptLoad { path: path.to_string_lossy().into_owned(), source },
+            )?;
 
         debug!(path = %path.display(), "enemy spawn script loaded");
         Ok(Self { lua, func })
@@ -103,19 +99,14 @@ impl EnemySpawner {
     /// Returns [`Error::LuaExecution`] if the Lua function raises an error.
     #[instrument(skip(self, map))]
     pub fn spawn(&self, map: &GameMap) -> Result<Vec<EnemySpawn>, Error> {
-        let map_table =
-            game_map_to_lua_table(&self.lua, map).map_err(|source| Error::LuaExecution {
-                function: "game_map_to_lua_table".into(),
-                source,
-            })?;
+        let map_table = game_map_to_lua_table(&self.lua, map).map_err(|source| {
+            Error::LuaExecution { function: "game_map_to_lua_table".into(), source }
+        })?;
 
         let result: Value = self
             .func
             .call(map_table)
-            .map_err(|source| Error::LuaExecution {
-                function: "spawn_enemies".into(),
-                source,
-            })?;
+            .map_err(|source| Error::LuaExecution { function: "spawn_enemies".into(), source })?;
 
         let enemies = parse_spawn_results(result)?;
         debug!(count = enemies.len(), "enemies spawned");
@@ -175,14 +166,7 @@ fn parse_enemy_entry(table: Table, index: u32) -> Result<Option<EnemySpawn>, Err
         return Ok(None);
     }
 
-    Ok(Some(EnemySpawn {
-        id,
-        position: MapCoord::new(x as u32, y as u32),
-        hp,
-        atk,
-        def,
-        spd,
-    }))
+    Ok(Some(EnemySpawn { id, position: MapCoord::new(x as u32, y as u32), hp, atk, def, spd }))
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

@@ -1,0 +1,11 @@
+# Clippy configuration for ai-rpg-v2
+
+# Raise the too-many-arguments threshold — Godot #[func] methods often need many params
+too-many-arguments-threshold = 10
+
+# Allow cognitive complexity up to 30 (default is 25)
+cognitive-complexity-threshold = 30
+
+# Treat warnings as errors in CI (uncomment for strict mode)
+# disallowed-methods = []
+# disallowed-types = []

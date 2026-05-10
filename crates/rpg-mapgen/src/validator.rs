@@ -57,14 +57,10 @@ impl MapValidator {
         let source = std::fs::read_to_string(path)?;
         let lua = Lua::new();
 
-        let func: Function = lua
-            .load(&source)
-            .set_name(path.to_string_lossy().as_ref())
-            .eval()
-            .map_err(|source| Error::ScriptLoad {
-                path: path.to_string_lossy().into_owned(),
-                source,
-            })?;
+        let func: Function =
+            lua.load(&source).set_name(path.to_string_lossy().as_ref()).eval().map_err(
+                |source| Error::ScriptLoad { path: path.to_string_lossy().into_owned(), source },
+            )?;
 
         debug!(path = %path.display(), "validator script loaded");
         Ok(Self { lua, func })
@@ -81,19 +77,14 @@ impl MapValidator {
     /// (distinct from a soft validation failure).
     #[instrument(skip(self, map))]
     pub fn validate(&self, map: &GameMap) -> Result<ValidationResult, Error> {
-        let map_table =
-            game_map_to_lua_table(&self.lua, map).map_err(|source| Error::LuaExecution {
-                function: "game_map_to_lua_table".into(),
-                source,
-            })?;
+        let map_table = game_map_to_lua_table(&self.lua, map).map_err(|source| {
+            Error::LuaExecution { function: "game_map_to_lua_table".into(), source }
+        })?;
 
-        let multi: MultiValue =
-            self.func
-                .call(map_table)
-                .map_err(|source| Error::LuaExecution {
-                    function: "validate".into(),
-                    source,
-                })?;
+        let multi: MultiValue = self
+            .func
+            .call(map_table)
+            .map_err(|source| Error::LuaExecution { function: "validate".into(), source })?;
 
         let result = parse_validation_result(multi)?;
 

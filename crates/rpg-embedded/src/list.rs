@@ -48,12 +48,7 @@ impl ListScreen {
     /// * `entries` - Entries shown in the selector.
     /// * `status` - Initial optional status message.
     pub fn new(entries: Vec<ListEntry>, status: Option<String>) -> Self {
-        Self {
-            entries,
-            selected: 0,
-            scroll: 0,
-            status,
-        }
+        Self { entries, selected: 0, scroll: 0, status }
     }
 
     /// Applies one input event to the shared list view.

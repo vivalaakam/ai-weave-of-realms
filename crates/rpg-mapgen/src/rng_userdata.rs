@@ -69,10 +69,7 @@ mod tests {
         lua.globals().set("rng", rng).unwrap();
 
         let result: f64 = lua.load("return rng:next_f64()").eval().unwrap();
-        assert!(
-            (0.0..1.0).contains(&result),
-            "next_f64 {result} out of [0,1)"
-        );
+        assert!((0.0..1.0).contains(&result), "next_f64 {result} out of [0,1)");
     }
 
     #[test]
@@ -84,10 +81,7 @@ mod tests {
         lua.globals().set("rng", rng).unwrap();
 
         for _ in 0..100 {
-            let v: u32 = lua
-                .load("return rng:random_range_u32(5, 10)")
-                .eval()
-                .unwrap();
+            let v: u32 = lua.load("return rng:random_range_u32(5, 10)").eval().unwrap();
             assert!((5..10).contains(&v), "random_range_u32 {v} out of 5..10");
         }
     }

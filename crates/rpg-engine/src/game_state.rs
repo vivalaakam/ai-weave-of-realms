@@ -37,24 +37,13 @@ use crate::team::Team;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TurnEvent {
     /// A hero moved to a new tile.
-    HeroMoved {
-        hero_id: HeroId,
-        from: MapCoord,
-        to: MapCoord,
-    },
+    HeroMoved { hero_id: HeroId, from: MapCoord, to: MapCoord },
     /// A hero visited a point of interest and triggered a score event.
     PoiVisited { hero_id: HeroId, coord: MapCoord },
     /// City ownership changed: `team_id` is None when the city becomes neutral.
-    CityOwnerChanged {
-        coord: MapCoord,
-        team_id: Option<TeamId>,
-    },
+    CityOwnerChanged { coord: MapCoord, team_id: Option<TeamId> },
     /// A hero engaged and resolved combat with an enemy.
-    CombatResolved {
-        attacker_id: HeroId,
-        defender_id: HeroId,
-        result: CombatResult,
-    },
+    CombatResolved { attacker_id: HeroId, defender_id: HeroId, result: CombatResult },
     /// A hero was defeated and removed from the map.
     HeroDefeated { hero_id: HeroId },
     /// The turn counter advanced.
@@ -140,9 +129,7 @@ impl GameState {
     /// Returns the currently active team info.
     pub fn get_active_team(&self) -> Result<&Team, GameError> {
         let active_team = self.get_active_team_id()?;
-        self.teams
-            .get(active_team)
-            .ok_or(GameError::ActiveTeamNotFound(*active_team))
+        self.teams.get(active_team).ok_or(GameError::ActiveTeamNotFound(*active_team))
     }
 
     /// Returns the currently active team id.
@@ -152,10 +139,7 @@ impl GameState {
 
     /// Returns all player-controlled teams.
     pub fn player_teams(&self) -> impl Iterator<Item = &Team> {
-        self.teams
-            .iter()
-            .filter(|(_, t)| t.is_player_controlled())
-            .map(|(_, t)| t)
+        self.teams.iter().filter(|(_, t)| t.is_player_controlled()).map(|(_, t)| t)
     }
 
     /// Returns team info by id.
@@ -170,22 +154,21 @@ impl GameState {
 
     /// Returns the first non-player-controlled (AI) team id.
     pub fn enemy_team_id(&self) -> Option<TeamId> {
-        self.teams
-            .values()
-            .find(|t| !t.is_player_controlled())
-            .map(|t| t.get_id())
+        self.teams.values().find(|t| !t.is_player_controlled()).map(|t| t.get_id())
     }
 
     pub fn get_team_alive_heroes_ids(&self, team_id: TeamId) -> Vec<HeroId> {
         self.heroes
             .iter()
-            .filter_map(|(&id, h)| {
-                if h.team_id == team_id && h.is_alive() {
-                    Some(id)
-                } else {
-                    None
-                }
-            })
+            .filter_map(
+                |(&id, h)| {
+                    if h.team_id == team_id && h.is_alive() {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                },
+            )
             .collect::<Vec<HeroId>>()
     }
 
@@ -220,10 +203,8 @@ impl GameState {
         let team_id = team.get_id();
         let turn = team.get_turn();
 
-        for (_, hero) in self
-            .heroes
-            .iter_mut()
-            .filter(|(_, h)| h.is_alive() && h.team_id == team_id)
+        for (_, hero) in
+            self.heroes.iter_mut().filter(|(_, h)| h.is_alive() && h.team_id == team_id)
         {
             hero.reset_movement();
         }
@@ -259,9 +240,7 @@ impl GameState {
 
     /// Returns a reference to the living hero at `pos`, or `None`.
     pub fn hero_at(&self, pos: MapCoord) -> Option<&Hero> {
-        self.heroes
-            .values()
-            .find(|h| h.is_alive() && h.position == pos)
+        self.heroes.values().find(|h| h.is_alive() && h.position == pos)
     }
 
     /// Returns the team id that owns the city at `coord`, or `None` if neutral.
@@ -299,9 +278,7 @@ impl GameState {
         let current = self.get_active_hero(team_id);
         let current_idx = current.and_then(|id| team_heroes.iter().position(|&hid| hid == id));
 
-        let next_idx = current_idx
-            .map(|idx| (idx + 1) % team_heroes.len())
-            .unwrap_or(0);
+        let next_idx = current_idx.map(|idx| (idx + 1) % team_heroes.len()).unwrap_or(0);
 
         team_heroes.get(next_idx).copied()
     }
@@ -332,10 +309,7 @@ impl GameState {
     /// Finds TeamId by team name (case-insensitive). Returns None if not found.
     pub fn team_id_by_name(&self, name: &str) -> Option<TeamId> {
         let name_lower = name.to_lowercase();
-        self.teams
-            .values()
-            .find(|t| t.name.to_lowercase() == name_lower)
-            .map(|t| t.get_id())
+        self.teams.values().find(|t| t.name.to_lowercase() == name_lower).map(|t| t.get_id())
     }
 
     /// Finds team name by TeamId. Returns None if not found.
@@ -385,19 +359,13 @@ impl GameState {
         // Check passability.
         let tile = self.map.get_tile(target)?;
         if !tile.kind.is_passable() {
-            return Err(Error::ImpassableTile {
-                x: target.x,
-                y: target.y,
-            });
+            return Err(Error::ImpassableTile { x: target.x, y: target.y });
         }
 
         // Check occupancy.
         if let Some(other) = self.hero_at(target) {
             if other.get_id() != hero_id {
-                return Err(Error::OccupiedTile {
-                    x: target.x,
-                    y: target.y,
-                });
+                return Err(Error::OccupiedTile { x: target.x, y: target.y });
             }
         }
 
@@ -410,30 +378,21 @@ impl GameState {
         self.heroes.get_mut(&hero_id).unwrap().mov_remaining -= cost;
         self.heroes.get_mut(&hero_id).unwrap().position = target;
 
-        let mut events = vec![TurnEvent::HeroMoved {
-            hero_id,
-            from: start,
-            to: target,
-        }];
+        let mut events = vec![TurnEvent::HeroMoved { hero_id, from: start, to: target }];
 
         // Trigger POI score events.
         if let Ok(tile) = self.map.get_tile(target) {
             if tile.kind.is_point_of_interest() {
-                events.push(TurnEvent::PoiVisited {
-                    hero_id,
-                    coord: target,
-                });
+                events.push(TurnEvent::PoiVisited { hero_id, coord: target });
                 match tile.kind {
                     Tiles::City | Tiles::CityEntrance => {
                         self.score.record(ScoreEvent::CityCapture { city: target });
                     }
                     Tiles::Gold => {
-                        self.score
-                            .record(ScoreEvent::GoldCollected { coord: target });
+                        self.score.record(ScoreEvent::GoldCollected { coord: target });
                     }
                     Tiles::Resource => {
-                        self.score
-                            .record(ScoreEvent::ResourceCollected { coord: target });
+                        self.score.record(ScoreEvent::ResourceCollected { coord: target });
                     }
                     _ => {}
                 }
@@ -445,17 +404,11 @@ impl GameState {
             if matches!(tile.kind, Tiles::City | Tiles::CityEntrance) {
                 let tid = self.heroes[&hero_id].team_id;
                 for coord in flood_city(&self.map, target) {
-                    let already_owned = self
-                        .city_owners
-                        .get(&coord)
-                        .map(|&o| o == tid)
-                        .unwrap_or(false);
+                    let already_owned =
+                        self.city_owners.get(&coord).map(|&o| o == tid).unwrap_or(false);
                     if !already_owned {
                         self.city_owners.insert(coord, tid);
-                        events.push(TurnEvent::CityOwnerChanged {
-                            coord,
-                            team_id: Some(tid),
-                        });
+                        events.push(TurnEvent::CityOwnerChanged { coord, team_id: Some(tid) });
                     }
                 }
             }
@@ -490,24 +443,15 @@ impl GameState {
         self.heroes.insert(attacker_id, attacker);
         self.heroes.insert(defender_id, defender);
 
-        let mut events = vec![TurnEvent::CombatResolved {
-            attacker_id,
-            defender_id,
-            result: result.clone(),
-        }];
+        let mut events =
+            vec![TurnEvent::CombatResolved { attacker_id, defender_id, result: result.clone() }];
 
         if !result.defender_survived {
-            self.score.record(ScoreEvent::EnemyDefeated {
-                enemy_id: defender_id,
-            });
-            events.push(TurnEvent::HeroDefeated {
-                hero_id: defender_id,
-            });
+            self.score.record(ScoreEvent::EnemyDefeated { enemy_id: defender_id });
+            events.push(TurnEvent::HeroDefeated { hero_id: defender_id });
         }
         if !result.attacker_survived {
-            events.push(TurnEvent::HeroDefeated {
-                hero_id: attacker_id,
-            });
+            events.push(TurnEvent::HeroDefeated { hero_id: attacker_id });
         }
 
         Ok(events)
@@ -518,12 +462,8 @@ impl GameState {
     ///
     /// Movement for player-controlled heroes is reset per-team in [`GameState::on_turn`].
     pub fn advance_turn(&mut self) -> Vec<TurnEvent> {
-        let player_teams: BTreeSet<TeamId> = self
-            .teams
-            .values()
-            .filter(|t| t.is_player_controlled())
-            .map(|t| t.get_id())
-            .collect();
+        let player_teams: BTreeSet<TeamId> =
+            self.teams.values().filter(|t| t.is_player_controlled()).map(|t| t.get_id()).collect();
 
         for (_, hero) in self
             .heroes
@@ -799,11 +739,7 @@ impl GameState {
         for _ in 0..active_count {
             let team_id = reader.read_u8()?;
             let has_hero = reader.read_u8()? == 1;
-            let hero_id = if has_hero {
-                Some(reader.read_u8()?)
-            } else {
-                None
-            };
+            let hero_id = if has_hero { Some(reader.read_u8()?) } else { None };
             active_hero.insert(team_id, hero_id);
         }
 
@@ -827,16 +763,8 @@ impl GameState {
             if rng_position > 32 {
                 return Err(save_error("invalid hero RNG position"));
             }
-            let mut hero = Hero::new(
-                hero_id,
-                name,
-                hp,
-                atk,
-                def,
-                spd,
-                MapCoord::new(x, y),
-                team_id,
-            );
+            let mut hero =
+                Hero::new(hero_id, name, hp, atk, def, spd, MapCoord::new(x, y), team_id);
             hero.max_hp = max_hp;
             hero.mov = mov;
             hero.mov_remaining = mov_remaining;
@@ -933,10 +861,7 @@ impl<'a> SaveReader<'a> {
     }
 
     fn read_bytes(&mut self, len: usize) -> Result<&'a [u8], Error> {
-        let end = self
-            .offset
-            .checked_add(len)
-            .ok_or_else(|| save_error("read overflow"))?;
+        let end = self.offset.checked_add(len).ok_or_else(|| save_error("read overflow"))?;
         if end > self.bytes.len() {
             return Err(save_error("unexpected end of save data"));
         }
@@ -1016,9 +941,7 @@ fn read_score_event(reader: &mut SaveReader<'_>) -> Result<ScoreEvent, Error> {
         0 => Ok(ScoreEvent::CityCapture {
             city: MapCoord::new(reader.read_u32()?, reader.read_u32()?),
         }),
-        1 => Ok(ScoreEvent::EnemyDefeated {
-            enemy_id: reader.read_u8()?,
-        }),
+        1 => Ok(ScoreEvent::EnemyDefeated { enemy_id: reader.read_u8()? }),
         2 => Ok(ScoreEvent::ResourceCollected {
             coord: MapCoord::new(reader.read_u32()?, reader.read_u32()?),
         }),
@@ -1059,12 +982,7 @@ fn flood_city(map: &GameMap, start: MapCoord) -> Vec<MapCoord> {
     while let Some(coord) = queue.pop_front() {
         result.push(coord);
 
-        for dir in [
-            Direction::North,
-            Direction::East,
-            Direction::South,
-            Direction::West,
-        ] {
+        for dir in [Direction::North, Direction::East, Direction::South, Direction::West] {
             if let Some(neighbor) = dir.apply(coord, w, h) {
                 if !visited.contains(&neighbor)
                     && map
@@ -1090,12 +1008,7 @@ mod tests {
     use crate::map::tile::Tile;
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
-        let tiles = vec![
-            Tile {
-                kind: Tiles::Meadow
-            };
-            (w * h) as usize
-        ];
+        let tiles = vec![Tile { kind: Tiles::Meadow }; (w * h) as usize];
         GameMap::new(w, h, tiles, [0u8; 32]).unwrap()
     }
 
@@ -1130,9 +1043,7 @@ mod tests {
         let events = state.move_hero(0, Direction::East).unwrap();
         assert_eq!(state.hero(0).unwrap().position, MapCoord::new(3, 0));
         assert_eq!(state.hero(0).unwrap().mov_remaining, 27); // 30 - 3 = 27
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, TurnEvent::HeroMoved { .. })));
+        assert!(events.iter().any(|e| matches!(e, TurnEvent::HeroMoved { .. })));
     }
 
     #[test]
@@ -1149,15 +1060,8 @@ mod tests {
     #[test]
     fn move_hero_into_impassable_returns_error() {
         use crate::map::tile::Tile;
-        let mut tiles = vec![
-            Tile {
-                kind: Tiles::Meadow
-            };
-            9
-        ];
-        tiles[1] = Tile {
-            kind: Tiles::Mountain,
-        };
+        let mut tiles = vec![Tile { kind: Tiles::Meadow }; 9];
+        tiles[1] = Tile { kind: Tiles::Mountain };
         let map = GameMap::new(3, 3, tiles, [0u8; 32]).unwrap();
         let mut state = make_state(map);
         state.add_hero(player(MapCoord::new(0, 0)));
@@ -1240,7 +1144,7 @@ mod tests {
         let map = meadow_map(5, 5);
         let mut state = make_state(map);
         // All teams start at 0.
-        for (_, team) in &state.teams {
+        for team in state.teams.values() {
             assert_eq!(team.get_turn(), 0);
         }
         // First team's turn begins.

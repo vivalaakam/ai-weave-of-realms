@@ -42,12 +42,7 @@ impl ChunkGrid {
                 got: chunks.len(),
             }));
         }
-        Ok(Self {
-            chunks_wide,
-            chunks_tall,
-            chunks,
-            seed,
-        })
+        Ok(Self { chunks_wide, chunks_tall, chunks, seed })
     }
 
     /// Returns a reference to the chunk at `coord`.

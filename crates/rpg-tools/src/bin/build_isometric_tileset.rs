@@ -133,14 +133,7 @@ fn draw_marker(image: &mut RgbaImage, offset_x: u32, tile: Tiles, base: Rgba<u8>
             let canopy = darken(base, 0.2);
             fill_triangle(image, offset_x, (24, 37), (32, 21), (40, 37), canopy);
             fill_rect(image, offset_x, 30, 37, 4, 6, trunk);
-            fill_triangle(
-                image,
-                offset_x,
-                (15, 35),
-                (21, 24),
-                (27, 35),
-                lighten(canopy, 0.08),
-            );
+            fill_triangle(image, offset_x, (15, 35), (21, 24), (27, 35), lighten(canopy, 0.08));
             fill_rect(image, offset_x, 19, 35, 3, 5, trunk);
         }
         Tiles::Mountain => {
@@ -181,40 +174,20 @@ fn draw_marker(image: &mut RgbaImage, offset_x: u32, tile: Tiles, base: Rgba<u8>
         Tiles::Road => {
             let dirt = rgba((166, 110, 69), 255);
             let edge = rgba((227, 196, 165), 220);
-            fill_quad(
-                image,
-                offset_x,
-                [(14, 31), (22, 26), (50, 34), (42, 39)],
-                dirt,
-            );
+            fill_quad(image, offset_x, [(14, 31), (22, 26), (50, 34), (42, 39)], dirt);
             draw_line(image, offset_x, 16, 31, 48, 35, edge);
         }
         Tiles::River => {
             let water = rgba((111, 189, 255), 255);
             let foam = rgba((229, 245, 255), 220);
-            fill_quad(
-                image,
-                offset_x,
-                [(12, 30), (21, 24), (52, 34), (42, 40)],
-                water,
-            );
+            fill_quad(image, offset_x, [(12, 30), (21, 24), (52, 34), (42, 40)], water);
             draw_line(image, offset_x, 16, 31, 46, 35, foam);
         }
         Tiles::Bridge => {
             let water = rgba((111, 189, 255), 220);
             let planks = rgba((142, 95, 58), 255);
-            fill_quad(
-                image,
-                offset_x,
-                [(12, 30), (21, 24), (52, 34), (42, 40)],
-                water,
-            );
-            fill_quad(
-                image,
-                offset_x,
-                [(17, 31), (24, 27), (47, 34), (40, 38)],
-                planks,
-            );
+            fill_quad(image, offset_x, [(12, 30), (21, 24), (52, 34), (42, 40)], water);
+            fill_quad(image, offset_x, [(17, 31), (24, 27), (47, 34), (40, 38)], planks);
             for step in 0..5 {
                 let x = 21 + step * 5;
                 draw_line(
@@ -255,12 +228,7 @@ fn draw_marker(image: &mut RgbaImage, offset_x: u32, tile: Tiles, base: Rgba<u8>
         }
         Tiles::Resource => {
             let gem = rgba((137, 244, 255), 255);
-            fill_quad(
-                image,
-                offset_x,
-                [(32, 21), (41, 30), (32, 39), (23, 30)],
-                gem,
-            );
+            fill_quad(image, offset_x, [(32, 21), (41, 30), (32, 39), (23, 30)], gem);
             draw_line(image, offset_x, 32, 21, 32, 39, darken(gem, 0.22));
             draw_line(image, offset_x, 23, 30, 41, 30, darken(gem, 0.22));
         }
@@ -433,9 +401,7 @@ fn darken(color: Rgba<u8>, amount: f32) -> Rgba<u8> {
 
 fn tint(color: Rgba<u8>, target: u8, amount: f32) -> Rgba<u8> {
     let blend = |channel: u8| -> u8 {
-        (channel as f32 + (target as f32 - channel as f32) * amount)
-            .round()
-            .clamp(0.0, 255.0) as u8
+        (channel as f32 + (target as f32 - channel as f32) * amount).round().clamp(0.0, 255.0) as u8
     };
 
     Rgba([blend(color[0]), blend(color[1]), blend(color[2]), color[3]])

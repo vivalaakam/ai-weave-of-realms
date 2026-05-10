@@ -37,10 +37,7 @@ use clap::Parser;
 use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "pack-tiles",
-    about = "Pack PNG tilesets into a binary tile atlas"
-)]
+#[command(name = "pack-tiles", about = "Pack PNG tilesets into a binary tile atlas")]
 struct Args {
     /// Directory containing PNG tileset files.
     #[arg(long, default_value = "assets")]
@@ -85,7 +82,7 @@ fn main() {
 fn run(args: &Args) -> Result<usize, Box<dyn std::error::Error>> {
     let tile_w = args.tile_width as usize;
     let tile_h = args.tile_height as usize;
-    let mask_bytes = (tile_w * tile_h + 7) / 8;
+    let mask_bytes = (tile_w * tile_h).div_ceil(8);
 
     let mut pngs = collect_pngs(&args.assets)?;
     pngs.sort();

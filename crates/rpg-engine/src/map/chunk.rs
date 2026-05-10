@@ -54,10 +54,7 @@ pub struct Chunk {
 impl Chunk {
     /// Creates a new chunk at the given coordinate, filling all tiles with `fill`.
     pub fn filled(coord: ChunkCoord, fill: Tile) -> Self {
-        Self {
-            coord,
-            tiles: vec![fill; CHUNK_TILE_COUNT],
-        }
+        Self { coord, tiles: vec![fill; CHUNK_TILE_COUNT] }
     }
 
     /// Creates a new chunk from a flat tile vector.
@@ -82,9 +79,7 @@ impl Chunk {
     /// Returns [`Error::OutOfBounds`] if `x >= CHUNK_SIZE` or `y >= CHUNK_SIZE`.
     pub fn get(&self, x: usize, y: usize) -> Result<&Tile, Error> {
         if x >= CHUNK_SIZE || y >= CHUNK_SIZE {
-            return Err(Error::OutOfBounds(format!(
-                "({x}, {y}) in chunk of size {CHUNK_SIZE}"
-            )));
+            return Err(Error::OutOfBounds(format!("({x}, {y}) in chunk of size {CHUNK_SIZE}")));
         }
         Ok(&self.tiles[y * CHUNK_SIZE + x])
     }
@@ -95,9 +90,7 @@ impl Chunk {
     /// Returns [`Error::OutOfBounds`] if `x >= CHUNK_SIZE` or `y >= CHUNK_SIZE`.
     pub fn get_mut(&mut self, x: usize, y: usize) -> Result<&mut Tile, Error> {
         if x >= CHUNK_SIZE || y >= CHUNK_SIZE {
-            return Err(Error::OutOfBounds(format!(
-                "({x}, {y}) in chunk of size {CHUNK_SIZE}"
-            )));
+            return Err(Error::OutOfBounds(format!("({x}, {y}) in chunk of size {CHUNK_SIZE}")));
         }
         Ok(&mut self.tiles[y * CHUNK_SIZE + x])
     }

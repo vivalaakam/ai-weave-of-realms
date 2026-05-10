@@ -31,11 +31,7 @@ impl InfoOverlay {
     /// * `lines` - Body lines shown in the modal.
     /// * `footer` - Footer hint line.
     pub fn new(title: String, lines: Vec<String>, footer: String) -> Self {
-        Self {
-            title,
-            lines,
-            footer,
-        }
+        Self { title, lines, footer }
     }
 
     /// Applies one input event to the info overlay.

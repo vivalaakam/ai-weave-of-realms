@@ -34,7 +34,7 @@ const ATLAS_HEADER: usize = 10; // 4 magic + 1 w + 1 h + 4 count LE
 
 const TILESET_TILE_W: usize = 16;
 const TILESET_TILE_H: usize = 16;
-const TILESET_MASK_BYTES: usize = (TILESET_TILE_W * TILESET_TILE_H + 7) / 8; // 25
+const TILESET_MASK_BYTES: usize = (TILESET_TILE_W * TILESET_TILE_H).div_ceil(8);
 
 // Grass tile indices within the atlas (tiles 5, 6, 7 from monochrome-transparent_packed.png).
 const GRASS_INDICES: [usize; 3] = [5, 6, 7];
@@ -86,7 +86,7 @@ where
             }
         }
     }
-    halt_on_error(display.draw_iter(pixels.into_iter()));
+    halt_on_error(display.draw_iter(pixels));
 }
 
 /// Shared rendering geometry for the gameplay map view.
@@ -210,9 +210,8 @@ struct MapViewCache {
 /// * `screen_size` - Full drawable screen size in pixels.
 /// * `config` - Map-view rendering geometry.
 pub fn visible_tiles(screen_size: Size, config: RenderConfig) -> (usize, usize) {
-    let usable_height = screen_size
-        .height
-        .saturating_sub(config.header_height + config.footer_height);
+    let usable_height =
+        screen_size.height.saturating_sub(config.header_height + config.footer_height);
     (
         screen_size.width.saturating_div(TILE_WIDTH) as usize,
         usable_height.saturating_div(TILE_HEIGHT) as usize,
@@ -348,13 +347,7 @@ fn draw_app_map_view<D, C>(
     );
 
     if let Some(save_overlay) = &map_view.save_overlay {
-        draw_save_overlay(
-            display,
-            screen_size,
-            save_overlay,
-            theme.save_overlay,
-            save_rows,
-        );
+        draw_save_overlay(display, screen_size, save_overlay, theme.save_overlay, save_rows);
     } else if let Some(info_overlay) = &map_view.info_overlay {
         draw_info_overlay(display, screen_size, info_overlay, theme.info_overlay);
     }
@@ -481,33 +474,20 @@ pub fn draw_list_screen<D, C>(
             );
         }
 
-        let prefix = if entry_index == list.selected {
-            ">"
-        } else {
-            " "
-        };
+        let prefix = if entry_index == list.selected { ">" } else { " " };
         let entry = &list.entries[entry_index];
         let line = format!("{prefix} {} ({}b)", entry.label, entry.meta);
         halt_on_error(Text::new(&line, Point::new(6, y), text_style).draw(display));
     }
 
     halt_on_error(
-        Text::new(
-            footer,
-            Point::new(4, screen_size.height as i32 - 2),
-            text_style,
-        )
-        .draw(display),
+        Text::new(footer, Point::new(4, screen_size.height as i32 - 2), text_style).draw(display),
     );
 
     if let Some(status_text) = list.status.as_deref() {
         halt_on_error(
-            Text::new(
-                status_text,
-                Point::new(4, screen_size.height as i32 - 14),
-                text_style,
-            )
-            .draw(display),
+            Text::new(status_text, Point::new(4, screen_size.height as i32 - 14), text_style)
+                .draw(display),
         );
     }
 }
@@ -538,31 +518,21 @@ pub fn draw_save_overlay<D, C>(
     let selected_style = PrimitiveStyle::with_fill(theme.selected_fill);
 
     halt_on_error(
-        Rectangle::new(
-            Point::new(origin_x, origin_y),
-            Size::new(box_width, box_height),
-        )
-        .into_styled(PrimitiveStyle::with_fill(theme.panel_fill))
-        .draw(display),
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_fill(theme.panel_fill))
+            .draw(display),
     );
     halt_on_error(
-        Rectangle::new(
-            Point::new(origin_x, origin_y),
-            Size::new(box_width, box_height),
-        )
-        .into_styled(PrimitiveStyle::with_stroke(theme.panel_stroke, 1))
-        .draw(display),
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_stroke(theme.panel_stroke, 1))
+            .draw(display),
     );
 
     match overlay {
         SaveOverlay::Menu { selected, status } => {
             halt_on_error(
-                Text::new(
-                    "Save Menu",
-                    Point::new(origin_x + 8, origin_y + 14),
-                    text_style,
-                )
-                .draw(display),
+                Text::new("Save Menu", Point::new(origin_x + 8, origin_y + 14), text_style)
+                    .draw(display),
             );
             let entries = ["Save Game", "Load Game", "Cancel"];
             for (idx, label) in entries.iter().enumerate() {
@@ -600,21 +570,13 @@ pub fn draw_save_overlay<D, C>(
         }
         SaveOverlay::SaveName { name, status } => {
             halt_on_error(
-                Text::new(
-                    "Save Name",
-                    Point::new(origin_x + 8, origin_y + 14),
-                    text_style,
-                )
-                .draw(display),
+                Text::new("Save Name", Point::new(origin_x + 8, origin_y + 14), text_style)
+                    .draw(display),
             );
             let name_line = format!("> {name}_");
             halt_on_error(
-                Text::new(
-                    &name_line,
-                    Point::new(origin_x + 8, origin_y + 38),
-                    text_style,
-                )
-                .draw(display),
+                Text::new(&name_line, Point::new(origin_x + 8, origin_y + 38), text_style)
+                    .draw(display),
             );
             halt_on_error(
                 Text::new(
@@ -633,12 +595,8 @@ pub fn draw_save_overlay<D, C>(
         }
         SaveOverlay::LoadList { list } => {
             halt_on_error(
-                Text::new(
-                    "Load Game",
-                    Point::new(origin_x + 8, origin_y + 14),
-                    text_style,
-                )
-                .draw(display),
+                Text::new("Load Game", Point::new(origin_x + 8, origin_y + 14), text_style)
+                    .draw(display),
             );
             let end = core::cmp::min(list.scroll + visible_rows, list.entries.len());
             for (row, entry_index) in (list.scroll..end).enumerate() {
@@ -653,11 +611,7 @@ pub fn draw_save_overlay<D, C>(
                         .draw(display),
                     );
                 }
-                let prefix = if entry_index == list.selected {
-                    ">"
-                } else {
-                    " "
-                };
+                let prefix = if entry_index == list.selected { ">" } else { " " };
                 let line = format!("{prefix} {}", list.entries[entry_index].label);
                 halt_on_error(
                     Text::new(&line, Point::new(origin_x + 8, y), text_style).draw(display),
@@ -704,29 +658,19 @@ pub fn draw_info_overlay<D, C>(
     let text_style = MonoTextStyle::new(&FONT_6X10, theme.text);
 
     halt_on_error(
-        Rectangle::new(
-            Point::new(origin_x, origin_y),
-            Size::new(box_width, box_height),
-        )
-        .into_styled(PrimitiveStyle::with_fill(theme.panel_fill))
-        .draw(display),
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_fill(theme.panel_fill))
+            .draw(display),
     );
     halt_on_error(
-        Rectangle::new(
-            Point::new(origin_x, origin_y),
-            Size::new(box_width, box_height),
-        )
-        .into_styled(PrimitiveStyle::with_stroke(theme.panel_stroke, 1))
-        .draw(display),
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_stroke(theme.panel_stroke, 1))
+            .draw(display),
     );
 
     halt_on_error(
-        Text::new(
-            &overlay.title,
-            Point::new(origin_x + 8, origin_y + 14),
-            text_style,
-        )
-        .draw(display),
+        Text::new(&overlay.title, Point::new(origin_x + 8, origin_y + 14), text_style)
+            .draw(display),
     );
 
     for (index, line) in overlay.lines.iter().enumerate() {
@@ -735,12 +679,8 @@ pub fn draw_info_overlay<D, C>(
     }
 
     halt_on_error(
-        Text::new(
-            &overlay.footer,
-            Point::new(origin_x + 8, origin_y + 74),
-            text_style,
-        )
-        .draw(display),
+        Text::new(&overlay.footer, Point::new(origin_x + 8, origin_y + 74), text_style)
+            .draw(display),
     );
 }
 
@@ -811,17 +751,11 @@ pub fn draw_map_view<D, C>(
         });
     }
 
-    let cache = render_cache
-        .map_view
-        .as_mut()
-        .expect("map view cache must exist before drawing");
+    let cache = render_cache.map_view.as_mut().expect("map view cache must exist before drawing");
 
     clear_band(
         display,
-        Rectangle::new(
-            Point::new(0, 0),
-            Size::new(screen_size.width, config.header_height),
-        ),
+        Rectangle::new(Point::new(0, 0), Size::new(screen_size.width, config.header_height)),
         theme.background,
     );
     halt_on_error(Text::new(&header, Point::new(4, 10), text_style).draw(display));
@@ -861,33 +795,20 @@ pub fn draw_map_view<D, C>(
         theme.background,
     );
     halt_on_error(
-        Text::new(
-            footer,
-            Point::new(4, screen_size.height as i32 - 2),
-            text_style,
-        )
-        .draw(display),
+        Text::new(footer, Point::new(4, screen_size.height as i32 - 2), text_style).draw(display),
     );
 
     if let Some(status_text) = map_view.status() {
         halt_on_error(
-            Text::new(
-                status_text,
-                Point::new(4, screen_size.height as i32 - 14),
-                text_style,
-            )
-            .draw(display),
+            Text::new(status_text, Point::new(4, screen_size.height as i32 - 14), text_style)
+                .draw(display),
         );
     }
 
     let summary = map_view.session().summary();
     halt_on_error(
-        Text::new(
-            &summary,
-            Point::new(4, config.header_height as i32 - 2),
-            text_style,
-        )
-        .draw(display),
+        Text::new(&summary, Point::new(4, config.header_height as i32 - 2), text_style)
+            .draw(display),
     );
 }
 
@@ -937,9 +858,7 @@ fn draw_cell<D, C>(
     if let Some(team_id) = map_view.session().state().city_owner(coord) {
         halt_on_error(
             Rectangle::new(top_left + Point::new(1, 1), Size::new(4, 4))
-                .into_styled(PrimitiveStyle::with_fill((theme.team_color)(
-                    team_id as usize,
-                )))
+                .into_styled(PrimitiveStyle::with_fill((theme.team_color)(team_id as usize)))
                 .draw(display),
         );
     }
@@ -982,22 +901,15 @@ fn draw_hero_marker<D, C>(
     D: DrawTarget<Color = C>,
     C: PixelColor + Copy,
 {
-    let color = if hero_id == selected_hero_id {
-        theme.selected_hero
-    } else {
-        theme.hero
-    };
+    let color = if hero_id == selected_hero_id { theme.selected_hero } else { theme.hero };
     let inset_x = (TILE_WIDTH as i32 / 4).max(1);
     let inset_y = (TILE_HEIGHT as i32 / 4).max(1);
     let marker_w = (TILE_WIDTH / 2).max(1);
     let marker_h = (TILE_HEIGHT / 2).max(1);
     halt_on_error(
-        Rectangle::new(
-            top_left + Point::new(inset_x, inset_y),
-            Size::new(marker_w, marker_h),
-        )
-        .into_styled(PrimitiveStyle::with_fill(color))
-        .draw(display),
+        Rectangle::new(top_left + Point::new(inset_x, inset_y), Size::new(marker_w, marker_h))
+            .into_styled(PrimitiveStyle::with_fill(color))
+            .draw(display),
     );
 }
 
@@ -1028,10 +940,7 @@ where
     D: DrawTarget<Color = C>,
     C: PixelColor + Copy,
 {
-    halt_on_error(
-        rect.into_styled(PrimitiveStyle::with_fill(color))
-            .draw(display),
-    );
+    halt_on_error(rect.into_styled(PrimitiveStyle::with_fill(color)).draw(display));
 }
 
 fn halt_on_error<T, E>(result: Result<T, E>) -> T {

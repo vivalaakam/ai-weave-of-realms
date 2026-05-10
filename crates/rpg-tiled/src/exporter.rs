@@ -155,11 +155,7 @@ pub(crate) fn hex_encode(bytes: &[u8; 32]) -> String {
 
 /// Escapes special XML attribute characters.
 fn xml_escape_attr(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    value.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -171,12 +167,7 @@ mod tests {
     use rpg_engine::map::tile::{Tile, Tiles};
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
-        let tiles = vec![
-            Tile {
-                kind: Tiles::Meadow
-            };
-            (w * h) as usize
-        ];
+        let tiles = vec![Tile { kind: Tiles::Meadow }; (w * h) as usize];
         GameMap::new(w, h, tiles, [0u8; 32]).unwrap()
     }
 
@@ -198,12 +189,7 @@ mod tests {
     #[test]
     fn export_contains_seed_property() {
         let seed = [0xabu8; 32];
-        let tiles = vec![
-            Tile {
-                kind: Tiles::Meadow
-            };
-            4
-        ];
+        let tiles = vec![Tile { kind: Tiles::Meadow }; 4];
         let map = GameMap::new(2, 2, tiles, seed).unwrap();
         let xml = export_tmx(&map, "t.tsx");
         let expected_hex = "ab".repeat(32);
@@ -219,10 +205,7 @@ mod tests {
         let start = xml.find(tag).unwrap() + tag.len();
         let end = xml.find("</data>").unwrap();
         let csv_block = &xml[start..end];
-        let gid_count = csv_block
-            .split(',')
-            .filter(|s| s.trim().parse::<u32>().is_ok())
-            .count();
+        let gid_count = csv_block.split(',').filter(|s| s.trim().parse::<u32>().is_ok()).count();
         assert_eq!(gid_count, 12);
     }
 }

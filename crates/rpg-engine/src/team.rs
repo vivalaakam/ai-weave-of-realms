@@ -34,13 +34,7 @@ impl Team {
         color: (u8, u8, u8),
         player_controlled: bool,
     ) -> Self {
-        Self {
-            id,
-            name: name.into(),
-            color,
-            player_controlled,
-            turn: 0,
-        }
+        Self { id, name: name.into(), color, player_controlled, turn: 0 }
     }
 
     pub(crate) fn reset_id(&mut self, id: TeamId) {

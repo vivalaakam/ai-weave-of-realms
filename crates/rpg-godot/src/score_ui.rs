@@ -25,10 +25,7 @@ pub struct ScoreUI {
 #[godot_api]
 impl ILabel for ScoreUI {
     fn init(base: Base<Label>) -> Self {
-        Self {
-            base,
-            format: GString::from("Score: {score}"),
-        }
+        Self { base, format: GString::from("Score: {score}") }
     }
 
     fn ready(&mut self) {
@@ -44,10 +41,7 @@ impl ScoreUI {
     /// Updates the label text using the configured `format` string.
     #[func]
     pub fn on_score_changed(&mut self, score: i64) {
-        let text = self
-            .format
-            .to_string()
-            .replace("{score}", &score.to_string());
+        let text = self.format.to_string().replace("{score}", &score.to_string());
         self.base_mut().set_text(&text);
     }
 
@@ -58,9 +52,6 @@ impl ScoreUI {
     pub fn get_displayed_score(&self) -> i64 {
         let text = self.base().get_text().to_string();
         // Extract the numeric suffix after the last space
-        text.split_whitespace()
-            .last()
-            .and_then(|s| s.parse::<i64>().ok())
-            .unwrap_or(0)
+        text.split_whitespace().last().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0)
     }
 }

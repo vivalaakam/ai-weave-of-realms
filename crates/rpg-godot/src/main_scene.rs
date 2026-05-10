@@ -135,12 +135,10 @@ impl INode for MainScene {
         self.update_version_label();
 
         // Create the end-of-turn confirmation dialog (hidden initially).
-        self.base_mut()
-            .call_deferred("_create_end_turn_dialog", &[]);
+        self.base_mut().call_deferred("_create_end_turn_dialog", &[]);
 
         // Create the hire-hero dialog (hidden initially).
-        self.base_mut()
-            .call_deferred("_create_hire_hero_dialog", &[]);
+        self.base_mut().call_deferred("_create_hire_hero_dialog", &[]);
 
         // Defer startup so map_ready fires after ready() returns,
         // avoiding a double-borrow of MainScene.
@@ -436,8 +434,7 @@ impl MainScene {
 
     fn apply_gamepad_cursor_highlight(&mut self) {
         if let Some(mut hl) = self.tile_highlight() {
-            hl.bind_mut()
-                .set_forced_active_tile(self.gamepad_cursor_tile);
+            hl.bind_mut().set_forced_active_tile(self.gamepad_cursor_tile);
         }
     }
 
@@ -706,10 +703,7 @@ impl MainScene {
         for coord in city_coords {
             let owner = {
                 let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-                let v = gm
-                    .bind()
-                    .get_city_owner(coord.x as i64, coord.y as i64)
-                    .to_string();
+                let v = gm.bind().get_city_owner(coord.x as i64, coord.y as i64).to_string();
                 v
             };
 
@@ -726,10 +720,7 @@ impl MainScene {
                 sprite.set_position(world_pos);
             }
 
-            sprite.set_name(&StringName::from(&format!(
-                "CityMarker_{}_{}",
-                coord.x, coord.y
-            )));
+            sprite.set_name(&StringName::from(&format!("CityMarker_{}_{}", coord.x, coord.y)));
 
             let mut markers = self.base().get_node_as::<Node>("World/CityMarkers");
             markers.add_child(&sprite.upcast::<Node>());
@@ -804,10 +795,7 @@ impl MainScene {
             if let Some(world_pos) = self.map_tile_to_world(coord) {
                 sprite.set_position(world_pos);
             }
-            sprite.set_name(&StringName::from(&format!(
-                "EnemySpawn_{}_{}",
-                coord.x, coord.y
-            )));
+            sprite.set_name(&StringName::from(&format!("EnemySpawn_{}_{}", coord.x, coord.y)));
             let mut markers = self.base().get_node_as::<Node>("World/SpawnMarkers");
             markers.add_child(&sprite.upcast::<Node>());
         }
@@ -823,10 +811,7 @@ impl MainScene {
             if let Some(world_pos) = self.map_tile_to_world(coord) {
                 sprite.set_position(world_pos);
             }
-            sprite.set_name(&StringName::from(&format!(
-                "ChestSpawn_{}_{}",
-                coord.x, coord.y
-            )));
+            sprite.set_name(&StringName::from(&format!("ChestSpawn_{}_{}", coord.x, coord.y)));
             let mut markers = self.base().get_node_as::<Node>("World/SpawnMarkers");
             markers.add_child(&sprite.upcast::<Node>());
         }
@@ -862,9 +847,7 @@ impl MainScene {
         team_id: i64,
     ) -> i64 {
         let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let id = gm
-            .bind_mut()
-            .add_hero(GString::from(name), hp, atk, def, spd, pos, team_id);
+        let id = gm.bind_mut().add_hero(GString::from(name), hp, atk, def, spd, pos, team_id);
         id
     }
 
@@ -1043,17 +1026,11 @@ impl MainScene {
 
         let mut btn: Gd<Button> = Button::new_alloc();
         btn.set_name(&StringName::from(&format!("HeroBtn_{}", hero_id)));
-        btn.set_text(&format!(
-            "{} {} ({}:{})",
-            name_prefix, hero_id, pos.x, pos.y
-        ));
+        btn.set_text(&format!("{} {} ({}:{})", name_prefix, hero_id, pos.x, pos.y));
         btn.set_disabled(!is_alive);
 
         // Connect with hero_id as argument
-        let cb = self
-            .base()
-            .callable("_on_hero_list_clicked")
-            .bind(&[hero_id.to_variant()]);
+        let cb = self.base().callable("_on_hero_list_clicked").bind(&[hero_id.to_variant()]);
         btn.connect("pressed", &cb);
 
         list.add_child(&btn);
@@ -1132,10 +1109,7 @@ impl MainScene {
 
     /// Возвращает `true`, если диалог завершения хода сейчас виден.
     fn is_end_turn_dialog_visible(&self) -> bool {
-        self.end_turn_dialog
-            .as_ref()
-            .map(|d| d.is_visible())
-            .unwrap_or(false)
+        self.end_turn_dialog.as_ref().map(|d| d.is_visible()).unwrap_or(false)
     }
 
     /// Вызывается при нажатии «Да» в диалоге завершения хода.
@@ -1189,10 +1163,7 @@ impl MainScene {
         // Determine which team owns this city.
         let owner = {
             let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-            let v = gm
-                .bind()
-                .get_city_owner(tile.x as i64, tile.y as i64)
-                .to_string();
+            let v = gm.bind().get_city_owner(tile.x as i64, tile.y as i64).to_string();
             v
         };
 
@@ -1225,10 +1196,7 @@ impl MainScene {
 
     /// Возвращает `true`, если диалог найма героя сейчас виден.
     fn is_hire_hero_dialog_visible(&self) -> bool {
-        self.hire_hero_dialog
-            .as_ref()
-            .map(|d| d.is_visible())
-            .unwrap_or(false)
+        self.hire_hero_dialog.as_ref().map(|d| d.is_visible()).unwrap_or(false)
     }
 
     /// Возвращает `true`, если любой модальный диалог сейчас виден.
@@ -1257,13 +1225,7 @@ impl MainScene {
         let new_id = self.add_game_hero("Герой", 100, 20, 10, 15, tile, team_id);
         self.create_hero_node(new_id, &team_name, player_controlled, tile);
         self.update_heroes_list();
-        info!(
-            hero_id = new_id,
-            team_id,
-            x = tile.x,
-            y = tile.y,
-            "hired new hero at city"
-        );
+        info!(hero_id = new_id, team_id, x = tile.x, y = tile.y, "hired new hero at city");
     }
 
     /// Вызывается при нажатии «Отмена» или Esc в диалоге найма.
@@ -1276,9 +1238,7 @@ impl MainScene {
     /// или `None` если такого нет.
     fn player_hero_at_tile(&self, tile: Vector2i) -> Option<i64> {
         let gm: Gd<GameManager> = self.base().get_node_as("GameManager");
-        let hero_id = gm
-            .bind()
-            .get_hero_id_at_position(tile.x as i64, tile.y as i64);
+        let hero_id = gm.bind().get_hero_id_at_position(tile.x as i64, tile.y as i64);
         if hero_id < 0 {
             return None;
         }
@@ -1498,20 +1458,14 @@ impl MainScene {
 
     fn map_tile_to_world(&self, tile: Vector2i) -> Option<Vector2> {
         let mut tilemap = self.tilemap_layer()?;
-        let local = tilemap
-            .call("map_to_local", &[tile.to_variant()])
-            .try_to::<Vector2>()
-            .ok()?;
+        let local = tilemap.call("map_to_local", &[tile.to_variant()]).try_to::<Vector2>().ok()?;
         Some(tilemap.to_global(local))
     }
 
     fn world_to_map_tile(&self, world: Vector2) -> Option<Vector2i> {
         let mut tilemap = self.tilemap_layer()?;
         let local = tilemap.to_local(world);
-        tilemap
-            .call("local_to_map", &[local.to_variant()])
-            .try_to::<Vector2i>()
-            .ok()
+        tilemap.call("local_to_map", &[local.to_variant()]).try_to::<Vector2i>().ok()
     }
     fn tilemap_layer(&self) -> Option<Gd<TileMapLayer>> {
         self.base()

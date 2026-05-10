@@ -126,10 +126,7 @@ mod tests {
         // slow (attacker) dies from fast's opening strike
         assert!(!result.attacker_survived, "slow attacker should die");
         // fast (defender) takes 0 damage — slow never got to counter-attack
-        assert_eq!(
-            result.defender_damage, 0,
-            "fast defender should take no damage"
-        );
+        assert_eq!(result.defender_damage, 0, "fast defender should take no damage");
     }
 
     #[test]

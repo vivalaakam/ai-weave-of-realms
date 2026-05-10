@@ -148,9 +148,7 @@ impl EmbeddedApp {
     /// * `layout` - Current host layout metrics.
     pub fn clamp_view_to_layout(&mut self, layout: AppLayout) {
         if let AppScreen::MapView(map_view) = &mut self.screen {
-            map_view
-                .app
-                .clamp_view_to_map(layout.map_visible_cols, layout.map_visible_rows);
+            map_view.app.clamp_view_to_map(layout.map_visible_cols, layout.map_visible_rows);
         }
     }
 
@@ -243,10 +241,7 @@ where
 {
     splash.status = None;
     match splash.handle_input(event, SPLASH_OPTIONS.len()) {
-        SplashOutcome::Changed => ScreenOutcome {
-            changed: true,
-            next_screen: None,
-        },
+        SplashOutcome::Changed => ScreenOutcome { changed: true, next_screen: None },
         SplashOutcome::Selected(selected) => {
             let next_screen = match selected {
                 0 => match host.discover_maps() {
@@ -270,15 +265,11 @@ where
                     )),
                 },
             };
-            ScreenOutcome {
-                changed: true,
-                next_screen: Some(next_screen),
-            }
+            ScreenOutcome { changed: true, next_screen: Some(next_screen) }
         }
-        SplashOutcome::BackRequested | SplashOutcome::NoChange => ScreenOutcome {
-            changed: false,
-            next_screen: None,
-        },
+        SplashOutcome::BackRequested | SplashOutcome::NoChange => {
+            ScreenOutcome { changed: false, next_screen: None }
+        }
     }
 }
 
@@ -302,21 +293,12 @@ where
                 ))),
             };
         }
-        return ScreenOutcome {
-            changed: false,
-            next_screen: None,
-        };
+        return ScreenOutcome { changed: false, next_screen: None };
     }
 
     match map_select.handle_input(event, layout.list_rows) {
-        ListOutcome::NoChange => ScreenOutcome {
-            changed: false,
-            next_screen: None,
-        },
-        ListOutcome::Changed => ScreenOutcome {
-            changed: true,
-            next_screen: None,
-        },
+        ListOutcome::NoChange => ScreenOutcome { changed: false, next_screen: None },
+        ListOutcome::Changed => ScreenOutcome { changed: true, next_screen: None },
         ListOutcome::BackRequested => ScreenOutcome {
             changed: true,
             next_screen: Some(AppScreen::Splash(SplashScreen::new(0, None))),
@@ -332,17 +314,11 @@ where
                     },
                     Err(message) => {
                         map_select.status = Some(message);
-                        ScreenOutcome {
-                            changed: true,
-                            next_screen: None,
-                        }
+                        ScreenOutcome { changed: true, next_screen: None }
                     }
                 }
             }
-            None => ScreenOutcome {
-                changed: false,
-                next_screen: None,
-            },
+            None => ScreenOutcome { changed: false, next_screen: None },
         },
     }
 }
@@ -366,21 +342,12 @@ where
                 ))),
             };
         }
-        return ScreenOutcome {
-            changed: false,
-            next_screen: None,
-        };
+        return ScreenOutcome { changed: false, next_screen: None };
     }
 
     match save_select.handle_input(event, layout.list_rows) {
-        ListOutcome::NoChange => ScreenOutcome {
-            changed: false,
-            next_screen: None,
-        },
-        ListOutcome::Changed => ScreenOutcome {
-            changed: true,
-            next_screen: None,
-        },
+        ListOutcome::NoChange => ScreenOutcome { changed: false, next_screen: None },
+        ListOutcome::Changed => ScreenOutcome { changed: true, next_screen: None },
         ListOutcome::BackRequested => ScreenOutcome {
             changed: true,
             next_screen: Some(AppScreen::Splash(SplashScreen::new(1, None))),
@@ -397,25 +364,16 @@ where
                         },
                         Err(message) => {
                             save_select.status = Some(message);
-                            ScreenOutcome {
-                                changed: true,
-                                next_screen: None,
-                            }
+                            ScreenOutcome { changed: true, next_screen: None }
                         }
                     }
                 }
                 Err(error) => {
                     save_select.status = Some(host.error_message(error));
-                    ScreenOutcome {
-                        changed: true,
-                        next_screen: None,
-                    }
+                    ScreenOutcome { changed: true, next_screen: None }
                 }
             },
-            None => ScreenOutcome {
-                changed: false,
-                next_screen: None,
-            },
+            None => ScreenOutcome { changed: false, next_screen: None },
         },
     }
 }
@@ -437,50 +395,29 @@ where
         return match info_overlay.handle_input(event) {
             InfoOverlayOutcome::Close => {
                 map_view.info_overlay = None;
-                ScreenOutcome {
-                    changed: true,
-                    next_screen: None,
-                }
+                ScreenOutcome { changed: true, next_screen: None }
             }
-            InfoOverlayOutcome::NoChange => ScreenOutcome {
-                changed: false,
-                next_screen: None,
-            },
+            InfoOverlayOutcome::NoChange => ScreenOutcome { changed: false, next_screen: None },
         };
     }
 
     if is_key(event, 'i') {
         if let Some(overlay) = host.info_overlay() {
             map_view.info_overlay = Some(overlay);
-            return ScreenOutcome {
-                changed: true,
-                next_screen: None,
-            };
+            return ScreenOutcome { changed: true, next_screen: None };
         }
     }
 
     if is_key(event, 'p') {
         map_view.save_overlay = Some(SaveOverlay::menu());
-        return ScreenOutcome {
-            changed: true,
-            next_screen: None,
-        };
+        return ScreenOutcome { changed: true, next_screen: None };
     }
 
-    match map_view
-        .app
-        .handle_input(event, layout.map_visible_cols, layout.map_visible_rows)
-    {
-        MapViewOutcome::NoChange => ScreenOutcome {
-            changed: false,
-            next_screen: None,
-        },
+    match map_view.app.handle_input(event, layout.map_visible_cols, layout.map_visible_rows) {
+        MapViewOutcome::NoChange => ScreenOutcome { changed: false, next_screen: None },
         MapViewOutcome::Changed => {
             map_view.status = map_view.app.status().map(ToString::to_string);
-            ScreenOutcome {
-                changed: true,
-                next_screen: None,
-            }
+            ScreenOutcome { changed: true, next_screen: None }
         }
         MapViewOutcome::BackRequested => match host.discover_maps() {
             Ok(maps) => {
@@ -492,10 +429,7 @@ where
                     .position(|entry| entry.label == map_view.app.session().map_name())
                     .unwrap_or(0);
                 screen.scroll = screen.selected;
-                ScreenOutcome {
-                    changed: true,
-                    next_screen: Some(AppScreen::MapSelect(screen)),
-                }
+                ScreenOutcome { changed: true, next_screen: Some(AppScreen::MapSelect(screen)) }
             }
             Err(error) => ScreenOutcome {
                 changed: true,
@@ -519,33 +453,21 @@ where
 {
     let overlay = map_view.save_overlay.take();
     let Some(mut overlay) = overlay else {
-        return ScreenOutcome {
-            changed: false,
-            next_screen: None,
-        };
+        return ScreenOutcome { changed: false, next_screen: None };
     };
 
     match overlay.handle_input(event, layout.save_rows) {
         SaveOverlayOutcome::NoChange => {
             map_view.save_overlay = Some(overlay);
-            ScreenOutcome {
-                changed: false,
-                next_screen: None,
-            }
+            ScreenOutcome { changed: false, next_screen: None }
         }
         SaveOverlayOutcome::Changed => {
             map_view.save_overlay = Some(overlay);
-            ScreenOutcome {
-                changed: true,
-                next_screen: None,
-            }
+            ScreenOutcome { changed: true, next_screen: None }
         }
         SaveOverlayOutcome::Close => {
             map_view.save_overlay = None;
-            ScreenOutcome {
-                changed: true,
-                next_screen: None,
-            }
+            ScreenOutcome { changed: true, next_screen: None }
         }
         SaveOverlayOutcome::RequestDiscoverSaves => {
             match host.discover_saves() {
@@ -555,10 +477,7 @@ where
                 Err(error) => overlay.set_status(Some(host.error_message(error))),
             }
             map_view.save_overlay = Some(overlay);
-            ScreenOutcome {
-                changed: true,
-                next_screen: None,
-            }
+            ScreenOutcome { changed: true, next_screen: None }
         }
         SaveOverlayOutcome::RequestSave(name) => {
             match host.save_game(&name, map_view.app.session().state()) {
@@ -571,10 +490,7 @@ where
                     map_view.save_overlay = Some(overlay);
                 }
             }
-            ScreenOutcome {
-                changed: true,
-                next_screen: None,
-            }
+            ScreenOutcome { changed: true, next_screen: None }
         }
         SaveOverlayOutcome::RequestLoad(selected) => {
             match host.discover_saves() {
@@ -610,10 +526,7 @@ where
                     map_view.save_overlay = Some(overlay);
                 }
             }
-            ScreenOutcome {
-                changed: true,
-                next_screen: None,
-            }
+            ScreenOutcome { changed: true, next_screen: None }
         }
     }
 }
@@ -651,9 +564,7 @@ fn map_view_from_loaded(
 }
 
 fn clamped_map_view(mut map_view: MapViewScreen, layout: AppLayout) -> MapViewScreen {
-    map_view
-        .app
-        .clamp_view_to_map(layout.map_visible_cols, layout.map_visible_rows);
+    map_view.app.clamp_view_to_map(layout.map_visible_cols, layout.map_visible_rows);
     map_view
 }
 

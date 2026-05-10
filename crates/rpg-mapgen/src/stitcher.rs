@@ -291,14 +291,8 @@ mod tests {
         let seam_x_right = CHUNK_SIZE as u32;
 
         // Before stitching: seam tiles are water / grass respectively
-        assert_eq!(
-            map.get_tile(MapCoord::new(seam_x_left, 0)).unwrap().kind,
-            Tiles::Water
-        );
-        assert_eq!(
-            map.get_tile(MapCoord::new(seam_x_right, 0)).unwrap().kind,
-            Tiles::Meadow
-        );
+        assert_eq!(map.get_tile(MapCoord::new(seam_x_left, 0)).unwrap().kind, Tiles::Water);
+        assert_eq!(map.get_tile(MapCoord::new(seam_x_right, 0)).unwrap().kind, Tiles::Meadow);
 
         Stitcher::stitch(&mut map, CHUNK_SIZE as u32).unwrap();
 
@@ -329,11 +323,7 @@ mod tests {
             v.dedup();
             v.len()
         };
-        assert_eq!(
-            coords.len(),
-            deduped_len,
-            "seam_coordinates should be deduplicated"
-        );
+        assert_eq!(coords.len(), deduped_len, "seam_coordinates should be deduplicated");
     }
 
     #[test]
@@ -356,26 +346,11 @@ mod tests {
         let mut map = GameMap::new(width, height, tiles, [0u8; 32]).unwrap();
         Stitcher::stitch(&mut map, cs).unwrap();
 
-        assert_eq!(
-            map.get_tile(MapCoord::new(0, 0)).unwrap().kind,
-            Tiles::Meadow
-        );
+        assert_eq!(map.get_tile(MapCoord::new(0, 0)).unwrap().kind, Tiles::Meadow);
         assert_eq!(map.get_tile(MapCoord::new(1, 0)).unwrap().kind, Tiles::Road);
-        assert_eq!(
-            map.get_tile(MapCoord::new(1, 31)).unwrap().kind,
-            Tiles::Forest
-        );
-        assert_eq!(
-            map.get_tile(MapCoord::new(2, 31)).unwrap().kind,
-            Tiles::Forest
-        );
-        assert_eq!(
-            map.get_tile(MapCoord::new(3, 31)).unwrap().kind,
-            Tiles::Forest
-        );
-        assert_eq!(
-            map.get_tile(MapCoord::new(4, 31)).unwrap().kind,
-            Tiles::Forest
-        );
+        assert_eq!(map.get_tile(MapCoord::new(1, 31)).unwrap().kind, Tiles::Forest);
+        assert_eq!(map.get_tile(MapCoord::new(2, 31)).unwrap().kind, Tiles::Forest);
+        assert_eq!(map.get_tile(MapCoord::new(3, 31)).unwrap().kind, Tiles::Forest);
+        assert_eq!(map.get_tile(MapCoord::new(4, 31)).unwrap().kind, Tiles::Forest);
     }
 }

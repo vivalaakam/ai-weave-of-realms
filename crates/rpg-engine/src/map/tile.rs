@@ -249,9 +249,7 @@ impl Tile {
 impl Default for Tile {
     /// Returns a default meadow tile.
     fn default() -> Self {
-        Self {
-            kind: Tiles::Meadow,
-        }
+        Self { kind: Tiles::Meadow }
     }
 }
 

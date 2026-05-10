@@ -230,11 +230,7 @@ fn print_stats(map: &GameMap) {
     println!("\n╔═══════════════════════════════════╗");
     println!("║         Map Statistics            ║");
     println!("╠═══════════════════════════════════╣");
-    println!(
-        "║  Size:   {}×{} tiles",
-        map.tile_width(),
-        map.tile_height()
-    );
+    println!("║  Size:   {}×{} tiles", map.tile_width(), map.tile_height());
     println!("║  Total:  {total} tiles");
     println!("╠═══════════════════════════════════╣");
 
@@ -246,20 +242,10 @@ fn print_stats(map: &GameMap) {
         let bar_len = (pct / 2.0) as usize;
         let bar = "█".repeat(bar_len);
         let pass = if tile.is_passable() { "✓" } else { "✗" };
-        println!(
-            "║  {pass} {:12}  {:5} ({:5.1}%) {}",
-            tile.as_str(),
-            count,
-            pct,
-            bar
-        );
+        println!("║  {pass} {:12}  {:5} ({:5.1}%) {}", tile.as_str(), count, pct, bar);
     }
 
-    let passable: usize = counts
-        .iter()
-        .filter(|(t, _)| t.is_passable())
-        .map(|(_, n)| n)
-        .sum();
+    let passable: usize = counts.iter().filter(|(t, _)| t.is_passable()).map(|(_, n)| n).sum();
     let pct = passable as f32 / total as f32 * 100.0;
     println!("╠═══════════════════════════════════╣");
     println!("║  Passable: {passable}/{total} ({pct:.1}%)");
@@ -326,13 +312,7 @@ fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
         }
     }
 
-    draw_spawn_markers(
-        map,
-        &mut img,
-        scale,
-        Rgb([220, 50, 50]),
-        Rgb([245, 200, 60]),
-    );
+    draw_spawn_markers(map, &mut img, scale, Rgb([220, 50, 50]), Rgb([245, 200, 60]));
 
     match img.save(output) {
         Ok(_) => info!(path = %output.display(), width = w, height = h, "PNG saved"),
@@ -416,17 +396,13 @@ fn create_generation_dir(root: &Path) -> Result<PathBuf, std::io::Error> {
 
 /// Returns a monotonic-enough timestamp label suitable for directory names.
 fn generation_timestamp() -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     format!("gen-{}-{:03}", now.as_secs(), now.subsec_millis())
 }
 
 /// Resolves a repo-relative path against the current working directory.
 fn resolve_project_path(relative: &str) -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(relative)
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(relative)
 }
 
 /// Computes a relative path from `from_dir` to `to_path`.
@@ -492,8 +468,6 @@ fn open_file(path: &PathBuf) -> Result<(), std::io::Error> {
         info!(path = %path.display(), "opened generated TMX");
         Ok(())
     } else {
-        Err(std::io::Error::other(format!(
-            "open command exited with status {status}"
-        )))
+        Err(std::io::Error::other(format!("open command exited with status {status}")))
     }
 }

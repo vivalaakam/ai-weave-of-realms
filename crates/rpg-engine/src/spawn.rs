@@ -126,17 +126,10 @@ pub fn find_city_entrance_spawns(map: &GameMap, count: usize) -> Vec<MapCoord> {
     // iteratively pick the candidate farthest from all already-selected points.
     let mut selected: Vec<MapCoord> = vec![candidates[0]];
     while selected.len() < count {
-        let next = candidates
-            .iter()
-            .filter(|c| !selected.contains(c))
-            .max_by_key(|&&c| {
-                // Key = minimum Manhattan distance to any already-selected point.
-                selected
-                    .iter()
-                    .map(|&s| manhattan_distance(c, s))
-                    .min()
-                    .unwrap_or(0)
-            });
+        let next = candidates.iter().filter(|c| !selected.contains(c)).max_by_key(|&&c| {
+            // Key = minimum Manhattan distance to any already-selected point.
+            selected.iter().map(|&s| manhattan_distance(c, s)).min().unwrap_or(0)
+        });
         match next {
             Some(&coord) => selected.push(coord),
             None => break,
@@ -193,10 +186,7 @@ fn fallback_passable_priority(
 
 fn is_enemy_spawnable(kind: Tiles) -> bool {
     kind.is_passable()
-        && !matches!(
-            kind,
-            Tiles::City | Tiles::CityEntrance | Tiles::Gold | Tiles::Resource
-        )
+        && !matches!(kind, Tiles::City | Tiles::CityEntrance | Tiles::Gold | Tiles::Resource)
 }
 
 fn for_each_coord(map: &GameMap, mut callback: impl FnMut(MapCoord, Tiles)) {
@@ -258,12 +248,7 @@ mod tests {
     #[test]
     fn enemy_prefers_far_passable_non_poi_tile() {
         let map = map_from_rows(&[
-            &[
-                Tiles::CityEntrance,
-                Tiles::Road,
-                Tiles::Meadow,
-                Tiles::Meadow,
-            ],
+            &[Tiles::CityEntrance, Tiles::Road, Tiles::Meadow, Tiles::Meadow],
             &[Tiles::Meadow, Tiles::Water, Tiles::Gold, Tiles::Meadow],
             &[Tiles::Meadow, Tiles::Forest, Tiles::Meadow, Tiles::Meadow],
         ]);
@@ -277,10 +262,8 @@ mod tests {
 
     #[test]
     fn spawn_selection_errors_on_fully_blocked_map() {
-        let map = map_from_rows(&[
-            &[Tiles::Water, Tiles::Mountain],
-            &[Tiles::Mountain, Tiles::Water],
-        ]);
+        let map =
+            map_from_rows(&[&[Tiles::Water, Tiles::Mountain], &[Tiles::Mountain, Tiles::Water]]);
 
         let result = find_spawn_positions(&map);
         assert!(matches!(result, Err(Error::OutOfBounds(_))));

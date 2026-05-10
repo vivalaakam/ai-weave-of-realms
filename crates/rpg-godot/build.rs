@@ -10,10 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn main() {
     let git_hash = git_short_hash();
     let git_timestamp = git_commit_timestamp();
-    let build_timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let build_timestamp =
+        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "unknown".to_string());
 
     // Hash all .rs source files — changes whenever code changes, even without a commit.
@@ -41,9 +39,7 @@ fn git_short_hash() -> String {
         .output()
         .ok()
         .and_then(|o| {
-            o.status
-                .success()
-                .then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            o.status.success().then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
         })
         .unwrap_or_else(|| "unknown".to_string())
 }
@@ -54,9 +50,7 @@ fn git_commit_timestamp() -> String {
         .output()
         .ok()
         .and_then(|o| {
-            o.status
-                .success()
-                .then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            o.status.success().then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
         })
         .unwrap_or_else(|| "unknown".to_string())
 }

@@ -58,11 +58,7 @@ impl ValidationRuleSet {
         let mut rules = Vec::with_capacity(entries.len());
         for entry in &entries {
             let path = entry.path();
-            let name = path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned();
+            let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
 
             debug!(rule = %name, "loading validation rule");
             let validator = MapValidator::from_script(&path)?;
@@ -107,11 +103,7 @@ impl ValidationRuleSet {
             } else {
                 warn!(rule = %name, reason = ?vr.reason, "rule failed");
             }
-            results.push(RuleResult {
-                rule: name.clone(),
-                valid: vr.valid,
-                reason: vr.reason,
-            });
+            results.push(RuleResult { rule: name.clone(), valid: vr.valid, reason: vr.reason });
         }
 
         Ok(results)
@@ -133,10 +125,7 @@ pub struct RuleResult {
 
 impl From<RuleResult> for ValidationResult {
     fn from(r: RuleResult) -> Self {
-        ValidationResult {
-            valid: r.valid,
-            reason: r.reason,
-        }
+        ValidationResult { valid: r.valid, reason: r.reason }
     }
 }
 
@@ -185,11 +174,7 @@ mod tests {
     fn single_passing_rule() {
         init_tracing();
         let dir = temp_rule_dir("single_pass");
-        write_rule(
-            &dir,
-            "01_always_pass.lua",
-            "return function(m) return true, nil end",
-        );
+        write_rule(&dir, "01_always_pass.lua", "return function(m) return true, nil end");
         let rs = ValidationRuleSet::from_dir(&dir).unwrap();
         assert_eq!(rs.len(), 1);
         let map = make_uniform_map(Tiles::Meadow);
@@ -202,16 +187,8 @@ mod tests {
     fn multiple_rules_all_run() {
         init_tracing();
         let dir = temp_rule_dir("multi_run");
-        write_rule(
-            &dir,
-            "01_pass.lua",
-            "return function(m) return true, nil end",
-        );
-        write_rule(
-            &dir,
-            "02_fail.lua",
-            r#"return function(m) return false, "bad map" end"#,
-        );
+        write_rule(&dir, "01_pass.lua", "return function(m) return true, nil end");
+        write_rule(&dir, "02_fail.lua", r#"return function(m) return false, "bad map" end"#);
         let rs = ValidationRuleSet::from_dir(&dir).unwrap();
         let map = make_uniform_map(Tiles::Meadow);
         let results = rs.validate_all(&map).unwrap();
@@ -239,11 +216,7 @@ mod tests {
         init_tracing();
         let dir = temp_rule_dir("non_lua");
         write_rule(&dir, "README.md", "# not a rule");
-        write_rule(
-            &dir,
-            "01_rule.lua",
-            "return function(m) return true, nil end",
-        );
+        write_rule(&dir, "01_rule.lua", "return function(m) return true, nil end");
         let rs = ValidationRuleSet::from_dir(&dir).unwrap();
         assert_eq!(rs.len(), 1);
     }

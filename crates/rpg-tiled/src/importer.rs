@@ -71,10 +71,8 @@ impl TmxParser {
             match reader.read_event() {
                 Ok(Event::Start(e)) => self.handle_start(&e)?,
                 Ok(Event::Empty(e)) => self.handle_empty(&e)?,
-                Ok(Event::Text(e)) => {
-                    if self.in_csv_data {
-                        self.csv.push_str(e.unescape()?.as_ref());
-                    }
+                Ok(Event::Text(e)) if self.in_csv_data => {
+                    self.csv.push_str(e.unescape()?.as_ref());
                 }
                 Ok(Event::End(e)) => match e.name().as_ref() {
                     b"data" => self.in_csv_data = false,
@@ -121,22 +119,16 @@ impl TmxParser {
                     }
                 }
             }
-            b"object" => {
-                if self.in_spawns_group {
-                    let mut kind: Option<SpawnKind> = None;
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"type" || attr.key.as_ref() == b"name" {
-                            let value = std::str::from_utf8(&attr.value).unwrap_or("");
-                            kind = SpawnKind::from_str(value).or(kind);
-                        }
+            b"object" if self.in_spawns_group => {
+                let mut kind: Option<SpawnKind> = None;
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"type" || attr.key.as_ref() == b"name" {
+                        let value = std::str::from_utf8(&attr.value).unwrap_or("");
+                        kind = SpawnKind::from_str(value).or(kind);
                     }
-                    if let Some(kind) = kind {
-                        self.active_object = Some(SpawnObject {
-                            kind,
-                            tile_x: None,
-                            tile_y: None,
-                        });
-                    }
+                }
+                if let Some(kind) = kind {
+                    self.active_object = Some(SpawnObject { kind, tile_x: None, tile_y: None });
                 }
             }
             _ => {}
@@ -197,12 +189,8 @@ impl TmxParser {
     }
 
     fn into_game_map(self) -> Result<GameMap, Error> {
-        let width = self
-            .width
-            .ok_or_else(|| Error::MissingField("width".into()))?;
-        let height = self
-            .height
-            .ok_or_else(|| Error::MissingField("height".into()))?;
+        let width = self.width.ok_or_else(|| Error::MissingField("width".into()))?;
+        let height = self.height.ok_or_else(|| Error::MissingField("height".into()))?;
 
         let gids = parse_csv(&self.csv)?;
         let expected = (width * height) as usize;
@@ -216,15 +204,12 @@ impl TmxParser {
         let tiles: Result<Vec<Tile>, Error> = gids
             .into_iter()
             .map(|gid| {
-                Tiles::from_gid(gid)
-                    .map(|kind| Tile { kind })
-                    .map_err(|_| Error::UnknownGid(gid))
+                Tiles::from_gid(gid).map(|kind| Tile { kind }).map_err(|_| Error::UnknownGid(gid))
             })
             .collect();
 
         let mut map = GameMap::new(width, height, tiles?, self.seed).map_err(Error::Engine)?;
-        map.set_spawn_points(self.enemy_spawns, self.chest_spawns)
-            .map_err(Error::Engine)?;
+        map.set_spawn_points(self.enemy_spawns, self.chest_spawns).map_err(Error::Engine)?;
         Ok(map)
     }
 }
@@ -271,10 +256,8 @@ impl TmxParser {
 
 fn parse_u32_attr(field: &str, raw: &[u8]) -> Result<u32, Error> {
     let s = std::str::from_utf8(raw).unwrap_or("");
-    s.parse::<u32>().map_err(|_| Error::InvalidAttribute {
-        field: field.to_owned(),
-        value: s.to_owned(),
-    })
+    s.parse::<u32>()
+        .map_err(|_| Error::InvalidAttribute { field: field.to_owned(), value: s.to_owned() })
 }
 
 /// Parses a comma-separated list of GID strings, ignoring whitespace.
@@ -294,10 +277,7 @@ fn parse_csv(csv: &str) -> Result<Vec<u32>, Error> {
 /// Decodes a 64-character hex string into a 32-byte seed.
 fn hex_decode(hex: &str) -> Result<[u8; 32], Error> {
     if hex.len() != 64 {
-        return Err(Error::InvalidAttribute {
-            field: "seed".into(),
-            value: hex.to_owned(),
-        });
+        return Err(Error::InvalidAttribute { field: "seed".into(), value: hex.to_owned() });
     }
     let mut out = [0u8; 32];
     for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
@@ -382,11 +362,7 @@ mod tests {
             Tiles::Gold,
             Tiles::Resource,
         ];
-        let tiles: Vec<Tile> = (0..10)
-            .map(|i| Tile {
-                kind: kinds[i % kinds.len()],
-            })
-            .collect();
+        let tiles: Vec<Tile> = (0..10).map(|i| Tile { kind: kinds[i % kinds.len()] }).collect();
         let map = GameMap::new(10, 1, tiles, [0u8; 32]).unwrap();
         let xml = export_tmx(&map, "t.tsx");
         let imported = import_tmx(&xml).unwrap();

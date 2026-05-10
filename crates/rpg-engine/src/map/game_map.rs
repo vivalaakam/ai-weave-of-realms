@@ -111,19 +111,9 @@ impl GameMap {
     pub fn new(width: u32, height: u32, tiles: Vec<Tile>, seed: [u8; 32]) -> Result<Self, Error> {
         let expected = (width * height) as usize;
         if tiles.len() != expected {
-            return Err(Error::InvalidTilesSize {
-                expected,
-                got: tiles.len(),
-            });
+            return Err(Error::InvalidTilesSize { expected, got: tiles.len() });
         }
-        Ok(Self {
-            width,
-            height,
-            tiles,
-            enemy_spawns: Vec::new(),
-            chest_spawns: Vec::new(),
-            seed,
-        })
+        Ok(Self { width, height, tiles, enemy_spawns: Vec::new(), chest_spawns: Vec::new(), seed })
     }
 
     /// Returns the total width of the map in tiles.

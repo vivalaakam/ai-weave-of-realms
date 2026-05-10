@@ -39,14 +39,10 @@ impl MapEvaluator {
         let source = std::fs::read_to_string(path)?;
         let lua = Lua::new();
 
-        let func: Function = lua
-            .load(&source)
-            .set_name(path.to_string_lossy().as_ref())
-            .eval()
-            .map_err(|source| Error::ScriptLoad {
-                path: path.to_string_lossy().into_owned(),
-                source,
-            })?;
+        let func: Function =
+            lua.load(&source).set_name(path.to_string_lossy().as_ref()).eval().map_err(
+                |source| Error::ScriptLoad { path: path.to_string_lossy().into_owned(), source },
+            )?;
 
         debug!(path = %path.display(), "evaluator script loaded");
         Ok(Self { lua, func })
@@ -61,19 +57,14 @@ impl MapEvaluator {
     /// Returns [`Error::LuaExecution`] if the Lua function raises an error.
     #[instrument(skip(self, map))]
     pub fn evaluate(&self, map: &GameMap) -> Result<f64, Error> {
-        let map_table =
-            game_map_to_lua_table(&self.lua, map).map_err(|source| Error::LuaExecution {
-                function: "game_map_to_lua_table".into(),
-                source,
-            })?;
+        let map_table = game_map_to_lua_table(&self.lua, map).map_err(|source| {
+            Error::LuaExecution { function: "game_map_to_lua_table".into(), source }
+        })?;
 
         let score: f64 = self
             .func
             .call(map_table)
-            .map_err(|source| Error::LuaExecution {
-                function: "evaluate".into(),
-                source,
-            })?;
+            .map_err(|source| Error::LuaExecution { function: "evaluate".into(), source })?;
 
         debug!(score, "map evaluated");
         Ok(score)
