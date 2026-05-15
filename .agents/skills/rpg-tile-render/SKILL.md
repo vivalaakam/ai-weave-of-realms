@@ -37,6 +37,7 @@ Reference doc: `docs/tile-rendering.md` — **read this first** for the full sys
 |------|-------------|-----------|
 | `1_main.png` | 0 | 1078 |
 | `2_water.png` | 1078 | 5 |
+| `3_mountains.png` | 1083 | 5 |
 
 When you add a new PNG, sort alphabetically to find its start index.
 

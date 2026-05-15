@@ -28,6 +28,7 @@ Current atlas layout:
 |------------------------|-------------|-------|-------|
 | `1_main.png`           | 0           | 1078  | main tileset |
 | `2_water.png`          | 1078        | 5     | water autotile pieces |
+| `3_mountains.png`      | 1083        | 5     | mountain autotile pieces |
 
 ---
 
