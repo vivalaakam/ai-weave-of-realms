@@ -165,8 +165,8 @@ fn compute_water_composite(bits: u8) -> WaterMask {
     if n && !w { mask = and_mask(mask, &ll90); }  // N left half
     if n && !e { mask = and_mask(mask, &ul90); }  // N right half
     // E edge
-    if e && !n { mask = and_mask(mask, &ul180); } // E upper half
-    if e && !s { mask = and_mask(mask, &ll180); } // E lower half
+    if e && !n { mask = and_mask(mask, &ll180); } // E upper half
+    if e && !s { mask = and_mask(mask, &ul180); } // E lower half
     // S edge
     if s && !w { mask = and_mask(mask, &ul270); } // S left half
     if s && !e { mask = and_mask(mask, &ll270); } // S right half
