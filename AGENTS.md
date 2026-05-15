@@ -151,3 +151,24 @@ ai-rpg-v2/
 | `rpg-godot` | GodotNode wrappers, signals, scene bridging | Yes |
 | `rpg-embedded` | embedded-graphics UI primitives (T-Deck, sixel, SDL2) | No |
 | `rpg-tools` | `mapgen` CLI — renders map PNG+TMX for testing | No |
+
+---
+
+## Agent Skills
+
+Project-local skill guides live in `.agents/skills/`. Each skill is a `SKILL.md` that contains
+domain knowledge, step-by-step patterns, and common pitfalls for a specific area of the codebase.
+**Read the relevant skill before starting work in that area.**
+
+| Skill | Path | When to use |
+|-------|------|-------------|
+| `rpg-tile-render` | `.agents/skills/rpg-tile-render/SKILL.md` | Adding/fixing terrain tile rendering, autotile compositing, tile atlas, water/mountain/road/river sprites |
+
+### How to use a skill
+
+1. Read `.agents/skills/<skill-name>/SKILL.md` at the start of the task.
+2. Follow the patterns described there — they encode decisions already made in prior sessions.
+3. Cross-reference `docs/` for deeper technical documentation.
+
+For Claude Code the skills are also registered as slash-skills (e.g. `/rpg-tile-render`).
+All other agents (Codex, Qwen, Gemini, etc.) should read the SKILL.md files directly.
