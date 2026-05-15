@@ -43,6 +43,16 @@ const GRASS_TILE_COUNT: usize = GRASS_INDICES.len();
 const FOREST_INDICES: [usize; 6] = [49, 50, 51, 52, 53, 54];
 const FOREST_TILE_COUNT: usize = FOREST_INDICES.len();
 
+// Water tile indices from 2_water.png (5 tiles at 1078..1082).
+const WATER_BASE: usize = 1078;
+const WATER_FULL: usize = WATER_BASE;         // tile 0: full water rectangle
+const WATER_SHORE_LL: usize = WATER_BASE + 1; // tile 1: shore, lower-left half of W edge
+const WATER_SHORE_UL: usize = WATER_BASE + 2; // tile 2: shore, upper-left half of W edge
+const WATER_CORNER_OUTER: usize = WATER_BASE + 3; // tile 3: outer corner, upper-left
+const WATER_CORNER_INNER: usize = WATER_BASE + 4; // tile 4: inner corner, upper-left
+
+type WaterMask = [u8; TILESET_MASK_BYTES];
+
 const TILE_WIDTH: u32 = 32;
 const TILE_HEIGHT: u32 = 32;
 
@@ -57,6 +67,123 @@ fn grass_mask(grass_idx: usize) -> &'static [u8] {
 
 fn forest_mask(forest_idx: usize) -> &'static [u8] {
     tile_atlas_mask(FOREST_INDICES[forest_idx])
+}
+
+fn get_tile_mask_arr(idx: usize) -> WaterMask {
+    let mut arr = [0u8; TILESET_MASK_BYTES];
+    arr.copy_from_slice(tile_atlas_mask(idx));
+    arr
+}
+
+fn mask_pixel_arr(m: &WaterMask, x: usize, y: usize) -> bool {
+    let bit = y * TILESET_TILE_W + x;
+    (m[bit / 8] >> (7 - bit % 8)) & 1 != 0
+}
+
+fn rotate_cw90(m: &WaterMask) -> WaterMask {
+    // pixel (x, y) → (N-1-y, x) where N = TILESET_TILE_W = 16
+    let n = TILESET_TILE_W;
+    let mut out = [0u8; TILESET_MASK_BYTES];
+    for y in 0..n {
+        for x in 0..n {
+            if mask_pixel_arr(m, x, y) {
+                let nx = n - 1 - y;
+                let ny = x;
+                let bit = ny * n + nx;
+                out[bit / 8] |= 1 << (7 - bit % 8);
+            }
+        }
+    }
+    out
+}
+
+fn and_mask(mut a: WaterMask, b: &WaterMask) -> WaterMask {
+    for i in 0..TILESET_MASK_BYTES {
+        a[i] &= b[i];
+    }
+    a
+}
+
+// Neighbor bits: bit0=N, bit1=NE, bit2=E, bit3=SE, bit4=S, bit5=SW, bit6=W, bit7=NW
+// 1 = neighbor is water, 0 = neighbor is land or out-of-bounds
+fn water_neighbor_bits(map: &rpg_engine::map::game_map::GameMap, coord: MapCoord) -> u8 {
+    let is_water = |cx: i32, cy: i32| -> bool {
+        if cx < 0 || cy < 0 {
+            return false;
+        }
+        let c = MapCoord::new(cx as u32, cy as u32);
+        map.get_tile(c).is_ok_and(|t| matches!(t.kind, Tiles::Water))
+    };
+    let x = coord.x as i32;
+    let y = coord.y as i32;
+    let n  = is_water(x,     y - 1) as u8;
+    let ne = is_water(x + 1, y - 1) as u8;
+    let e  = is_water(x + 1, y    ) as u8;
+    let se = is_water(x + 1, y + 1) as u8;
+    let s  = is_water(x,     y + 1) as u8;
+    let sw = is_water(x - 1, y + 1) as u8;
+    let w  = is_water(x - 1, y    ) as u8;
+    let nw = is_water(x - 1, y - 1) as u8;
+    n | (ne << 1) | (e << 2) | (se << 3) | (s << 4) | (sw << 5) | (w << 6) | (nw << 7)
+}
+
+fn compute_water_composite(bits: u8) -> WaterMask {
+    let land = |bit: u8| (bits & bit) == 0;
+    let n  = land(0x01);
+    let ne = land(0x02);
+    let e  = land(0x04);
+    let se = land(0x08);
+    let s  = land(0x10);
+    let sw = land(0x20);
+    let w  = land(0x40);
+    let nw = land(0x80);
+
+    let ll = get_tile_mask_arr(WATER_SHORE_LL);
+    let ul = get_tile_mask_arr(WATER_SHORE_UL);
+    let co = get_tile_mask_arr(WATER_CORNER_OUTER);
+    let ci = get_tile_mask_arr(WATER_CORNER_INNER);
+    let ll90  = rotate_cw90(&ll);
+    let ll180 = rotate_cw90(&ll90);
+    let ll270 = rotate_cw90(&ll180);
+    let ul90  = rotate_cw90(&ul);
+    let ul180 = rotate_cw90(&ul90);
+    let ul270 = rotate_cw90(&ul180);
+    let co90  = rotate_cw90(&co);
+    let co180 = rotate_cw90(&co90);
+    let co270 = rotate_cw90(&co180);
+    let ci90  = rotate_cw90(&ci);
+    let ci180 = rotate_cw90(&ci90);
+    let ci270 = rotate_cw90(&ci180);
+
+    let mut mask = get_tile_mask_arr(WATER_FULL);
+
+    // Edge half-pieces: each half is skipped when replaced by an adjacent outer corner.
+    // W edge
+    if w && !n { mask = and_mask(mask, &ul); }    // W upper half
+    if w && !s { mask = and_mask(mask, &ll); }    // W lower half
+    // N edge
+    if n && !w { mask = and_mask(mask, &ll90); }  // N left half
+    if n && !e { mask = and_mask(mask, &ul90); }  // N right half
+    // E edge
+    if e && !n { mask = and_mask(mask, &ul180); } // E upper half
+    if e && !s { mask = and_mask(mask, &ll180); } // E lower half
+    // S edge
+    if s && !w { mask = and_mask(mask, &ul270); } // S left half
+    if s && !e { mask = and_mask(mask, &ll270); } // S right half
+
+    // Outer corners (two adjacent land edges meet)
+    if w && n { mask = and_mask(mask, &co); }    // NW outer
+    if n && e { mask = and_mask(mask, &co90); }  // NE outer
+    if e && s { mask = and_mask(mask, &co180); } // SE outer
+    if s && w { mask = and_mask(mask, &co270); } // SW outer
+
+    // Inner corners (diagonal land, both orthogonal neighbors are water)
+    if !w && !n && nw { mask = and_mask(mask, &ci); }    // NW inner
+    if !n && !e && ne { mask = and_mask(mask, &ci90); }  // NE inner
+    if !e && !s && se { mask = and_mask(mask, &ci180); } // SE inner
+    if !s && !w && sw { mask = and_mask(mask, &ci270); } // SW inner
+
+    mask
 }
 
 fn mask_pixel(mask: &[u8], x: usize, y: usize) -> bool {
@@ -184,6 +311,21 @@ where
 #[derive(Default)]
 pub struct RenderCache {
     map_view: Option<MapViewCache>,
+    /// Lazily-computed composite water masks keyed by 8-bit neighbor pattern.
+    water_masks: Vec<Option<WaterMask>>,
+}
+
+fn cached_water_mask(water_masks: &mut Vec<Option<WaterMask>>, bits: u8) -> WaterMask {
+    if water_masks.is_empty() {
+        *water_masks = vec![None; 256];
+    }
+    let idx = bits as usize;
+    if let Some(m) = water_masks[idx] {
+        return m;
+    }
+    let m = compute_water_composite(bits);
+    water_masks[idx] = Some(m);
+    m
 }
 
 /// Shared cache used by the top-level screen renderer.
@@ -778,7 +920,7 @@ pub fn draw_map_view<D, C>(
             cache.visible_cells[cache_index] = cell;
             let x = origin_x + (col as i32 * TILE_WIDTH as i32);
             let y = origin_y + (row as i32 * TILE_HEIGHT as i32);
-            draw_cell(display, map_view, coord, Point::new(x, y), theme);
+            draw_cell(display, map_view, coord, Point::new(x, y), &mut render_cache.water_masks, theme);
         }
     }
 
@@ -817,6 +959,7 @@ fn draw_cell<D, C>(
     map_view: &MapViewApp,
     coord: MapCoord,
     top_left: Point,
+    water_masks: &mut Vec<Option<WaterMask>>,
     theme: MapViewTheme<C>,
 ) where
     D: DrawTarget<Color = C>,
@@ -855,6 +998,10 @@ fn draw_cell<D, C>(
         );
     }
 
+    if matches!(tile.kind, Tiles::Water) {
+        draw_water_cell(display, map, coord, top_left, water_masks, theme);
+    }
+
     if let Some(team_id) = map_view.session().state().city_owner(coord) {
         halt_on_error(
             Rectangle::new(top_left + Point::new(1, 1), Size::new(4, 4))
@@ -889,6 +1036,22 @@ fn draw_cell<D, C>(
             theme,
         );
     }
+}
+
+fn draw_water_cell<D, C>(
+    display: &mut D,
+    map: &rpg_engine::map::game_map::GameMap,
+    coord: MapCoord,
+    top_left: Point,
+    water_masks: &mut Vec<Option<WaterMask>>,
+    theme: MapViewTheme<C>,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    let bits = water_neighbor_bits(map, coord);
+    let mask = cached_water_mask(water_masks, bits);
+    draw_grass_sprite(display, top_left, &mask, (theme.tile_sprite_color)(Tiles::Water));
 }
 
 fn draw_hero_marker<D, C>(
