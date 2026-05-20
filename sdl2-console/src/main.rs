@@ -533,7 +533,7 @@ fn build_default_state(map: GameMap, seed: &str) -> AppResult<GameState> {
 
 fn map_key_event(keycode: Keycode, keymod: Mod) -> InputEvent {
     match keycode {
-        Keycode::Return | Keycode::Space => InputEvent::Enter,
+        Keycode::Return | Keycode::Space => InputEvent::NextTurn,
         Keycode::Escape | Keycode::Backspace => InputEvent::Back,
         Keycode::Up => InputEvent::Up,
         Keycode::Down => InputEvent::Down,
@@ -748,6 +748,7 @@ fn map_controller_button(button: Button) -> InputEvent {
         Button::DPadLeft => InputEvent::Left,
         Button::DPadRight => InputEvent::Right,
         Button::A | Button::Start => InputEvent::Enter,
+        Button::Y => InputEvent::NextTurn,
         Button::B | Button::Back => InputEvent::Back,
         _ => InputEvent::None,
     }

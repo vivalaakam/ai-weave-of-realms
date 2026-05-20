@@ -91,6 +91,24 @@ impl GameSession {
         }
     }
 
+    /// Ends the current turn, advances to the next team, and selects its first hero.
+    ///
+    /// # Returns
+    /// A status summary string after the turn transition.
+    ///
+    /// # Errors
+    /// Returns any engine error from `on_turn`.
+    pub fn end_turn(&mut self) -> Result<String, EngineError> {
+        self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
+        let new_team = self.state.get_active_team_id().ok().copied();
+        if let Some(team_id) = new_team {
+            if let Some(next) = self.state.get_next_hero(team_id) {
+                self.selected_hero_id = next;
+            }
+        }
+        Ok(self.summary())
+    }
+
     /// Returns a short one-line status summary for HUD rendering.
     pub fn summary(&self) -> String {
         let team = self.state.get_active_team().map(|active| active.name.as_str()).unwrap_or("?");

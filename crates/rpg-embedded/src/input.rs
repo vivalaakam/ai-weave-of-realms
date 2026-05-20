@@ -21,4 +21,6 @@ pub enum InputEvent {
     Right,
     /// Cycle to the next hero.
     NextHero,
+    /// End current player's turn.
+    NextTurn,
 }

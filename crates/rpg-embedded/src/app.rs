@@ -16,6 +16,7 @@ use crate::map_view::{MapViewApp, MapViewOutcome};
 use crate::save_overlay::{SaveOverlay, SaveOverlayOutcome};
 use crate::session::GameSession;
 use crate::splash::{SplashOutcome, SplashScreen};
+use crate::turn_overlay::{EndTurnOverlay, EndTurnOverlayOutcome};
 
 /// Shared app title rendered on the splash screen.
 pub const APP_TITLE: &str = "weave of realms";
@@ -77,6 +78,8 @@ pub struct MapViewScreen {
     pub info_overlay: Option<InfoOverlay>,
     /// Optional save/load overlay.
     pub save_overlay: Option<SaveOverlay>,
+    /// Optional end-of-turn confirmation overlay.
+    pub end_turn_overlay: Option<EndTurnOverlay>,
 }
 
 /// Top-level shared screen state.
@@ -401,6 +404,31 @@ where
         };
     }
 
+    if let Some(end_turn_overlay) = map_view.end_turn_overlay.as_mut() {
+        return match end_turn_overlay.handle_input(event) {
+            EndTurnOverlayOutcome::NoChange => ScreenOutcome { changed: false, next_screen: None },
+            EndTurnOverlayOutcome::Changed => ScreenOutcome { changed: true, next_screen: None },
+            EndTurnOverlayOutcome::Close => {
+                map_view.end_turn_overlay = None;
+                ScreenOutcome { changed: true, next_screen: None }
+            }
+            EndTurnOverlayOutcome::ConfirmEndTurn => {
+                map_view.end_turn_overlay = None;
+                match map_view.app.session_mut().end_turn() {
+                    Ok(summary) => {
+                        map_view.app.set_status(Some(summary));
+                        map_view.status = map_view.app.status().map(ToString::to_string);
+                    }
+                    Err(err) => {
+                        map_view.app.set_status(Some(err.to_string()));
+                        map_view.status = map_view.app.status().map(ToString::to_string);
+                    }
+                }
+                ScreenOutcome { changed: true, next_screen: None }
+            }
+        };
+    }
+
     if is_key(event, 'i') {
         if let Some(overlay) = host.info_overlay() {
             map_view.info_overlay = Some(overlay);
@@ -439,6 +467,10 @@ where
                 ))),
             },
         },
+        MapViewOutcome::RequestEndTurn => {
+            map_view.end_turn_overlay = Some(EndTurnOverlay::new());
+            ScreenOutcome { changed: true, next_screen: None }
+        }
         MapViewOutcome::GameOver { won, message } => {
             let selected = if won { 0 } else { 1 };
             ScreenOutcome {
@@ -567,6 +599,7 @@ fn map_view_from_loaded(
         status,
         info_overlay: None,
         save_overlay: None,
+        end_turn_overlay: None,
     })
 }
 

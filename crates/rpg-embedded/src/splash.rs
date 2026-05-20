@@ -68,7 +68,8 @@ impl SplashScreen {
             | InputEvent::Left
             | InputEvent::Right
             | InputEvent::Key(_)
-            | InputEvent::NextHero => SplashOutcome::NoChange,
+            | InputEvent::NextHero
+            | InputEvent::NextTurn => SplashOutcome::NoChange,
         }
     }
 }

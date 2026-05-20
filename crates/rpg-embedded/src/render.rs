@@ -23,6 +23,7 @@ use crate::list::ListScreen;
 use crate::map_view::MapViewApp;
 use crate::save_overlay::SaveOverlay;
 use crate::splash::SplashScreen;
+use crate::turn_overlay::EndTurnOverlay;
 
 const EMPTY_TILE: u32 = u32::MAX;
 
@@ -452,6 +453,22 @@ where
     pub text: C,
 }
 
+/// Shared theme colors for end-turn confirmation overlay rendering.
+#[derive(Clone, Copy)]
+pub struct EndTurnOverlayTheme<C>
+where
+    C: PixelColor + Copy,
+{
+    /// Background fill color.
+    pub panel_fill: C,
+    /// Border stroke color.
+    pub panel_stroke: C,
+    /// Main text color.
+    pub text: C,
+    /// Highlight fill for the selected button.
+    pub selected_fill: C,
+}
+
 /// Cached state used to avoid redrawing unchanged map cells.
 #[derive(Default)]
 pub struct RenderCache {
@@ -633,7 +650,9 @@ fn draw_app_map_view<D, C>(
     D: DrawTarget<Color = C>,
     C: PixelColor + Copy,
 {
-    let overlay_visible = map_view.info_overlay.is_some() || map_view.save_overlay.is_some();
+    let overlay_visible = map_view.info_overlay.is_some()
+        || map_view.save_overlay.is_some()
+        || map_view.end_turn_overlay.is_some();
     if render_cache.overlay_visible != overlay_visible {
         reset_cache(&mut render_cache.map_view);
         render_cache.overlay_visible = overlay_visible;
@@ -648,7 +667,15 @@ fn draw_app_map_view<D, C>(
         theme.map_view,
     );
 
-    if let Some(save_overlay) = &map_view.save_overlay {
+    if let Some(end_turn) = &map_view.end_turn_overlay {
+        let end_turn_theme = EndTurnOverlayTheme {
+            panel_fill: theme.save_overlay.panel_fill,
+            panel_stroke: theme.save_overlay.panel_stroke,
+            text: theme.save_overlay.text,
+            selected_fill: theme.save_overlay.selected_fill,
+        };
+        draw_end_turn_overlay(display, screen_size, end_turn, end_turn_theme);
+    } else if let Some(save_overlay) = &map_view.save_overlay {
         draw_save_overlay(display, screen_size, save_overlay, theme.save_overlay, save_rows);
     } else if let Some(info_overlay) = &map_view.info_overlay {
         draw_info_overlay(display, screen_size, info_overlay, theme.info_overlay);
@@ -983,6 +1010,70 @@ pub fn draw_info_overlay<D, C>(
     halt_on_error(
         Text::new(&overlay.footer, Point::new(origin_x + 8, origin_y + 74), text_style)
             .draw(display),
+    );
+}
+
+/// Draws the end-of-turn confirmation overlay.
+///
+/// # Arguments
+/// * `display` - Platform draw target.
+/// * `screen_size` - Full drawable screen size in pixels.
+/// * `overlay` - End-turn overlay state.
+/// * `theme` - Device-specific panel colors.
+pub fn draw_end_turn_overlay<D, C>(
+    display: &mut D,
+    screen_size: Size,
+    overlay: &EndTurnOverlay,
+    theme: EndTurnOverlayTheme<C>,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    let box_width: u32 = 180;
+    let box_height: u32 = 80;
+    let origin_x = ((screen_size.width - box_width) / 2) as i32;
+    let origin_y = ((screen_size.height - box_height) / 2) as i32;
+    let text_style = MonoTextStyle::new(&FONT_6X10, theme.text);
+    let selected_style = PrimitiveStyle::with_fill(theme.selected_fill);
+
+    halt_on_error(
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_fill(theme.panel_fill))
+            .draw(display),
+    );
+    halt_on_error(
+        Rectangle::new(Point::new(origin_x, origin_y), Size::new(box_width, box_height))
+            .into_styled(PrimitiveStyle::with_stroke(theme.panel_stroke, 1))
+            .draw(display),
+    );
+
+    halt_on_error(
+        Text::new("End your turn?", Point::new(origin_x + 8, origin_y + 14), text_style).draw(display),
+    );
+
+    let labels = ["Yes", "Cancel"];
+    for (idx, label) in labels.iter().enumerate() {
+        let x = origin_x + 8 + (idx as i32) * 80;
+        let y = origin_y + 40;
+        if idx == overlay.selected {
+            halt_on_error(
+                Rectangle::new(Point::new(x, y - 9), Size::new(60, 14))
+                    .into_styled(selected_style)
+                    .draw(display),
+            );
+        }
+        let prefix = if idx == overlay.selected { ">" } else { " " };
+        let line = format!("{prefix} {}", label);
+        halt_on_error(Text::new(&line, Point::new(x + 4, y + 3), text_style).draw(display));
+    }
+
+    halt_on_error(
+        Text::new(
+            "Enter: confirm  Esc: cancel",
+            Point::new(origin_x + 8, origin_y + 66),
+            text_style,
+        )
+        .draw(display),
     );
 }
 

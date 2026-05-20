@@ -16,6 +16,8 @@ pub enum MapViewOutcome {
     Changed,
     /// User requested leaving the map view.
     BackRequested,
+    /// User requested ending current turn.
+    RequestEndTurn,
     /// Game over — the match ended in victory or defeat.
     GameOver { won: bool, message: String },
 }
@@ -99,10 +101,11 @@ impl MapViewApp {
                 's' | 'j' => self.pan_view(InputEvent::Down, visible_cols, visible_rows),
                 'a' | 'h' => self.pan_view(InputEvent::Left, visible_cols, visible_rows),
                 'd' | 'l' => self.pan_view(InputEvent::Right, visible_cols, visible_rows),
-                'q' => return MapViewOutcome::BackRequested,
+                'q' => MapViewOutcome::BackRequested,
                 _ => MapViewOutcome::NoChange,
             },
             InputEvent::Enter => MapViewOutcome::NoChange,
+            InputEvent::NextTurn => MapViewOutcome::RequestEndTurn,
             InputEvent::Back => MapViewOutcome::BackRequested,
             InputEvent::None => MapViewOutcome::NoChange,
         }
