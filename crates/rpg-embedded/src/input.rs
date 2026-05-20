@@ -19,4 +19,6 @@ pub enum InputEvent {
     Left,
     /// Right direction.
     Right,
+    /// Cycle to the next hero.
+    Tab,
 }

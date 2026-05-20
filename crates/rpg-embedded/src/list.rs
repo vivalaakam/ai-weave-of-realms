@@ -80,7 +80,11 @@ impl ListScreen {
             }
             InputEvent::Enter => return ListOutcome::Selected(self.selected),
             InputEvent::Back => return ListOutcome::BackRequested,
-            InputEvent::Left | InputEvent::Right | InputEvent::None | InputEvent::Key(_) => {}
+            InputEvent::Left
+            | InputEvent::Right
+            | InputEvent::None
+            | InputEvent::Key(_)
+            | InputEvent::Tab => {}
         }
 
         let previous_scroll = self.scroll;

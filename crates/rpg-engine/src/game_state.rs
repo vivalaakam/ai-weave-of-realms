@@ -31,6 +31,24 @@ use crate::rng::SeededRng;
 use crate::score::{ScoreBoard, ScoreEvent};
 use crate::team::Team;
 
+/// Describes how a game can be won.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WinCondition {
+    /// Reach this score to trigger a win.
+    ScoreThreshold(i32),
+    /// Eliminate every enemy hero.
+    DefeatAllEnemies,
+}
+
+/// Result of checking whether the game has ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GameOutcome {
+    /// A player team reached the win condition.
+    Victory { team_id: TeamId },
+    /// All heroes of every player team are dead.
+    Defeat,
+}
+
 // ─── TurnEvent ────────────────────────────────────────────────────────────────
 
 /// An event that occurred during the current turn.
@@ -484,6 +502,60 @@ impl GameState {
         } else {
             Err(Error::OutOfBounds(format!("hero {id} not found")))
         }
+    }
+
+    /// Checks whether the game has reached a win or loss condition.
+    ///
+    /// `conditions` is a map from team id to that team's win condition.
+    /// A player team must satisfy ANY of the assigned conditions; a loss
+    /// triggers when every player team has no living heroes remaining.
+    ///
+    /// # Returns
+    /// - `Some(GameOutcome::Victory { team_id })` if `team_id` has met a win condition.
+    /// - `Some(GameOutcome::Defeat)` if all player-team heroes are dead.
+    /// - `None` while the game is still in progress.
+    pub fn check_outcome(
+        &self,
+        conditions: &BTreeMap<TeamId, WinCondition>,
+    ) -> Option<GameOutcome> {
+        // Check victory conditions first.
+        for (team_id, condition) in conditions {
+            let Some(team) = self.teams.get(team_id) else {
+                continue;
+            };
+            if !team.is_player_controlled() {
+                continue;
+            }
+            match condition {
+                WinCondition::ScoreThreshold(threshold) => {
+                    if self.score.total() >= *threshold {
+                        return Some(GameOutcome::Victory { team_id: *team_id });
+                    }
+                }
+                WinCondition::DefeatAllEnemies => {
+                    let enemies_alive = self
+                        .heroes
+                        .values()
+                        .any(|h| h.is_alive() && !self.is_player_controlled(h.team_id));
+                    if !enemies_alive {
+                        return Some(GameOutcome::Victory { team_id: *team_id });
+                    }
+                }
+            }
+        }
+
+        // Check defeat: all heroes in every player team are dead.
+        let player_teams: Vec<TeamId> =
+            self.teams.values().filter(|t| t.is_player_controlled()).map(|t| t.get_id()).collect();
+        if !player_teams.is_empty()
+            && player_teams.iter().all(|tid| {
+                self.heroes.values().filter(|h| h.team_id == *tid).all(|h| !h.is_alive())
+            })
+        {
+            return Some(GameOutcome::Defeat);
+        }
+
+        None
     }
 }
 
@@ -1180,5 +1252,82 @@ mod tests {
         state.on_turn().unwrap();
         assert_eq!(state.teams[&0].get_turn(), 2);
         assert_eq!(state.teams[&1].get_turn(), 1);
+    }
+
+    fn make_state_with_heroes(map: GameMap) -> (GameState, HeroId, HeroId, HeroId) {
+        let mut state = make_state(map);
+        let pid = state.add_hero(Hero::new(0, "P", 100, 200, 0, 10, MapCoord::new(0, 0), 0));
+        let bid = state.add_hero(Hero::new(1, "P2", 100, 200, 0, 10, MapCoord::new(2, 0), 1));
+        let eid = state.add_hero(Hero::new(2, "E", 1, 1, 0, 1, MapCoord::new(1, 0), 2));
+        (state, pid, bid, eid)
+    }
+
+    #[test]
+    fn check_outcome_score_threshold_victory() {
+        let map = meadow_map(5, 5);
+        let (mut state, _pid, _bid, eid) = make_state_with_heroes(map);
+        let conditions = {
+            let mut c = BTreeMap::<u8, WinCondition>::new();
+            c.insert(0, WinCondition::ScoreThreshold(10));
+            c
+        };
+
+        // No events yet → score is 0.
+        assert_eq!(state.check_outcome(&conditions), None);
+
+        // Trigger a score event worth 25 points.
+        state.attack_hero(0, eid).unwrap();
+        assert_eq!(state.check_outcome(&conditions), Some(GameOutcome::Victory { team_id: 0 }));
+    }
+
+    #[test]
+    fn check_outcome_defeat_all_enemies_victory() {
+        let map = meadow_map(5, 5);
+        let (mut state, _pid, _bid, eid) = make_state_with_heroes(map);
+        let conditions = {
+            let mut c = BTreeMap::new();
+            c.insert(0, WinCondition::DefeatAllEnemies);
+            c
+        };
+
+        assert_eq!(state.check_outcome(&conditions), None);
+
+        // Kill the enemy.
+        state.attack_hero(0, eid).unwrap();
+        assert_eq!(state.check_outcome(&conditions), Some(GameOutcome::Victory { team_id: 0 }));
+    }
+
+    #[test]
+    fn check_outcome_team_loss_when_all_dead() {
+        let map = meadow_map(5, 5);
+        let (mut state, pid, bid, _eid) = make_state_with_heroes(map);
+        let conditions = {
+            let mut c = BTreeMap::new();
+            c.insert(0, WinCondition::DefeatAllEnemies);
+            c.insert(1, WinCondition::DefeatAllEnemies);
+            c
+        };
+
+        // Kill both player heroes deterministically.
+        state.heroes.get_mut(&pid).unwrap().take_damage(100);
+        state.heroes.get_mut(&bid).unwrap().take_damage(100);
+
+        assert_eq!(state.check_outcome(&conditions), Some(GameOutcome::Defeat));
+    }
+
+    #[test]
+    fn check_outcome_ignores_ai_teams() {
+        let map = meadow_map(5, 5);
+        let (mut state, pid, _bid, eid) = make_state_with_heroes(map);
+        // Assign win condition to enemy team (non-player).
+        let conditions = {
+            let mut c = BTreeMap::new();
+            c.insert(2, WinCondition::ScoreThreshold(1));
+            c
+        };
+
+        // Even after scoring, enemy team should not trigger victory.
+        state.attack_hero(pid, eid).unwrap();
+        assert_eq!(state.check_outcome(&conditions), None);
     }
 }

@@ -79,6 +79,18 @@ impl GameSession {
         Ok(self.selected_hero_position())
     }
 
+    /// Cycles to the next living player-controlled hero.
+    ///
+    /// If the current hero is the only living player hero, it stays selected.
+    pub fn cycle_selected_hero(&mut self) {
+        let player_team = self.state.hero(self.selected_hero_id).map(|h| h.team_id);
+        if let Some(team_id) = player_team {
+            if let Some(next) = self.state.get_next_hero(team_id) {
+                self.selected_hero_id = next;
+            }
+        }
+    }
+
     /// Returns a short one-line status summary for HUD rendering.
     pub fn summary(&self) -> String {
         let team = self.state.get_active_team().map(|active| active.name.as_str()).unwrap_or("?");

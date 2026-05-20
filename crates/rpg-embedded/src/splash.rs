@@ -64,9 +64,11 @@ impl SplashScreen {
             }
             InputEvent::Enter => SplashOutcome::Selected(self.selected),
             InputEvent::Back => SplashOutcome::BackRequested,
-            InputEvent::None | InputEvent::Left | InputEvent::Right | InputEvent::Key(_) => {
-                SplashOutcome::NoChange
-            }
+            InputEvent::None
+            | InputEvent::Left
+            | InputEvent::Right
+            | InputEvent::Key(_)
+            | InputEvent::Tab => SplashOutcome::NoChange,
         }
     }
 }

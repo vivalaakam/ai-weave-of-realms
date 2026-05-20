@@ -87,7 +87,7 @@ Update status as work progresses.
 | 5.1 | Map generation on game start from seed input | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 | 5.2 | Hero placement on generated map start position | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 | 5.3 | Enemy spawning driven by Lua rules | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 5.4 | Win/loss conditions via score threshold | — | TODO | |
+| 5.4 | Win/loss conditions via score threshold | — | DONE | `GameOutcome`, `WinCondition`, `check_outcome`, signals, tests |
 | 5.5 | Save/load `GameState` (serde + JSON or binary) | — | DONE | Added compact `RPGS` binary format, mapgen export, T-Deck load |
 | 5.6 | Добавить циклическое переключение героев по `Tab` и ограничить камеру по краям карты | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 | 5.7 | Добавить debug-панель камеры: seed, позиция курсора и ручной ввод центральной клетки | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |

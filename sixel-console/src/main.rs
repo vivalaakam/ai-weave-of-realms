@@ -32,8 +32,6 @@ use terminal_size::{Height, Width, terminal_size};
 use tracing::{error, info};
 
 const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
-    tile_width: 64,
-    tile_height: 64,
     header_height: 28,
     footer_height: 16,
 };
@@ -465,9 +463,8 @@ fn detect_screen_size() -> Size {
 }
 
 fn logical_render_size(output_size: Size) -> Size {
-    let minimum_width = MAP_RENDER_CONFIG.tile_width;
-    let minimum_height =
-        MAP_RENDER_CONFIG.header_height + MAP_RENDER_CONFIG.footer_height + MAP_RENDER_CONFIG.tile_height;
+    let minimum_width = 32;
+    let minimum_height = MAP_RENDER_CONFIG.header_height + MAP_RENDER_CONFIG.footer_height + 32;
     Size::new(
         (output_size.width / OUTPUT_SCALE as u32).max(minimum_width),
         (output_size.height / OUTPUT_SCALE as u32).max(minimum_height),

@@ -569,6 +569,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "sha3",
+ "thiserror",
 ]
 
 [[package]]

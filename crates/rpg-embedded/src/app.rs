@@ -439,6 +439,13 @@ where
                 ))),
             },
         },
+        MapViewOutcome::GameOver { won, message } => {
+            let selected = if won { 0 } else { 1 };
+            ScreenOutcome {
+                changed: true,
+                next_screen: Some(AppScreen::Splash(SplashScreen::new(selected, Some(message)))),
+            }
+        }
     }
 }
 

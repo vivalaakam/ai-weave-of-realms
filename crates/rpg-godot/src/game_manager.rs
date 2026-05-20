@@ -19,7 +19,7 @@ use godot::classes::ProjectSettings;
 use godot::prelude::*;
 use tracing::{error, warn};
 
-use rpg_engine::game_state::{GameState, TurnEvent};
+use rpg_engine::game_state::{GameOutcome, GameState, TurnEvent, WinCondition};
 use rpg_engine::hero::{Hero, HeroId, TeamId};
 use rpg_engine::map::game_map::MapCoord;
 use rpg_engine::map::tile::Tiles;
@@ -28,6 +28,7 @@ use rpg_engine::spawn;
 use rpg_engine::team::Team;
 use rpg_engine::Direction;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
+use std::collections::BTreeMap;
 use std::fs;
 
 // ─── GameManager ──────────────────────────────────────────────────────────────
@@ -37,12 +38,13 @@ use std::fs;
 pub struct GameManager {
     base: Base<Node>,
     state: Option<GameState>,
+    win_conditions: std::collections::BTreeMap<TeamId, WinCondition>,
 }
 
 #[godot_api]
 impl INode for GameManager {
     fn init(base: Base<Node>) -> Self {
-        Self { base, state: None }
+        Self { base, state: None, win_conditions: BTreeMap::new() }
     }
 }
 
@@ -74,6 +76,12 @@ impl GameManager {
 
     #[signal]
     fn score_changed(score: i64);
+
+    #[signal]
+    fn game_won(team_id: i64);
+
+    #[signal]
+    fn game_lost();
 
     /// Emitted when any tile in a city complex changes ownership.
     ///
@@ -125,6 +133,11 @@ impl GameManager {
         state.add_team(Team::red());
         state.add_team(Team::blue());
         state.add_team(Team::enemy());
+        let team_ids: Vec<TeamId> = state.player_teams().map(|t| t.get_id()).collect();
+        self.win_conditions = BTreeMap::new();
+        for team_id in team_ids {
+            self.win_conditions.insert(team_id, WinCondition::DefeatAllEnemies);
+        }
         self.state = Some(state);
 
         // Defer signal emission to avoid borrow conflicts in signal handlers
@@ -820,5 +833,29 @@ impl GameManager {
     pub fn get_team_turn(&self, team_id: i64) -> i64 {
         let Some(state) = &self.state else { return 0 };
         state.get_team(team_id as u8).map(|t| t.get_turn() as i64).unwrap_or(0)
+    }
+
+    /// Checks win/loss conditions and emits `game_won` or `game_lost` if applicable.
+    ///
+    /// Should be called after any action that might end the game (move, attack, advance turn).
+    ///
+    /// # Returns
+    /// `0` = still in progress, `1` = victory, `2` = defeat.
+    #[func]
+    pub fn check_outcome(&mut self) -> i64 {
+        let Some(state) = &self.state else { return -1 };
+        let Some(outcome) = state.check_outcome(&self.win_conditions) else {
+            return 0;
+        };
+        match outcome {
+            GameOutcome::Victory { team_id } => {
+                self.base_mut().emit_signal("game_won", &[(team_id as i64).to_variant()]);
+                1
+            }
+            GameOutcome::Defeat => {
+                self.base_mut().emit_signal("game_lost", &[]);
+                2
+            }
+        }
     }
 }

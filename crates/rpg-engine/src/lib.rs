@@ -21,6 +21,7 @@
 
 extern crate alloc;
 
+pub use game_state::{GameOutcome, WinCondition};
 pub use map::game_map::Direction;
 pub mod combat;
 pub mod error;

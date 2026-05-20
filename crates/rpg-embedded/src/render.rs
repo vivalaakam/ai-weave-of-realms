@@ -20,7 +20,7 @@ use crate::app::{
 };
 use crate::info_overlay::InfoOverlay;
 use crate::list::ListScreen;
-use crate::map_view::{InteractionMode, MapViewApp};
+use crate::map_view::MapViewApp;
 use crate::save_overlay::SaveOverlay;
 use crate::splash::SplashScreen;
 
@@ -45,7 +45,7 @@ const FOREST_TILE_COUNT: usize = FOREST_INDICES.len();
 
 // Water tile indices from 2_water.png (5 tiles at 1078..1082).
 const WATER_BASE: usize = 1078;
-const WATER_FULL: usize = WATER_BASE;         // tile 0: full water rectangle
+const WATER_FULL: usize = WATER_BASE; // tile 0: full water rectangle
 const WATER_SHORE_LL: usize = WATER_BASE + 1; // tile 1: shore, lower-left half of W edge
 const WATER_SHORE_UL: usize = WATER_BASE + 2; // tile 2: shore, upper-left half of W edge
 const WATER_CORNER_OUTER: usize = WATER_BASE + 3; // tile 3: outer corner, upper-left
@@ -124,42 +124,42 @@ fn water_neighbor_bits(map: &rpg_engine::map::game_map::GameMap, coord: MapCoord
     };
     let x = coord.x as i32;
     let y = coord.y as i32;
-    let n  = is_water(x,     y - 1) as u8;
+    let n = is_water(x, y - 1) as u8;
     let ne = is_water(x + 1, y - 1) as u8;
-    let e  = is_water(x + 1, y    ) as u8;
+    let e = is_water(x + 1, y) as u8;
     let se = is_water(x + 1, y + 1) as u8;
-    let s  = is_water(x,     y + 1) as u8;
+    let s = is_water(x, y + 1) as u8;
     let sw = is_water(x - 1, y + 1) as u8;
-    let w  = is_water(x - 1, y    ) as u8;
+    let w = is_water(x - 1, y) as u8;
     let nw = is_water(x - 1, y - 1) as u8;
     n | (ne << 1) | (e << 2) | (se << 3) | (s << 4) | (sw << 5) | (w << 6) | (nw << 7)
 }
 
 fn compute_water_composite(bits: u8) -> WaterMask {
     let land = |bit: u8| (bits & bit) == 0;
-    let n  = land(0x01);
+    let n = land(0x01);
     let ne = land(0x02);
-    let e  = land(0x04);
+    let e = land(0x04);
     let se = land(0x08);
-    let s  = land(0x10);
+    let s = land(0x10);
     let sw = land(0x20);
-    let w  = land(0x40);
+    let w = land(0x40);
     let nw = land(0x80);
 
     let ll = get_tile_mask_arr(WATER_SHORE_LL);
     let ul = get_tile_mask_arr(WATER_SHORE_UL);
     let co = get_tile_mask_arr(WATER_CORNER_OUTER);
     let ci = get_tile_mask_arr(WATER_CORNER_INNER);
-    let ll90  = rotate_cw90(&ll);
+    let ll90 = rotate_cw90(&ll);
     let ll180 = rotate_cw90(&ll90);
     let ll270 = rotate_cw90(&ll180);
-    let ul90  = rotate_cw90(&ul);
+    let ul90 = rotate_cw90(&ul);
     let ul180 = rotate_cw90(&ul90);
     let ul270 = rotate_cw90(&ul180);
-    let co90  = rotate_cw90(&co);
+    let co90 = rotate_cw90(&co);
     let co180 = rotate_cw90(&co90);
     let co270 = rotate_cw90(&co180);
-    let ci90  = rotate_cw90(&ci);
+    let ci90 = rotate_cw90(&ci);
     let ci180 = rotate_cw90(&ci90);
     let ci270 = rotate_cw90(&ci180);
 
@@ -167,29 +167,61 @@ fn compute_water_composite(bits: u8) -> WaterMask {
 
     // Edge half-pieces: each half is skipped when replaced by an adjacent outer corner.
     // W edge
-    if w && !n { mask = and_mask(mask, &ul); }    // W upper half
-    if w && !s { mask = and_mask(mask, &ll); }    // W lower half
-    // N edge
-    if n && !w { mask = and_mask(mask, &ll90); }  // N left half
-    if n && !e { mask = and_mask(mask, &ul90); }  // N right half
-    // E edge
-    if e && !n { mask = and_mask(mask, &ll180); } // E upper half
-    if e && !s { mask = and_mask(mask, &ul180); } // E lower half
-    // S edge
-    if s && !w { mask = and_mask(mask, &ul270); } // S left half
-    if s && !e { mask = and_mask(mask, &ll270); } // S right half
+    if w && !n {
+        mask = and_mask(mask, &ul);
+    } // W upper half
+    if w && !s {
+        mask = and_mask(mask, &ll);
+    } // W lower half
+      // N edge
+    if n && !w {
+        mask = and_mask(mask, &ll90);
+    } // N left half
+    if n && !e {
+        mask = and_mask(mask, &ul90);
+    } // N right half
+      // E edge
+    if e && !n {
+        mask = and_mask(mask, &ll180);
+    } // E upper half
+    if e && !s {
+        mask = and_mask(mask, &ul180);
+    } // E lower half
+      // S edge
+    if s && !w {
+        mask = and_mask(mask, &ul270);
+    } // S left half
+    if s && !e {
+        mask = and_mask(mask, &ll270);
+    } // S right half
 
     // Outer corners (two adjacent land edges meet)
-    if w && n { mask = and_mask(mask, &co); }    // NW outer
-    if n && e { mask = and_mask(mask, &co90); }  // NE outer
-    if e && s { mask = and_mask(mask, &co180); } // SE outer
-    if s && w { mask = and_mask(mask, &co270); } // SW outer
+    if w && n {
+        mask = and_mask(mask, &co);
+    } // NW outer
+    if n && e {
+        mask = and_mask(mask, &co90);
+    } // NE outer
+    if e && s {
+        mask = and_mask(mask, &co180);
+    } // SE outer
+    if s && w {
+        mask = and_mask(mask, &co270);
+    } // SW outer
 
     // Inner corners (diagonal land, both orthogonal neighbors are water)
-    if !w && !n && nw { mask = and_mask(mask, &ci); }    // NW inner
-    if !n && !e && ne { mask = and_mask(mask, &ci90); }  // NE inner
-    if !e && !s && se { mask = and_mask(mask, &ci180); } // SE inner
-    if !s && !w && sw { mask = and_mask(mask, &ci270); } // SW inner
+    if !w && !n && nw {
+        mask = and_mask(mask, &ci);
+    } // NW inner
+    if !n && !e && ne {
+        mask = and_mask(mask, &ci90);
+    } // NE inner
+    if !e && !s && se {
+        mask = and_mask(mask, &ci180);
+    } // SE inner
+    if !s && !w && sw {
+        mask = and_mask(mask, &ci270);
+    } // SW inner
 
     mask
 }
@@ -204,65 +236,97 @@ fn mountain_neighbor_bits(map: &rpg_engine::map::game_map::GameMap, coord: MapCo
     };
     let x = coord.x as i32;
     let y = coord.y as i32;
-    let n  = is_mountain(x,     y - 1) as u8;
+    let n = is_mountain(x, y - 1) as u8;
     let ne = is_mountain(x + 1, y - 1) as u8;
-    let e  = is_mountain(x + 1, y    ) as u8;
+    let e = is_mountain(x + 1, y) as u8;
     let se = is_mountain(x + 1, y + 1) as u8;
-    let s  = is_mountain(x,     y + 1) as u8;
+    let s = is_mountain(x, y + 1) as u8;
     let sw = is_mountain(x - 1, y + 1) as u8;
-    let w  = is_mountain(x - 1, y    ) as u8;
+    let w = is_mountain(x - 1, y) as u8;
     let nw = is_mountain(x - 1, y - 1) as u8;
     n | (ne << 1) | (e << 2) | (se << 3) | (s << 4) | (sw << 5) | (w << 6) | (nw << 7)
 }
 
 fn compute_mountain_composite(bits: u8) -> WaterMask {
     let land = |bit: u8| (bits & bit) == 0;
-    let n  = land(0x01);
+    let n = land(0x01);
     let ne = land(0x02);
-    let e  = land(0x04);
+    let e = land(0x04);
     let se = land(0x08);
-    let s  = land(0x10);
+    let s = land(0x10);
     let sw = land(0x20);
-    let w  = land(0x40);
+    let w = land(0x40);
     let nw = land(0x80);
 
     let ll = get_tile_mask_arr(MOUNTAIN_SHORE_LL);
     let ul = get_tile_mask_arr(MOUNTAIN_SHORE_UL);
     let co = get_tile_mask_arr(MOUNTAIN_CORNER_OUTER);
     let ci = get_tile_mask_arr(MOUNTAIN_CORNER_INNER);
-    let ll90  = rotate_cw90(&ll);
+    let ll90 = rotate_cw90(&ll);
     let ll180 = rotate_cw90(&ll90);
     let ll270 = rotate_cw90(&ll180);
-    let ul90  = rotate_cw90(&ul);
+    let ul90 = rotate_cw90(&ul);
     let ul180 = rotate_cw90(&ul90);
     let ul270 = rotate_cw90(&ul180);
-    let co90  = rotate_cw90(&co);
+    let co90 = rotate_cw90(&co);
     let co180 = rotate_cw90(&co90);
     let co270 = rotate_cw90(&co180);
-    let ci90  = rotate_cw90(&ci);
+    let ci90 = rotate_cw90(&ci);
     let ci180 = rotate_cw90(&ci90);
     let ci270 = rotate_cw90(&ci180);
 
     let mut mask = get_tile_mask_arr(MOUNTAIN_FULL);
 
-    if w && !n { mask = and_mask(mask, &ul); }
-    if w && !s { mask = and_mask(mask, &ll); }
-    if n && !w { mask = and_mask(mask, &ll90); }
-    if n && !e { mask = and_mask(mask, &ul90); }
-    if e && !n { mask = and_mask(mask, &ll180); }
-    if e && !s { mask = and_mask(mask, &ul180); }
-    if s && !w { mask = and_mask(mask, &ul270); }
-    if s && !e { mask = and_mask(mask, &ll270); }
+    if w && !n {
+        mask = and_mask(mask, &ul);
+    }
+    if w && !s {
+        mask = and_mask(mask, &ll);
+    }
+    if n && !w {
+        mask = and_mask(mask, &ll90);
+    }
+    if n && !e {
+        mask = and_mask(mask, &ul90);
+    }
+    if e && !n {
+        mask = and_mask(mask, &ll180);
+    }
+    if e && !s {
+        mask = and_mask(mask, &ul180);
+    }
+    if s && !w {
+        mask = and_mask(mask, &ul270);
+    }
+    if s && !e {
+        mask = and_mask(mask, &ll270);
+    }
 
-    if w && n { mask = and_mask(mask, &co); }
-    if n && e { mask = and_mask(mask, &co90); }
-    if e && s { mask = and_mask(mask, &co180); }
-    if s && w { mask = and_mask(mask, &co270); }
+    if w && n {
+        mask = and_mask(mask, &co);
+    }
+    if n && e {
+        mask = and_mask(mask, &co90);
+    }
+    if e && s {
+        mask = and_mask(mask, &co180);
+    }
+    if s && w {
+        mask = and_mask(mask, &co270);
+    }
 
-    if !w && !n && nw { mask = and_mask(mask, &ci); }
-    if !n && !e && ne { mask = and_mask(mask, &ci90); }
-    if !e && !s && se { mask = and_mask(mask, &ci180); }
-    if !s && !w && sw { mask = and_mask(mask, &ci270); }
+    if !w && !n && nw {
+        mask = and_mask(mask, &ci);
+    }
+    if !n && !e && ne {
+        mask = and_mask(mask, &ci90);
+    }
+    if !e && !s && se {
+        mask = and_mask(mask, &ci180);
+    }
+    if !s && !w && sw {
+        mask = and_mask(mask, &ci270);
+    }
 
     mask
 }
@@ -943,18 +1007,8 @@ pub fn draw_map_view<D, C>(
     C: PixelColor + Copy,
 {
     let text_style = MonoTextStyle::new(&FONT_6X10, theme.text);
-    let mode_name = match map_view.mode() {
-        InteractionMode::Pan => "PAN",
-        InteractionMode::Hero => "HERO",
-    };
-    let header = format!(
-        "{} {} @{},{}",
-        map_view.session().map_name(),
-        mode_name,
-        map_view.view_x(),
-        map_view.view_y()
-    );
-
+    let header =
+        format!("{} @{},{}", map_view.session().map_name(), map_view.view_x(), map_view.view_y(),);
     let origin_x = 0i32;
     let origin_y = config.header_height as i32;
     let (visible_cols, visible_rows) = visible_tiles(screen_size, config);
@@ -1028,10 +1082,7 @@ pub fn draw_map_view<D, C>(
         }
     }
 
-    let footer = match map_view.mode() {
-        InteractionMode::Pan => "Enter: hero mode  WASD/HJKL: pan  Q/Back: back",
-        InteractionMode::Hero => "Enter: pan mode  WASD/HJKL: move hero  Q/Back: back",
-    };
+    let footer = "WASD/HJKL: pan  Arrows: move hero  Tab: next hero  Q/Back: back";
     clear_band(
         display,
         Rectangle::new(
@@ -1190,15 +1241,8 @@ fn draw_hero_marker<D, C>(
     C: PixelColor + Copy,
 {
     let color = if hero_id == selected_hero_id { theme.selected_hero } else { theme.hero };
-    let inset_x = (TILE_WIDTH as i32 / 4).max(1);
-    let inset_y = (TILE_HEIGHT as i32 / 4).max(1);
-    let marker_w = (TILE_WIDTH / 2).max(1);
-    let marker_h = (TILE_HEIGHT / 2).max(1);
-    halt_on_error(
-        Rectangle::new(top_left + Point::new(inset_x, inset_y), Size::new(marker_w, marker_h))
-            .into_styled(PrimitiveStyle::with_fill(color))
-            .draw(display),
-    );
+    let mask = tile_atlas_mask(25);
+    draw_grass_sprite(display, top_left, mask, color);
 }
 
 fn cell_signature(map_view: &MapViewApp, coord: MapCoord) -> u32 {
