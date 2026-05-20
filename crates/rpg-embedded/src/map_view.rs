@@ -88,7 +88,7 @@ impl MapViewApp {
             InputEvent::Up | InputEvent::Down | InputEvent::Left | InputEvent::Right => {
                 self.move_hero_or_report(event, visible_cols, visible_rows)
             }
-            InputEvent::Tab => {
+            InputEvent::NextHero => {
                 self.session_mut().cycle_selected_hero();
                 self.center_on_hero(visible_cols, visible_rows);
                 self.status = Some(self.session.summary());

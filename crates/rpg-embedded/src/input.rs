@@ -20,5 +20,5 @@ pub enum InputEvent {
     /// Right direction.
     Right,
     /// Cycle to the next hero.
-    Tab,
+    NextHero,
 }

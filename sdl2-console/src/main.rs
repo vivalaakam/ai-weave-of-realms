@@ -539,7 +539,7 @@ fn map_key_event(keycode: Keycode, keymod: Mod) -> InputEvent {
         Keycode::Down => InputEvent::Down,
         Keycode::Left => InputEvent::Left,
         Keycode::Right => InputEvent::Right,
-        Keycode::Tab => InputEvent::Tab,
+        Keycode::Tab => InputEvent::NextHero,
         Keycode::A if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('a'),
         Keycode::B if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('b'),
         Keycode::C if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('c'),
