@@ -85,7 +85,11 @@ impl ListScreen {
             | InputEvent::None
             | InputEvent::Key(_)
             | InputEvent::NextHero
-            | InputEvent::NextTurn => {}
+            | InputEvent::NextTurn
+            | InputEvent::PanUp
+            | InputEvent::PanDown
+            | InputEvent::PanLeft
+            | InputEvent::PanRight => {}
         }
 
         let previous_scroll = self.scroll;

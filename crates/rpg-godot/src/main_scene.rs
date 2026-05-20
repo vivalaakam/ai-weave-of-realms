@@ -53,6 +53,7 @@ pub struct MainScene {
     left_stick_direction_held: bool,
     cross_was_pressed: bool,
     circle_was_pressed: bool,
+    trigger_r_was_pressed: bool,
     gamepad_cursor_tile: Vector2i,
 }
 
@@ -69,6 +70,7 @@ impl INode for MainScene {
             left_stick_direction_held: false,
             cross_was_pressed: false,
             circle_was_pressed: false,
+            trigger_r_was_pressed: false,
             gamepad_cursor_tile: Vector2i::new(-1, -1),
         }
     }
@@ -148,6 +150,7 @@ impl INode for MainScene {
     fn process(&mut self, delta: f64) {
         self.process_gamepad_dialog_buttons();
         self.process_gamepad_left_stick_cursor(delta);
+        self.process_gamepad_r2();
         self.update_cursor_debug();
         self.update_zoom_debug();
         self.update_turn_label();
@@ -400,6 +403,25 @@ impl MainScene {
         self.move_gamepad_cursor(direction);
         self.left_stick_direction_held = true;
         self.left_stick_move_cooldown = LEFT_STICK_REPEAT_INTERVAL;
+    }
+
+    fn process_gamepad_r2(&mut self) {
+        if self.is_any_dialog_visible() {
+            self.trigger_r_was_pressed = false;
+            return;
+        }
+        let Some(device_id) = Self::connected_gamepad_device_id() else {
+            self.trigger_r_was_pressed = false;
+            return;
+        };
+        let input = Input::singleton();
+        let trigger_r = input.get_joy_axis(device_id, JoyAxis::TRIGGER_RIGHT);
+        const THRESHOLD: f32 = 0.5;
+        let pressed = trigger_r > THRESHOLD;
+        if pressed && !self.trigger_r_was_pressed {
+            self.select_next_player_hero();
+        }
+        self.trigger_r_was_pressed = pressed;
     }
 
     fn move_gamepad_cursor(&mut self, direction: i64) {

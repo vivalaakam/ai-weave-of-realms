@@ -23,4 +23,12 @@ pub enum InputEvent {
     NextHero,
     /// End current player's turn.
     NextTurn,
+    /// Pan viewport up (right stick / WASD).
+    PanUp,
+    /// Pan viewport down.
+    PanDown,
+    /// Pan viewport left.
+    PanLeft,
+    /// Pan viewport right.
+    PanRight,
 }

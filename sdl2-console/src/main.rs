@@ -90,6 +90,11 @@ struct Args {
 struct SdlHost {
     args: Args,
     screen_size: Size,
+    right_x_right: bool,
+    right_x_left: bool,
+    right_y_down: bool,
+    right_y_up: bool,
+    trigger_r_active: bool,
 }
 
 #[derive(Debug)]
@@ -143,6 +148,11 @@ fn run() -> AppResult<()> {
     let mut host = SdlHost {
         args: Args::parse(),
         screen_size: initial_size,
+        right_x_right: false,
+        right_x_left: false,
+        right_y_down: false,
+        right_y_up: false,
+        trigger_r_active: false,
     };
     let mut app_state = EmbeddedApp::new(
         &mut host,
@@ -225,19 +235,69 @@ fn run() -> AppResult<()> {
                 }
                 Event::ControllerAxisMotion { axis, value, .. } => {
                     const DEAD_ZONE: i16 = 16_000;
-                    let input = match axis {
-                        Axis::LeftX if value > DEAD_ZONE => InputEvent::Right,
-                        Axis::LeftX if value < -DEAD_ZONE => InputEvent::Left,
-                        Axis::LeftY if value > DEAD_ZONE => InputEvent::Down,
-                        Axis::LeftY if value < -DEAD_ZONE => InputEvent::Up,
-                        _ => InputEvent::None,
-                    };
-                    if app_state.handle_input(
-                        &mut host,
-                        input,
-                        app_layout(logical_render_size(last_output_size)),
-                    ) {
-                        needs_redraw = true;
+                    const TRIGGER_THRESHOLD: i16 = 16_000;
+                    let mut generated = Vec::new();
+                    match axis {
+                        Axis::LeftX if value > DEAD_ZONE => generated.push(InputEvent::Right),
+                        Axis::LeftX if value < -DEAD_ZONE => generated.push(InputEvent::Left),
+                        Axis::LeftY if value > DEAD_ZONE => generated.push(InputEvent::Down),
+                        Axis::LeftY if value < -DEAD_ZONE => generated.push(InputEvent::Up),
+                        Axis::RightX => {
+                            if value > DEAD_ZONE {
+                                if !host.right_x_right {
+                                    host.right_x_right = true;
+                                    generated.push(InputEvent::PanRight);
+                                }
+                            } else {
+                                host.right_x_right = false;
+                            }
+                            if value < -DEAD_ZONE {
+                                if !host.right_x_left {
+                                    host.right_x_left = true;
+                                    generated.push(InputEvent::PanLeft);
+                                }
+                            } else {
+                                host.right_x_left = false;
+                            }
+                        }
+                        Axis::RightY => {
+                            if value > DEAD_ZONE {
+                                if !host.right_y_down {
+                                    host.right_y_down = true;
+                                    generated.push(InputEvent::PanDown);
+                                }
+                            } else {
+                                host.right_y_down = false;
+                            }
+                            if value < -DEAD_ZONE {
+                                if !host.right_y_up {
+                                    host.right_y_up = true;
+                                    generated.push(InputEvent::PanUp);
+                                }
+                            } else {
+                                host.right_y_up = false;
+                            }
+                        }
+                        Axis::TriggerRight => {
+                            if value > TRIGGER_THRESHOLD {
+                                if !host.trigger_r_active {
+                                    host.trigger_r_active = true;
+                                    generated.push(InputEvent::NextHero);
+                                }
+                            } else {
+                                host.trigger_r_active = false;
+                            }
+                        }
+                        _ => {}
+                    }
+                    for input in generated {
+                        if app_state.handle_input(
+                            &mut host,
+                            input,
+                            app_layout(logical_render_size(last_output_size)),
+                        ) {
+                            needs_redraw = true;
+                        }
                     }
                 }
                 _ => {}

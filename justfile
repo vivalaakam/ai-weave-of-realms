@@ -44,6 +44,9 @@ tdeck:
 tdeck-run:
     cd tdeck && cargo run
 
+sdl2-run:
+    cargo run --manifest-path sdl2-console/Cargo.toml
+
 # Generate a map PNG + TMX (default seed).
 mapgen:
     cargo run -p rpg-tools --bin mapgen -- --generator scripts/generators/terrain.lua
