@@ -111,14 +111,29 @@ impl GameSession {
 
     /// Returns a short one-line status summary for HUD rendering.
     pub fn summary(&self) -> String {
-        let team = self.state.get_active_team().map(|active| active.name.as_str()).unwrap_or("?");
-        let hero = self
-            .state
-            .hero(self.selected_hero_id)
-            .map(|selected| selected.name.as_str())
-            .unwrap_or("?");
-        let position = self.selected_hero_position();
-        format!("{team} {hero} @{},{}", position.x, position.y)
+        let Some(hero) = self.state.hero(self.selected_hero_id) else {
+            return "?".to_string();
+        };
+        let team_heroes = self.state.get_team_alive_heroes_ids(hero.team_id);
+        let hero_index = team_heroes
+            .iter()
+            .position(|&id| id == self.selected_hero_id)
+            .unwrap_or(0)
+            .saturating_add(1);
+        let total_team = team_heroes.len();
+
+        format!(
+            "{} ({}/{}) MOV:{}/{} HP:{}/{} @{},{}",
+            hero.name,
+            hero_index,
+            total_team,
+            hero.mov_remaining,
+            hero.mov,
+            hero.hp,
+            hero.max_hp,
+            hero.position.x,
+            hero.position.y
+        )
     }
 }
 

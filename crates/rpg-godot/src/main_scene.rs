@@ -638,8 +638,11 @@ impl MainScene {
         });
 
         // Spawn Red hero (team_id = 0 = Team::red() at index 0).
-        let red_id = self.add_game_hero("Красный", 100, 20, 10, 15, red_spawn, 0);
+        let red_id = self.add_game_hero("Красный", 120, 22, 12, 15, red_spawn, 0);
         self.create_hero_node(red_id, "red", true, red_spawn);
+        let red_offset = Vector2i::new(red_spawn.x + 1, red_spawn.y);
+        let red2_id = self.add_game_hero("Оранжевый", 90, 25, 8, 18, red_offset, 0);
+        self.create_hero_node(red2_id, "red", true, red_offset);
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
             gm.call_deferred(
@@ -655,6 +658,9 @@ impl MainScene {
         // Spawn Blue hero (team_id = 1 = Team::blue() at index 1).
         let blue_id = self.add_game_hero("Синий", 100, 20, 10, 15, blue_spawn, 1);
         self.create_hero_node(blue_id, "blue", true, blue_spawn);
+        let blue_offset = Vector2i::new(blue_spawn.x + 1, blue_spawn.y);
+        let blue2_id = self.add_game_hero("Босс", 150, 14, 20, 10, blue_offset, 1);
+        self.create_hero_node(blue2_id, "blue", true, blue_offset);
         {
             let mut gm: Gd<GameManager> = self.base().get_node_as("GameManager");
             gm.call_deferred(
