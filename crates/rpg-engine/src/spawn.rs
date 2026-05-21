@@ -4,9 +4,8 @@
 //! player-controlled hero and the first enemy unit from the generated
 //! [`GameMap`](crate::map::game_map::GameMap).
 
-use alloc::{string::ToString, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 
-use crate::error::Error;
 use crate::map::game_map::{GameMap, MapCoord};
 use crate::map::tile::Tiles;
 
@@ -17,6 +16,12 @@ pub struct SpawnPositions {
     pub player: MapCoord,
     /// Preferred enemy start tile.
     pub enemy: MapCoord,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SpawnError {
+    #[error("No valid spawnable tiles found on the map")]
+    OutOfBounds,
 }
 
 /// Selects deterministic starting positions for the initial heroes.
@@ -30,7 +35,7 @@ pub struct SpawnPositions {
 ///
 /// # Errors
 /// Returns [`Error::OutOfBounds`] if the map has no valid spawnable tiles.
-pub fn find_spawn_positions(map: &GameMap) -> Result<SpawnPositions, Error> {
+pub fn find_spawn_positions(map: &GameMap) -> Result<SpawnPositions, SpawnError> {
     let player = find_player_spawn(map)?;
     let enemy = find_enemy_spawn(map, player)?;
     Ok(SpawnPositions { player, enemy })
@@ -43,7 +48,7 @@ pub fn find_spawn_positions(map: &GameMap) -> Result<SpawnPositions, Error> {
 ///
 /// # Errors
 /// Returns [`Error::OutOfBounds`] if the map has no passable tiles.
-pub fn find_player_spawn(map: &GameMap) -> Result<MapCoord, Error> {
+pub fn find_player_spawn(map: &GameMap) -> Result<MapCoord, SpawnError> {
     find_best_tile(map, player_priority)
 }
 
@@ -57,7 +62,7 @@ pub fn find_player_spawn(map: &GameMap) -> Result<MapCoord, Error> {
 ///
 /// # Errors
 /// Returns [`Error::OutOfBounds`] if the map has no valid enemy spawn tile.
-pub fn find_enemy_spawn(map: &GameMap, player: MapCoord) -> Result<MapCoord, Error> {
+pub fn find_enemy_spawn(map: &GameMap, player: MapCoord) -> Result<MapCoord, SpawnError> {
     let mut best: Option<(MapCoord, i32, i64)> = None;
 
     for_each_coord(map, |coord, kind| {
@@ -141,7 +146,7 @@ pub fn find_city_entrance_spawns(map: &GameMap, count: usize) -> Vec<MapCoord> {
 fn find_best_tile(
     map: &GameMap,
     priority: fn(MapCoord, Tiles, u32, u32) -> Option<i32>,
-) -> Result<MapCoord, Error> {
+) -> Result<MapCoord, SpawnError> {
     let center_x = map.tile_width() / 2;
     let center_y = map.tile_height() / 2;
     let mut best: Option<(MapCoord, i32, u32)> = None;
@@ -159,8 +164,7 @@ fn find_best_tile(
         }
     });
 
-    best.map(|(coord, _, _)| coord)
-        .ok_or_else(|| Error::OutOfBounds("map does not contain any valid spawn tiles".to_string()))
+    best.map(|(coord, _, _)| coord).ok_or(SpawnError::OutOfBounds)
 }
 
 fn player_priority(coord: MapCoord, kind: Tiles, center_x: u32, center_y: u32) -> Option<i32> {
@@ -266,6 +270,6 @@ mod tests {
             map_from_rows(&[&[Tiles::Water, Tiles::Mountain], &[Tiles::Mountain, Tiles::Water]]);
 
         let result = find_spawn_positions(&map);
-        assert!(matches!(result, Err(Error::OutOfBounds(_))));
+        assert!(matches!(result, Err(SpawnError::OutOfBounds)));
     }
 }

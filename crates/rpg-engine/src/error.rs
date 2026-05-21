@@ -1,8 +1,9 @@
 //! Error types for the rpg-engine crate.
 
-use alloc::string::String;
-
+use crate::game_map_error::GameMapError;
 use crate::hero::HeroId;
+use crate::spawn::SpawnError;
+use alloc::string::String;
 
 /// All errors that can occur within the rpg-engine crate.
 #[derive(Debug, thiserror::Error)]
@@ -49,4 +50,8 @@ pub enum Error {
     /// Save/load serialization failed.
     #[error("save error: {0}")]
     Save(String),
+    #[error("spawn error: {0}")]
+    SpawnError(#[from] SpawnError),
+    #[error("game map error: {0}")]
+    GameMapError(#[from] GameMapError),
 }

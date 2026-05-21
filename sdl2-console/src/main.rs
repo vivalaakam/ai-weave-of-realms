@@ -9,20 +9,17 @@ use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::OriginDimensions;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
+use helpers::{file_entry, file_label, sanitize_save_filename, HelpersError, ListEntry};
 use rpg_embedded::app::{AppHost, AppLayout, AppScreen, EmbeddedApp, LaunchConfig, LoadedGame};
 use rpg_embedded::info_overlay::InfoOverlay;
 use rpg_embedded::input::InputEvent;
-use rpg_embedded::list::ListEntry;
 use rpg_embedded::render::{
     draw_app_screen, visible_tiles, AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme,
     MapViewTheme, RenderConfig, SaveOverlayTheme, SplashTheme,
 };
 use rpg_engine::game_state::GameState;
-use rpg_engine::hero::Hero;
-use rpg_engine::map::game_map::{GameMap, MapCoord};
+use rpg_engine::map::game_map::GameMap;
 use rpg_engine::map::tile::Tiles;
-use rpg_engine::spawn;
-use rpg_engine::team::Team;
 use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
 use rpg_tiled::read_tmx;
 use sdl2::controller::{Axis, Button, GameController};
@@ -31,10 +28,7 @@ use sdl2::keyboard::{Keycode, Mod};
 use sdl2::pixels::PixelFormatEnum;
 use tracing::{error, info, warn};
 
-const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
-    header_height: 28,
-    footer_height: 16,
-};
+const MAP_RENDER_CONFIG: RenderConfig = RenderConfig { header_height: 28, footer_height: 16 };
 
 const BACKGROUND: Rgb888 = Rgb888::new(20, 22, 26);
 const SPLASH_BACKGROUND: Rgb888 = Rgb888::new(36, 0, 72);
@@ -102,6 +96,7 @@ enum HostError {
     Message(String),
     Io(std::io::Error),
     Engine(String),
+    Helpers(HelpersError),
 }
 
 fn main() {
@@ -123,22 +118,14 @@ fn run() -> AppResult<()> {
     let game_controller = sdl.game_controller().map_err(boxed_error)?;
     let video = sdl.video().map_err(boxed_error)?;
     let window = video
-        .window(
-            "weave of realms",
-            INITIAL_WINDOW_WIDTH,
-            INITIAL_WINDOW_HEIGHT,
-        )
+        .window("weave of realms", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT)
         .position_centered()
         .resizable()
         .allow_highdpi()
         .build()
         .map_err(boxed_error)?;
-    let mut canvas = window
-        .into_canvas()
-        .accelerated()
-        .present_vsync()
-        .build()
-        .map_err(boxed_error)?;
+    let mut canvas =
+        window.into_canvas().accelerated().present_vsync().build().map_err(boxed_error)?;
     let texture_creator = canvas.texture_creator();
     let mut event_pump = sdl.event_pump().map_err(boxed_error)?;
 
@@ -154,14 +141,8 @@ fn run() -> AppResult<()> {
         right_y_up: false,
         trigger_r_active: false,
     };
-    let mut app_state = EmbeddedApp::new(
-        &mut host,
-        LaunchConfig {
-            start_map: None,
-            start_x: 0,
-            start_y: 0,
-        },
-    );
+    let mut app_state =
+        EmbeddedApp::new(&mut host, LaunchConfig { start_map: None, start_x: 0, start_y: 0 });
     let mut render_cache = AppRenderCache::default();
     let mut last_output_size = initial_size;
     let mut needs_redraw = true;
@@ -187,18 +168,12 @@ fn run() -> AppResult<()> {
                     last_output_size = output_size;
                     needs_redraw = true;
                 }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Q),
-                    keymod,
-                    repeat: false,
-                    ..
-                } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => break 'running,
-                Event::KeyDown {
-                    keycode: Some(keycode),
-                    keymod,
-                    repeat: false,
-                    ..
-                } => {
+                Event::KeyDown { keycode: Some(Keycode::Q), keymod, repeat: false, .. }
+                    if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) =>
+                {
+                    break 'running
+                }
+                Event::KeyDown { keycode: Some(keycode), keymod, repeat: false, .. } => {
                     let input = map_key_event(keycode, keymod);
                     if app_state.handle_input(
                         &mut host,
@@ -309,12 +284,7 @@ fn run() -> AppResult<()> {
             if framebuffer.size != render_size {
                 framebuffer = Framebuffer::new(render_size, BACKGROUND)?;
             }
-            render_frame(
-                render_size,
-                app_state.screen(),
-                &mut render_cache,
-                &mut framebuffer,
-            );
+            render_frame(render_size, app_state.screen(), &mut render_cache, &mut framebuffer);
             present_frame(&mut canvas, &texture_creator, &framebuffer)?;
             needs_redraw = false;
         }
@@ -336,11 +306,13 @@ fn load_state(args: &Args, map_path: Option<&Path>) -> AppResult<GameState> {
     if let Some(path) = map_path.or(args.tmx.as_deref()) {
         let map = read_tmx(path)?;
         info!(path = %path.display(), "loaded TMX map");
-        return build_default_state(map, &args.seed);
+        return map
+            .default_state(&args.seed)
+            .map_err(|error| Box::new(error) as Box<dyn std::error::Error>);
     }
 
     let map = generate_map(args)?;
-    build_default_state(map, &args.seed)
+    map.default_state(&args.seed).map_err(|error| Box::new(error) as Box<dyn std::error::Error>)
 }
 
 impl AppHost for SdlHost {
@@ -349,7 +321,7 @@ impl AppHost for SdlHost {
     fn discover_maps(&mut self) -> Result<Vec<ListEntry>, Self::Error> {
         let mut entries = discover_rpgs_dir(Path::new("maps"), "map:")?;
         if let Some(path) = &self.args.tmx {
-            entries.push(file_entry("tmx:", path)?);
+            entries.push(file_entry("tmx:", path).map_err(HostError::Helpers)?);
         }
         if entries.is_empty() {
             entries.push(ListEntry {
@@ -365,7 +337,7 @@ impl AppHost for SdlHost {
     fn discover_saves(&mut self) -> Result<Vec<ListEntry>, Self::Error> {
         let mut entries = discover_rpgs_dir(Path::new("savegame"), "save:")?;
         if let Some(path) = &self.args.save {
-            entries.push(file_entry("save:", path)?);
+            entries.push(file_entry("save:", path).map_err(HostError::Helpers)?);
         }
         entries.sort_by(|left, right| left.label.cmp(&right.label));
         Ok(entries)
@@ -375,27 +347,18 @@ impl AppHost for SdlHost {
         if let Some(path) = entry.id.strip_prefix("tmx:") {
             let state = load_state(&self.args, Some(Path::new(path)))
                 .map_err(|error| HostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame {
-                map_name: entry.label.clone(),
-                state,
-            });
+            return Ok(LoadedGame { map_name: entry.label.clone(), state });
         }
         if entry.id.starts_with("generated:") {
             let state = load_state(&self.args, None)
                 .map_err(|error| HostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame {
-                map_name: entry.label.clone(),
-                state,
-            });
+            return Ok(LoadedGame { map_name: entry.label.clone(), state });
         }
         if let Some(path) = entry.id.strip_prefix("map:") {
             let bytes = fs::read(path).map_err(HostError::Io)?;
             let state = GameState::from_save_bytes(&bytes)
                 .map_err(|error| HostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame {
-                map_name: entry.label.clone(),
-                state,
-            });
+            return Ok(LoadedGame { map_name: entry.label.clone(), state });
         }
         Err(HostError::Message("Unknown map entry".to_string()))
     }
@@ -408,10 +371,7 @@ impl AppHost for SdlHost {
         let bytes = fs::read(path).map_err(HostError::Io)?;
         let state = GameState::from_save_bytes(&bytes)
             .map_err(|error| HostError::Engine(error.to_string()))?;
-        Ok(LoadedGame {
-            map_name: entry.label.clone(),
-            state,
-        })
+        Ok(LoadedGame { map_name: entry.label.clone(), state })
     }
 
     fn save_game(&mut self, name: &str, state: &GameState) -> Result<(), Self::Error> {
@@ -429,10 +389,7 @@ impl AppHost for SdlHost {
         Some(InfoOverlay::new(
             "System Info".to_string(),
             vec![
-                format!(
-                    "Viewport: {}x{}",
-                    self.screen_size.width, self.screen_size.height
-                ),
+                format!("Viewport: {}x{}", self.screen_size.width, self.screen_size.height),
                 format!("Seed: {}", self.args.seed),
             ],
             "Enter or q: close".to_string(),
@@ -444,6 +401,7 @@ impl AppHost for SdlHost {
             HostError::Message(message) => message,
             HostError::Io(error) => format!("I/O error: {error}"),
             HostError::Engine(message) => format!("Engine error: {message}"),
+            HostError::Helpers(error) => format!("Helpers error: {error}"),
         }
     }
 }
@@ -472,25 +430,9 @@ fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>, HostErr
     Ok(entries)
 }
 
-fn file_entry(prefix: &str, path: &Path) -> Result<ListEntry, HostError> {
-    let metadata = fs::metadata(path).map_err(HostError::Io)?;
-    Ok(ListEntry {
-        id: format!("{prefix}{}", path.display()),
-        label: file_label(path),
-        meta: u32::try_from(metadata.len()).unwrap_or(u32::MAX),
-    })
-}
-
 fn read_save_name(path: &Path) -> Option<String> {
     let bytes = fs::read(path).ok()?;
     GameState::read_save_name(&bytes).ok()
-}
-
-fn file_label(path: &Path) -> String {
-    path.file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("unnamed")
-        .to_string()
 }
 
 fn is_rpgs_path(path: &Path) -> bool {
@@ -498,20 +440,6 @@ fn is_rpgs_path(path: &Path) -> bool {
         .and_then(|value| value.to_str())
         .map(|value| value.eq_ignore_ascii_case("rpgs"))
         .unwrap_or(false)
-}
-
-fn sanitize_save_filename(name: &str) -> String {
-    let mut cleaned = String::new();
-    for ch in name.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-            cleaned.push(ch.to_ascii_uppercase());
-        }
-    }
-    if cleaned.is_empty() {
-        cleaned.push_str("SAVE");
-    }
-    cleaned.truncate(7);
-    format!("{cleaned}.RPGS")
 }
 
 fn generate_map(args: &Args) -> AppResult<GameMap> {
@@ -560,76 +488,16 @@ fn generate_map(args: &Args) -> AppResult<GameMap> {
     }
 }
 
-fn build_default_state(map: GameMap, seed: &str) -> AppResult<GameState> {
-    let spawns = spawn::find_spawn_positions(&map)?;
-    let map_width = map.tile_width();
-    let mut state = GameState::new(map, seed);
-    let player_team_id = state.add_team(Team::red());
-    let enemy_team_id = state.add_team(Team::enemy());
-
-    let offset = MapCoord::new(
-        spawns.player.x.saturating_add(1).min(map_width - 1),
-        spawns.player.y,
-    );
-    state.add_hero(Hero::new(
-        0,
-        "Красный",
-        120,
-        22,
-        12,
-        15,
-        spawns.player,
-        player_team_id,
-    ));
-    state.add_hero(Hero::new(
-        1,
-        "Оранжевый",
-        90,
-        25,
-        8,
-        18,
-        offset,
-        player_team_id,
-    ));
-
-    let enemy_offset = MapCoord::new(
-        spawns.enemy.x.saturating_add(1).min(map_width - 1),
-        spawns.enemy.y,
-    );
-    state.add_hero(Hero::new(
-        2,
-        "Враг",
-        85,
-        16,
-        8,
-        12,
-        spawns.enemy,
-        enemy_team_id,
-    ));
-    state.add_hero(Hero::new(
-        3,
-        "Босс",
-        150,
-        14,
-        20,
-        10,
-        enemy_offset,
-        enemy_team_id,
-    ));
-    let _ = state.set_city_owner(spawns.player, Some(player_team_id));
-    let _ = state.on_turn();
-    Ok(state)
-}
-
 fn map_key_event(keycode: Keycode, keymod: Mod) -> InputEvent {
     match keycode {
-        Keycode::Return | Keycode::Space => InputEvent::NextTurn,
-        Keycode::Escape | Keycode::Backspace => InputEvent::Back,
+        Keycode::Space => InputEvent::NextTurn,
+        Keycode::Escape => InputEvent::Back,
         Keycode::Up => InputEvent::Up,
         Keycode::Down => InputEvent::Down,
         Keycode::Left => InputEvent::Left,
         Keycode::Right => InputEvent::Right,
         Keycode::Tab => InputEvent::NextHero,
+        Keycode::Return => InputEvent::Enter,
         Keycode::A if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('a'),
         Keycode::B if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('b'),
         Keycode::C if !keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => InputEvent::Key('c'),
@@ -707,10 +575,7 @@ fn app_layout(screen_size: Size) -> AppLayout {
 
 fn app_theme() -> AppTheme<Rgb888> {
     AppTheme {
-        splash: SplashTheme {
-            background: SPLASH_BACKGROUND,
-            text: TEXT,
-        },
+        splash: SplashTheme { background: SPLASH_BACKGROUND, text: TEXT },
         list: ListTheme {
             background: BACKGROUND,
             text: TEXT,
@@ -748,11 +613,7 @@ fn tile_color(tile: Tiles) -> Rgb888 {
 
 fn tile_sprite_color(tile: Tiles) -> Rgb888 {
     let (r, g, b) = tile.as_color();
-    Rgb888::new(
-        r.saturating_add(40),
-        g.saturating_add(30),
-        b.saturating_add(10),
-    )
+    Rgb888::new(r.saturating_add(40), g.saturating_add(30), b.saturating_add(10))
 }
 
 fn team_color(team_id: usize) -> Rgb888 {
@@ -777,11 +638,7 @@ fn present_frame(
         .map_err(boxed_error)?;
     let bytes = framebuffer.rgb_bytes_scaled(OUTPUT_SCALE);
     texture
-        .update(
-            None,
-            &bytes,
-            framebuffer.size.width as usize * OUTPUT_SCALE * 3,
-        )
+        .update(None, &bytes, framebuffer.size.width as usize * OUTPUT_SCALE * 3)
         .map_err(boxed_error)?;
     canvas.clear();
     canvas.copy(&texture, None, None).map_err(boxed_error)?;
@@ -848,10 +705,7 @@ fn boxed_error<E>(error: E) -> Box<dyn std::error::Error>
 where
     E: ToString,
 {
-    Box::new(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        error.to_string(),
-    ))
+    Box::new(std::io::Error::new(std::io::ErrorKind::Other, error.to_string()))
 }
 
 struct Framebuffer {
@@ -864,15 +718,10 @@ impl Framebuffer {
         let len = usize::try_from(size.width)
             .ok()
             .and_then(|width| {
-                usize::try_from(size.height)
-                    .ok()
-                    .map(|height| width.saturating_mul(height))
+                usize::try_from(size.height).ok().map(|height| width.saturating_mul(height))
             })
             .ok_or_else(|| "framebuffer dimensions overflow".to_string())?;
-        Ok(Self {
-            size,
-            pixels: vec![background; len],
-        })
+        Ok(Self { size, pixels: vec![background; len] })
     }
 
     fn rgb_bytes_scaled(&self, scale: usize) -> Vec<u8> {

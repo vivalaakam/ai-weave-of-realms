@@ -11,6 +11,7 @@ rpg-embedded = { path = "../crates/rpg-embedded" }
 rpg-engine = { path = "../crates/rpg-engine" }
 rpg-mapgen = { path = "../crates/rpg-mapgen" }
 rpg-tiled = { path = "../crates/rpg-tiled" }
+helpers = { path = "../crates/helpers" }
 sdl2 = { version = "0.37", features = ["bundled"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -7,3 +7,4 @@ description = "Shared embedded-graphics frontend primitives for T-Deck and termi
 [dependencies]
 embedded-graphics = "0.8.1"
 rpg-engine = { path = "../rpg-engine", default-features = false }
+helpers = { path = "../helpers" }

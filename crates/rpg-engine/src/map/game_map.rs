@@ -5,8 +5,12 @@ use alloc::{format, vec::Vec};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
+use crate::game_map_error::GameMapError;
+use crate::game_state::GameState;
+use crate::hero::Hero;
 use crate::map::tile::Tile;
-
+use crate::spawn;
+use crate::team::Team;
 // ─── MapCoord ─────────────────────────────────────────────────────────────────
 
 /// Absolute tile coordinates within the full game map.
@@ -114,6 +118,27 @@ impl GameMap {
             return Err(Error::InvalidTilesSize { expected, got: tiles.len() });
         }
         Ok(Self { width, height, tiles, enemy_spawns: Vec::new(), chest_spawns: Vec::new(), seed })
+    }
+
+    pub fn default_state(&self, seed: &str) -> Result<GameState, GameMapError> {
+        let spawns = spawn::find_spawn_positions(self)?;
+        let map_width = self.tile_width();
+        let mut state = GameState::new(self.clone(), seed);
+        let player_team_id = state.add_team(Team::red());
+        let enemy_team_id = state.add_team(Team::enemy());
+
+        let offset =
+            MapCoord::new(spawns.player.x.saturating_add(1).min(map_width - 1), spawns.player.y);
+        state.add_hero(Hero::new(0, "Red Hero", 120, 22, 12, 15, spawns.player, player_team_id));
+        state.add_hero(Hero::new(1, "Orange Hero", 90, 25, 8, 18, offset, player_team_id));
+
+        let enemy_offset =
+            MapCoord::new(spawns.enemy.x.saturating_add(1).min(map_width - 1), spawns.enemy.y);
+        state.add_hero(Hero::new(2, "Enemy 1", 85, 16, 8, 12, spawns.enemy, enemy_team_id));
+        state.add_hero(Hero::new(3, "Big Boss", 150, 14, 20, 10, enemy_offset, enemy_team_id));
+        let _ = state.set_city_owner(spawns.player, Some(player_team_id));
+        let _ = state.on_turn();
+        Ok(state)
     }
 
     /// Returns the total width of the map in tiles.

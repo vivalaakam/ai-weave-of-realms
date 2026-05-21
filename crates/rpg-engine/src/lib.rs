@@ -35,5 +35,6 @@ pub mod spawn;
 pub mod team;
 
 mod game_error;
+mod game_map_error;
 #[cfg(test)]
 pub mod test_utils;

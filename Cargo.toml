@@ -6,7 +6,7 @@ members = [
     "crates/rpg-tiled",
     "crates/rpg-godot",
     "crates/rpg-tools"
-]
+, "crates/helpers"]
 exclude = ["tdeck", "sixel-console", "sdl2-console"]
 resolver = "2"
 

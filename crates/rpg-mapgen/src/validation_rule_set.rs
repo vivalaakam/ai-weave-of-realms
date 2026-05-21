@@ -38,7 +38,7 @@ impl ValidationRuleSet {
     ///
     /// # Errors
     /// Returns [`Error::ScriptLoad`] if any `.lua` file cannot be read or compiled.
-    /// Returns [`Error::Engine`] with [`InvalidState`](rpg_engine::error::Error::InvalidChunksSize)
+    /// Returns [`Error::Engine`] with [`InvalidState`](rpg_engine::error::GameError::InvalidChunksSize)
     /// if `dir` cannot be read.
     pub fn from_dir(dir: &Path) -> Result<Self, Error> {
         let mut entries: Vec<_> = std::fs::read_dir(dir)

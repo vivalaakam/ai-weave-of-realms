@@ -1,20 +1,9 @@
 //! Shared selectable list screen state and input handling.
 
+use crate::input::InputEvent;
 use alloc::string::String;
 use alloc::vec::Vec;
-
-use crate::input::InputEvent;
-
-/// Shared list entry shown in embedded selector UIs.
-#[derive(Clone)]
-pub struct ListEntry {
-    /// Stable host-specific identifier used for loading the selected item.
-    pub id: String,
-    /// Primary display label.
-    pub label: String,
-    /// Secondary numeric metadata, usually file size.
-    pub meta: u32,
-}
+use helpers::ListEntry;
 
 /// Shared list browser model.
 pub struct ListScreen {
