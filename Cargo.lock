@@ -531,6 +531,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "game"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "helpers",
+ "rpg-engine",
+ "rpg-mapgen",
+ "rpg-tiled",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "gdextension-api"
 version = "0.3.3"
 source = "git+https://github.com/godot-rust/godot4-prebuilt?branch=release-v0.3#87ac4b022eaa1c03ac24bcbb77507b6d16302185"
@@ -1304,15 +1317,6 @@ name = "rgb"
 version = "0.8.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
-
-[[package]]
-name = "rpg-embedded"
-version = "0.1.0"
-dependencies = [
- "embedded-graphics",
- "helpers",
- "rpg-engine",
-]
 
 [[package]]
 name = "rpg-engine"

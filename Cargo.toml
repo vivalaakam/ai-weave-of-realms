@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "crates/rpg-engine",
-    "crates/rpg-embedded",
+    "crates/game",
     "crates/rpg-mapgen",
     "crates/rpg-tiled",
     "crates/rpg-godot",

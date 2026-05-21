@@ -1,0 +1,19 @@
+[package]
+name = "game"
+version = "0.1.0"
+edition = "2021"
+description = "Shared embedded-graphics frontend primitives for T-Deck and terminal runtimes."
+
+[features]
+default = []
+std = ["dep:rpg-mapgen", "dep:rpg-tiled", "rpg-engine/std", "tracing/std"]
+
+[dependencies]
+embedded-graphics = "0.8.1"
+rpg-engine = { path = "../rpg-engine", default-features = false }
+helpers = { path = "../helpers" }
+thiserror = { version = "2", default-features = false }
+tracing = { version = "0.1", default-features = false }
+
+rpg-mapgen = { path = "../rpg-mapgen", optional = true }
+rpg-tiled = { path = "../rpg-tiled", optional = true }

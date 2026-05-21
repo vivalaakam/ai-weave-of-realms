@@ -6,7 +6,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use helpers::ListEntry;
+use crate::types::ListEntry;
 use rpg_engine::game_state::GameState;
 
 use crate::info_overlay::{InfoOverlay, InfoOverlayOutcome};

@@ -8,10 +8,7 @@ description = "Standalone sixel console launcher for AI RPG using embedded-graph
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.28"
 embedded-graphics = "0.8.1"
-rpg-embedded = { path = "../crates/rpg-embedded" }
-rpg-engine = { path = "../crates/rpg-engine" }
-rpg-mapgen = { path = "../crates/rpg-mapgen" }
-rpg-tiled = { path = "../crates/rpg-tiled" }
+game = { path = "../crates/game", features = ["std"] }
 terminal_size = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

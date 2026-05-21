@@ -3,7 +3,7 @@
 use crate::input::InputEvent;
 use alloc::string::String;
 use alloc::vec::Vec;
-use helpers::ListEntry;
+use crate::types::ListEntry;
 
 /// Shared list browser model.
 pub struct ListScreen {

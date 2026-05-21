@@ -13,11 +13,11 @@ use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::OriginDimensions;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
-use rpg_embedded::app::{AppHost, AppLayout, EmbeddedApp, LaunchConfig, LoadedGame};
-use rpg_embedded::info_overlay::InfoOverlay;
-use rpg_embedded::input::InputEvent;
-use rpg_embedded::list::ListEntry;
-use rpg_embedded::render::{
+use game::app::{AppHost, AppLayout, EmbeddedApp, LaunchConfig, LoadedGame};
+use game::info_overlay::InfoOverlay;
+use game::input::InputEvent;
+use game::list::ListEntry;
+use game::render::{
     AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme, MapViewTheme, RenderConfig,
     SaveOverlayTheme, SplashTheme, draw_app_screen, visible_tiles,
 };
@@ -495,7 +495,7 @@ fn map_key_event(key: crossterm::event::KeyEvent) -> InputEvent {
 
 fn render_frame(
     screen_size: Size,
-    screen: &rpg_embedded::app::AppScreen,
+    screen: &game::app::AppScreen,
     render_cache: &mut AppRenderCache,
 ) -> AppResult<Framebuffer> {
     let mut framebuffer = Framebuffer::new(screen_size, BACKGROUND)?;

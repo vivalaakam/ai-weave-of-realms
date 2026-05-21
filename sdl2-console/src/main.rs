@@ -9,14 +9,14 @@ use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::OriginDimensions;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
-use helpers::{file_entry, file_label, sanitize_save_filename, HelpersError, ListEntry};
-use rpg_embedded::app::{AppHost, AppLayout, AppScreen, EmbeddedApp, LaunchConfig, LoadedGame};
-use rpg_embedded::info_overlay::InfoOverlay;
-use rpg_embedded::input::InputEvent;
-use rpg_embedded::render::{
+use game::app::{AppHost, AppLayout, AppScreen, EmbeddedApp, LaunchConfig, LoadedGame};
+use game::info_overlay::InfoOverlay;
+use game::input::InputEvent;
+use game::render::{
     draw_app_screen, visible_tiles, AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme,
     MapViewTheme, RenderConfig, SaveOverlayTheme, SplashTheme,
 };
+use helpers::{file_entry, file_label, sanitize_save_filename, HelpersError, ListEntry};
 use rpg_engine::game_state::GameState;
 use rpg_engine::map::game_map::GameMap;
 use rpg_engine::map::tile::Tiles;

@@ -3,8 +3,8 @@
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::{RgbColor, Size};
-use rpg_embedded::app::EmbeddedApp;
-use rpg_embedded::render::{
+use game::app::EmbeddedApp;
+use game::render::{
     AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme, MapViewTheme, SaveOverlayTheme,
     SplashTheme, draw_app_screen,
 };
