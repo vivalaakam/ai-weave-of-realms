@@ -162,7 +162,7 @@ fn parse_tiles_table(table: Table, coord: ChunkCoord) -> Result<Chunk, MapgenErr
 mod tests {
     use super::*;
     use crate::test_utils::init_tracing;
-    use rpg_engine::rng::keccak256;
+    use engine::rng::keccak256;
 
     /// Inline minimal generator script for tests (no filesystem dependency).
     fn make_inline_generator() -> ChunkGenerator {

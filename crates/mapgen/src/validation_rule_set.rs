@@ -135,13 +135,13 @@ impl From<RuleResult> for ValidationResult {
 mod tests {
     use std::fs;
 
-    use rpg_engine::map::tile::{Tile, Tiles};
+    use engine::map::tile::{Tile, Tiles};
 
     use super::*;
     use crate::test_utils::init_tracing;
 
     fn make_uniform_map(kind: Tiles) -> GameMap {
-        use rpg_engine::map::chunk::CHUNK_SIZE;
+        use engine::map::chunk::CHUNK_SIZE;
         let cw: u32 = 3;
         let ct: u32 = 3;
         let tw = cw * CHUNK_SIZE as u32;

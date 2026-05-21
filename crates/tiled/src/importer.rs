@@ -308,8 +308,8 @@ fn hex_nibble(b: u8) -> Result<u8, TiledError> {
 mod tests {
     use super::*;
     use crate::exporter::export_tmx;
-    use rpg_engine::map::game_map::GameMap;
-    use rpg_engine::map::tile::{Tile, Tiles};
+    use engine::map::game_map::GameMap;
+    use engine::map::tile::{Tile, Tiles};
 
     fn make_map(w: u32, h: u32, kind: Tiles, seed: [u8; 32]) -> GameMap {
         let tiles = vec![Tile { kind }; (w * h) as usize];

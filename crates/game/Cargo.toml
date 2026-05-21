@@ -10,10 +10,11 @@ std = ["dep:mapgen", "dep:tiled", "engine/std", "tracing/std"]
 
 [dependencies]
 embedded-graphics = "0.8.1"
+
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
 engine = { path = "../engine", default-features = false }
 helpers = { path = "../helpers" }
-thiserror = { version = "2", default-features = false }
-tracing = { version = "0.1", default-features = false }
-
 mapgen = { path = "../mapgen", optional = true }
 tiled = { path = "../tiled", optional = true }

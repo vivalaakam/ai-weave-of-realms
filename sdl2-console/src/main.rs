@@ -1,37 +1,24 @@
 //! Standalone SDL2 launcher that renders AI RPG maps via `embedded-graphics`.
 
-use std::fs;
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use args::Args;
 use clap::Parser;
-use embedded_graphics::draw_target::DrawTarget;
-use embedded_graphics::geometry::OriginDimensions;
-use embedded_graphics::pixelcolor::Rgb888;
-use embedded_graphics::prelude::*;
-use game::app::{AppHost, AppLayout, AppScreen, EmbeddedApp, LaunchConfig, LoadedGame};
-use game::info_overlay::InfoOverlay;
+use frame_buffer::Framebuffer;
+use game::app::{AppLayout, AppScreen, EmbeddedApp, LaunchConfig};
 use game::input::InputEvent;
+use game::prelude::render::{Rgb888, Size};
 use game::render::{
     draw_app_screen, visible_tiles, AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme,
     MapViewTheme, RenderConfig, SaveOverlayTheme, SplashTheme,
 };
-use helpers::{file_entry, file_label, sanitize_save_filename, HelpersError, ListEntry};
-use engine::game_state::GameState;
-use engine::map::game_map::GameMap;
-use engine::map::tile::Tiles;
-use mapgen::map_assembler::{MapAssembler, MapConfig};
-use tiled::read_tmx;
+use game::Tiles;
 use sdl2::controller::{Axis, Button, GameController};
 use sdl2::event::Event;
 use sdl2::keyboard::{Keycode, Mod};
 use sdl2::pixels::PixelFormatEnum;
-use tracing::{error, info, warn};
-use args::Args;
-use error::HostError;
-use frame_buffer::Framebuffer;
-use mapgen::error::MapgenError;
 use sdl_host::SdlHost;
+use tracing::{error, info, warn};
 
 mod args;
 mod error;
@@ -245,108 +232,6 @@ fn run() -> AppResult<()> {
     }
 
     Ok(())
-}
-
-fn load_state(args: &Args, map_path: Option<&Path>) -> AppResult<GameState> {
-    if let Some(path) = &args.save {
-        let bytes = fs::read(path)?;
-        let state = GameState::from_save_bytes(&bytes)?;
-        info!(path = %path.display(), "loaded saved game state");
-        return Ok(state);
-    }
-
-    if let Some(path) = map_path.or(args.tmx.as_deref()) {
-        let map = read_tmx(path)?;
-        info!(path = %path.display(), "loaded TMX map");
-        return map
-            .default_state(&args.seed)
-            .map_err(|error| Box::new(error) as Box<dyn std::error::Error>);
-    }
-
-    let map = generate_map(args)?;
-    map.default_state(&args.seed).map_err(|error| Box::new(error) as Box<dyn std::error::Error>)
-}
-
-fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>, HostError> {
-    let mut entries: Vec<ListEntry> = Vec::new();
-    if !dir.is_dir() {
-        return Ok(entries);
-    }
-
-    let read_dir = fs::read_dir(dir).map_err(HostError::Io)?;
-    for entry in read_dir {
-        let entry = entry.map_err(HostError::Io)?;
-        let path = entry.path();
-        if !is_rpgs_path(&path) {
-            continue;
-        }
-        let metadata = entry.metadata().map_err(HostError::Io)?;
-        let label = read_save_name(&path).unwrap_or_else(|| file_label(&path));
-        entries.push(ListEntry {
-            id: format!("{prefix}{}", path.display()),
-            label,
-            meta: u32::try_from(metadata.len()).unwrap_or(u32::MAX),
-        });
-    }
-    Ok(entries)
-}
-
-fn read_save_name(path: &Path) -> Option<String> {
-    let bytes = fs::read(path).ok()?;
-    GameState::read_save_name(&bytes).ok()
-}
-
-fn is_rpgs_path(path: &Path) -> bool {
-    path.extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.eq_ignore_ascii_case("rpgs"))
-        .unwrap_or(false)
-}
-
-fn generate_map(args: &Args) -> AppResult<GameMap> {
-    let mut generators = args.generators.clone();
-    if generators.is_empty() {
-        generators.push(PathBuf::from("scripts/generators/default.lua"));
-    }
-
-    let first = generators.remove(0);
-    let mut config = MapConfig::default_3x3(args.seed.clone(), first);
-    config.width = args.width;
-    config.height = args.height;
-
-    for generator in generators {
-        config = config.with_generator(generator);
-    }
-
-    if let Some(path) = &args.validator_dir {
-        config = config.with_validator_dir(path.clone());
-    } else if let Some(path) = &args.validator {
-        config = config.with_validator(path.clone());
-    } else {
-        let default = PathBuf::from("scripts/rules");
-        if default.is_dir() {
-            config = config.with_validator_dir(default);
-        }
-    }
-
-    if let Some(path) = &args.evaluator {
-        config = config.with_evaluator(path.clone());
-    } else {
-        let default = PathBuf::from("scripts/evaluators/evaluate.lua");
-        if default.exists() {
-            config = config.with_evaluator(default);
-        }
-    }
-
-    let assembler = MapAssembler::new(config)?;
-    match assembler.generate_validated() {
-        Ok(map) => Ok(map),
-        Err(MapgenError::ValidationFailed(reason)) => {
-            info!(%reason, "map failed validation, falling back to raw generation");
-            Ok(assembler.generate()?)
-        }
-        Err(error) => Err(Box::new(error)),
-    }
 }
 
 fn map_key_event(keycode: Keycode, keymod: Mod) -> InputEvent {
@@ -568,4 +453,3 @@ where
 {
     Box::new(std::io::Error::new(std::io::ErrorKind::Other, error.to_string()))
 }
-

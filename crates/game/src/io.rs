@@ -6,24 +6,16 @@ use engine::game_state::GameState;
 use engine::hero::Hero;
 use engine::map::game_map::GameMap;
 use engine::spawn;
+use engine::spawn::SpawnError;
 use engine::team::Team;
 use mapgen::error::MapgenError;
 use mapgen::map_assembler::{MapAssembler, MapConfig};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tiled::error::TiledError;
 use tiled::read_tmx;
 
-/// Shared list entry shown in selector UIs.
-/// Shared list entry shown in selector UIs.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ListEntry {
-    /// Stable host-specific identifier used for loading the selected item.
-    pub id: String,
-    /// Primary display label.
-    pub label: String,
-    /// Secondary numeric metadata, usually file size.
-    pub meta: u32,
-}
+pub use crate::types::ListEntry;
 
 /// Error type for host-side I/O operations.
 #[derive(Debug, thiserror::Error)]
@@ -34,6 +26,10 @@ pub enum IoError {
     Engine(#[from] EngineError),
     #[error("Mapgen error: {0}")]
     Mapgen(#[from] MapgenError),
+    #[error("Tiled error: {0}")]
+    Tiled(#[from] TiledError),
+    #[error("Spawn error: {0}")]
+    Spawn(#[from] SpawnError),
     #[error("{0}")]
     Message(String),
 }

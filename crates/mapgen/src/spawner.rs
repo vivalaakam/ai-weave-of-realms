@@ -176,7 +176,7 @@ fn parse_enemy_entry(table: Table, index: u32) -> Result<Option<EnemySpawn>, Map
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rpg_engine::map::tile::{Tile, Tiles};
+    use engine::map::tile::{Tile, Tiles};
 
     fn make_map() -> GameMap {
         let tiles = vec![Tile::new(Tiles::Meadow); 96 * 96];

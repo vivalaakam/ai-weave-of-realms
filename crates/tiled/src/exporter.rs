@@ -163,8 +163,8 @@ fn xml_escape_attr(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rpg_engine::map::game_map::GameMap;
-    use rpg_engine::map::tile::{Tile, Tiles};
+    use engine::map::game_map::GameMap;
+    use engine::map::tile::{Tile, Tiles};
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
         let tiles = vec![Tile { kind: Tiles::Meadow }; (w * h) as usize];

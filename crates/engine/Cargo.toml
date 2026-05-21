@@ -9,9 +9,9 @@ default = ["std"]
 std = ["dep:sha3"]
 
 [dependencies]
-sha3 = { version = "0.10", default-features = false, optional = true }
-serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
-thiserror = { version = "2", default-features = false }
+sha3 = { workspace = true, optional = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

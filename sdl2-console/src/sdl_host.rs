@@ -1,12 +1,12 @@
-use std::fs;
-use std::path::Path;
-use embedded_graphics::geometry::Size;
-use engine::game_state::GameState;
-use game::app::{AppHost, LoadedGame};
-use game::info_overlay::InfoOverlay;
-use helpers::{file_entry, sanitize_save_filename, ListEntry};
 use crate::args::Args;
 use crate::error::HostError;
+use game::app::{AppHost, LoadedGame};
+use game::info_overlay::InfoOverlay;
+use game::io::{discover_rpgs_dir, file_entry, load_state, sanitize_save_filename, ListEntry};
+use game::prelude::render::Size;
+use game::GameState;
+use std::fs;
+use std::path::Path;
 
 pub struct SdlHost {
     pub(crate) args: Args,
@@ -22,9 +22,9 @@ impl AppHost for SdlHost {
     type Error = HostError;
 
     fn discover_maps(&mut self) -> Result<Vec<ListEntry>, Self::Error> {
-        let mut entries = crate::discover_rpgs_dir(Path::new("maps"), "map:")?;
+        let mut entries = discover_rpgs_dir(Path::new("maps"), "map:")?;
         if let Some(path) = &self.args.tmx {
-            entries.push(file_entry("tmx:", path).map_err(HostError::Helpers)?);
+            entries.push(file_entry("tmx:", path)?);
         }
         if entries.is_empty() {
             entries.push(ListEntry {
@@ -38,9 +38,9 @@ impl AppHost for SdlHost {
     }
 
     fn discover_saves(&mut self) -> Result<Vec<ListEntry>, Self::Error> {
-        let mut entries = crate::discover_rpgs_dir(Path::new("savegame"), "save:")?;
+        let mut entries = discover_rpgs_dir(Path::new("savegame"), "save:")?;
         if let Some(path) = &self.args.save {
-            entries.push(file_entry("save:", path).map_err(HostError::Helpers)?);
+            entries.push(file_entry("save:", path)?);
         }
         entries.sort_by(|left, right| left.label.cmp(&right.label));
         Ok(entries)
@@ -48,13 +48,31 @@ impl AppHost for SdlHost {
 
     fn load_map(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error> {
         if let Some(path) = entry.id.strip_prefix("tmx:") {
-            let state = crate::load_state(&self.args, Some(Path::new(path)))
-                .map_err(|error| HostError::Engine(error.to_string()))?;
+            let state = load_state(
+                &self.args.seed,
+                self.args.width,
+                self.args.height,
+                self.args.generators.clone(),
+                self.args.validator_dir.clone(),
+                self.args.validator.clone(),
+                self.args.evaluator.clone(),
+                None,
+                Some(Path::new(path)),
+            )?;
             return Ok(LoadedGame { map_name: entry.label.clone(), state });
         }
         if entry.id.starts_with("generated:") {
-            let state = crate::load_state(&self.args, None)
-                .map_err(|error| HostError::Engine(error.to_string()))?;
+            let state = load_state(
+                &self.args.seed,
+                self.args.width,
+                self.args.height,
+                self.args.generators.clone(),
+                self.args.validator_dir.clone(),
+                self.args.validator.clone(),
+                self.args.evaluator.clone(),
+                None,
+                None,
+            )?;
             return Ok(LoadedGame { map_name: entry.label.clone(), state });
         }
         if let Some(path) = entry.id.strip_prefix("map:") {
@@ -104,7 +122,6 @@ impl AppHost for SdlHost {
             HostError::Message(message) => message,
             HostError::Io(error) => format!("I/O error: {error}"),
             HostError::Engine(message) => format!("Engine error: {message}"),
-            HostError::Helpers(error) => format!("Helpers error: {error}"),
         }
     }
 }

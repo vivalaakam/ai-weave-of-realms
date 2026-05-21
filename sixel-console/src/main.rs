@@ -13,28 +13,26 @@ use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::OriginDimensions;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
+use engine::game_state::GameState;
+use engine::hero::Hero;
+use engine::map::game_map::GameMap;
+use engine::spawn;
+use engine::team::Team;
 use game::app::{AppHost, AppLayout, EmbeddedApp, LaunchConfig, LoadedGame};
 use game::info_overlay::InfoOverlay;
 use game::input::InputEvent;
-use game::list::ListEntry;
 use game::render::{
-    AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme, MapViewTheme, RenderConfig,
-    SaveOverlayTheme, SplashTheme, draw_app_screen, visible_tiles,
+    draw_app_screen, visible_tiles, AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme,
+    MapViewTheme, RenderConfig, SaveOverlayTheme, SplashTheme,
 };
-use rpg_engine::game_state::GameState;
-use rpg_engine::hero::Hero;
-use rpg_engine::map::game_map::GameMap;
-use rpg_engine::spawn;
-use rpg_engine::team::Team;
-use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
-use rpg_tiled::read_tmx;
-use terminal_size::{Height, Width, terminal_size};
+use game::types::ListEntry;
+use mapgen::error::MapgenError;
+use mapgen::map_assembler::{MapAssembler, MapConfig};
+use terminal_size::{terminal_size, Height, Width};
+use tiled::read_tmx;
 use tracing::{error, info};
 
-const MAP_RENDER_CONFIG: RenderConfig = RenderConfig {
-    header_height: 28,
-    footer_height: 16,
-};
+const MAP_RENDER_CONFIG: RenderConfig = RenderConfig { header_height: 28, footer_height: 16 };
 
 const BACKGROUND: Rgb888 = Rgb888::new(20, 22, 26);
 const SPLASH_BACKGROUND: Rgb888 = Rgb888::new(36, 0, 72);
@@ -129,14 +127,8 @@ fn run() -> AppResult<()> {
     let _raw_mode = RawModeGuard::new()?;
     let stdout = io::stdout();
     let mut handle = stdout.lock();
-    let mut app_state = EmbeddedApp::new(
-        &mut host,
-        LaunchConfig {
-            start_map: None,
-            start_x: 0,
-            start_y: 0,
-        },
-    );
+    let mut app_state =
+        EmbeddedApp::new(&mut host, LaunchConfig { start_map: None, start_x: 0, start_y: 0 });
     let mut render_cache = AppRenderCache::default();
     let mut last_output_size: Option<Size> = None;
     let mut needs_redraw = true;
@@ -167,8 +159,11 @@ fn run() -> AppResult<()> {
                     break;
                 }
                 Event::Key(key) => {
-                    if app_state.handle_input(&mut host, map_key_event(key), app_layout(render_size))
-                    {
+                    if app_state.handle_input(
+                        &mut host,
+                        map_key_event(key),
+                        app_layout(render_size),
+                    ) {
                         needs_redraw = true;
                     }
                 }
@@ -234,27 +229,18 @@ impl AppHost for ConsoleHost {
         if let Some(path) = entry.id.strip_prefix("tmx:") {
             let state = load_state(&self.args, Some(Path::new(path)))
                 .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame {
-                map_name: entry.label.clone(),
-                state,
-            });
+            return Ok(LoadedGame { map_name: entry.label.clone(), state });
         }
         if entry.id.starts_with("generated:") {
-            let state =
-                load_state(&self.args, None).map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame {
-                map_name: entry.label.clone(),
-                state,
-            });
+            let state = load_state(&self.args, None)
+                .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
+            return Ok(LoadedGame { map_name: entry.label.clone(), state });
         }
         if let Some(path) = entry.id.strip_prefix("map:") {
             let bytes = fs::read(path).map_err(ConsoleHostError::Io)?;
             let state = GameState::from_save_bytes(&bytes)
                 .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame {
-                map_name: entry.label.clone(),
-                state,
-            });
+            return Ok(LoadedGame { map_name: entry.label.clone(), state });
         }
         Err(ConsoleHostError::Message("Unknown map entry".to_string()))
     }
@@ -267,10 +253,7 @@ impl AppHost for ConsoleHost {
         let bytes = fs::read(path).map_err(ConsoleHostError::Io)?;
         let state = GameState::from_save_bytes(&bytes)
             .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-        Ok(LoadedGame {
-            map_name: entry.label.clone(),
-            state,
-        })
+        Ok(LoadedGame { map_name: entry.label.clone(), state })
     }
 
     fn save_game(&mut self, name: &str, state: &GameState) -> Result<(), Self::Error> {
@@ -344,10 +327,7 @@ fn read_save_name(path: &Path) -> Option<String> {
 }
 
 fn file_label(path: &Path) -> String {
-    path.file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("unnamed")
-        .to_string()
+    path.file_stem().and_then(|value| value.to_str()).unwrap_or("unnamed").to_string()
 }
 
 fn is_rpgs_path(path: &Path) -> bool {
@@ -409,7 +389,7 @@ fn generate_map(args: &Args) -> AppResult<GameMap> {
     let assembler = MapAssembler::new(config)?;
     match assembler.generate_validated() {
         Ok(map) => Ok(map),
-        Err(rpg_mapgen::error::Error::ValidationFailed(reason)) => {
+        Err(MapgenError::ValidationFailed(reason)) => {
             info!(%reason, "map failed validation, falling back to raw generation");
             Ok(assembler.generate()?)
         }
@@ -423,26 +403,8 @@ fn build_default_state(map: GameMap, seed: &str) -> AppResult<GameState> {
     let player_team_id = state.add_team(Team::red());
     let enemy_team_id = state.add_team(Team::enemy());
 
-    state.add_hero(Hero::new(
-        0,
-        "Hero",
-        100,
-        20,
-        10,
-        15,
-        spawns.player,
-        player_team_id,
-    ));
-    state.add_hero(Hero::new(
-        1,
-        "Enemy",
-        85,
-        16,
-        8,
-        12,
-        spawns.enemy,
-        enemy_team_id,
-    ));
+    state.add_hero(Hero::new(0, "Hero", 100, 20, 10, 15, spawns.player, player_team_id));
+    state.add_hero(Hero::new(1, "Enemy", 85, 16, 8, 12, spawns.enemy, enemy_team_id));
     let _ = state.set_city_owner(spawns.player, Some(player_team_id));
     let _ = state.on_turn();
     Ok(state)
@@ -453,10 +415,7 @@ fn detect_screen_size() -> Size {
     if let Some((Width(columns), Height(rows))) = terminal_size() {
         let width = u32::from(columns).saturating_mul(10);
         let height = u32::from(rows.saturating_sub(2)).saturating_mul(20);
-        Size::new(
-            width.max(minimum.width),
-            height.max(minimum.height),
-        )
+        Size::new(width.max(minimum.width), height.max(minimum.height))
     } else {
         Size::new(minimum.width.max(240), minimum.height.max(160))
     }
@@ -524,10 +483,7 @@ fn app_layout(screen_size: Size) -> AppLayout {
 
 fn app_theme() -> AppTheme<Rgb888> {
     AppTheme {
-        splash: SplashTheme {
-            background: SPLASH_BACKGROUND,
-            text: TEXT,
-        },
+        splash: SplashTheme { background: SPLASH_BACKGROUND, text: TEXT },
         list: ListTheme {
             background: BACKGROUND,
             text: TEXT,
@@ -558,12 +514,12 @@ fn app_theme() -> AppTheme<Rgb888> {
     }
 }
 
-fn tile_color(tile: rpg_engine::map::tile::Tiles) -> Rgb888 {
+fn tile_color(tile: engine::map::tile::Tiles) -> Rgb888 {
     let (r, g, b) = tile.as_color();
     Rgb888::new(r, g, b)
 }
 
-fn tile_sprite_color(tile: rpg_engine::map::tile::Tiles) -> Rgb888 {
+fn tile_sprite_color(tile: engine::map::tile::Tiles) -> Rgb888 {
     let (r, g, b) = tile.as_color();
     Rgb888::new(r.saturating_add(40), g.saturating_add(30), b.saturating_add(10))
 }
@@ -705,10 +661,7 @@ fn colors_in_band(
         }
     }
 
-    seen.into_iter()
-        .enumerate()
-        .filter_map(|(index, present)| present.then_some(index))
-        .collect()
+    seen.into_iter().enumerate().filter_map(|(index, present)| present.then_some(index)).collect()
 }
 
 fn push_run(runs: &mut Vec<(u8, usize)>, value: u8) {
@@ -735,10 +688,7 @@ impl Framebuffer {
         let len = usize::try_from(size.width)?
             .checked_mul(usize::try_from(size.height)?)
             .ok_or("framebuffer size overflow")?;
-        Ok(Self {
-            size,
-            pixels: vec![background; len],
-        })
+        Ok(Self { size, pixels: vec![background; len] })
     }
 
     fn index_of(&self, point: Point) -> Option<usize> {

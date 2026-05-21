@@ -1,12 +1,9 @@
-use embedded_graphics::geometry::{OriginDimensions, Size};
-use embedded_graphics::pixelcolor::{Rgb888, RgbColor};
-use embedded_graphics::draw_target::DrawTarget;
-use embedded_graphics::Pixel;
 use crate::AppResult;
+use game::prelude::render::{DrawTarget, OriginDimensions, Pixel, Rgb888, RgbColor, Size};
 
 pub struct Framebuffer {
-    pub (crate) size: Size,
-    pub (crate) pixels: Vec<Rgb888>,
+    pub(crate) size: Size,
+    pub(crate) pixels: Vec<Rgb888>,
 }
 
 impl Framebuffer {

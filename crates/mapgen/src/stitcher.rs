@@ -248,8 +248,8 @@ impl Stitcher {
 mod tests {
     use super::*;
     use crate::test_utils::init_tracing;
-    use rpg_engine::map::chunk::CHUNK_SIZE;
-    use rpg_engine::map::tile::Tile;
+    use engine::map::chunk::CHUNK_SIZE;
+    use engine::map::tile::Tile;
 
     /// Builds a 2×1 map (64×32 tiles) where the left half is all `left_kind` and
     /// the right half is all `right_kind`.

@@ -1,6 +1,6 @@
 //! Shared `embedded-graphics` rendering for the gameplay map view.
 
-use alloc::{format, string::ToString, vec, vec::Vec};
+use alloc::{format, string::String, string::ToString, vec, vec::Vec};
 
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
@@ -414,7 +414,7 @@ fn cached_water_mask(water_masks: &mut Vec<Option<WaterMask>>, bits: u8) -> Wate
         *water_masks = vec![None; 256];
     }
     let idx = bits as usize;
-    if let Some(m) = water_masks[idx] {
+    if let Some(m) = water_masks.get(idx).copied().flatten() {
         return m;
     }
     let m = compute_water_composite(bits);
@@ -427,7 +427,7 @@ fn cached_mountain_mask(mountain_masks: &mut Vec<Option<WaterMask>>, bits: u8) -
         *mountain_masks = vec![None; 256];
     }
     let idx = bits as usize;
-    if let Some(m) = mountain_masks[idx] {
+    if let Some(m) = mountain_masks.get(idx).copied().flatten() {
         return m;
     }
     let m = compute_mountain_composite(bits);
@@ -443,7 +443,7 @@ pub struct AppRenderCache {
 }
 
 struct MapViewCache {
-    map_name: alloc::string::String,
+    map_name: String,
     map_width: usize,
     map_height: usize,
     visible_cols: usize,

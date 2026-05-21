@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug, Parser)]
 #[command(name = "weave-of-realms-sdl2", author, version, about)]

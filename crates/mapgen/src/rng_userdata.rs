@@ -57,8 +57,8 @@ impl UserData for LuaRng {
 mod tests {
     use super::*;
     use crate::test_utils::init_tracing;
+    use engine::rng::keccak256;
     use mlua::Lua;
-    use rpg_engine::rng::keccak256;
 
     #[test]
     fn lua_rng_next_f64_in_range() {
