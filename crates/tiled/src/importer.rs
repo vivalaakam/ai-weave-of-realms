@@ -1,0 +1,397 @@
+//! TMX importer — deserialises a Tiled `.tmx` XML file into a [`GameMap`].
+//!
+//! Only the features produced by [`crate::exporter`] are supported:
+//! - Isometric staggered layout
+//! - A single `<layer>` with `encoding="csv"`
+//! - An optional `seed` string property (64-character hex)
+//! - An optional `Spawns` object group with enemy/chest points
+//!
+//! Unknown attributes and extra layers are silently ignored.
+
+use std::path::Path;
+
+use quick_xml::events::Event;
+use quick_xml::Reader;
+
+use engine::map::game_map::{GameMap, MapCoord};
+use engine::map::tile::{Tile, Tiles};
+
+use crate::error::TiledError;
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/// Parses a TMX XML string and returns a [`GameMap`].
+///
+/// # Errors
+/// - [`TiledError::Parse`] — malformed XML
+/// - [`TiledError::MissingField`] — required attribute absent
+/// - [`TiledError::InvalidAttribute`] — attribute value not parseable
+/// - [`TiledError::UnknownGid`] — CSV contains an unrecognised tile GID
+/// - [`TiledError::Engine`] — `GameMap::new` rejected the assembled tiles
+pub fn import_tmx(xml: &str) -> Result<GameMap, TiledError> {
+    let mut parser = TmxParser::default();
+    parser.parse(xml)?;
+    parser.into_game_map()
+}
+
+/// Reads a `.tmx` file from `path` and returns a [`GameMap`].
+///
+/// # Errors
+/// Returns [`TiledError::Io`] if the file cannot be read, or any import error.
+pub fn read_tmx(path: &Path) -> Result<GameMap, TiledError> {
+    let xml = std::fs::read_to_string(path)?;
+    import_tmx(&xml)
+}
+
+// ─── Parser state machine ─────────────────────────────────────────────────────
+
+#[derive(Default)]
+struct TmxParser {
+    width: Option<u32>,
+    height: Option<u32>,
+    seed: [u8; 32],
+    /// Whether we are currently inside a `<data encoding="csv">` element.
+    in_csv_data: bool,
+    /// Accumulated CSV text from `<data>`.
+    csv: String,
+    /// Whether we are currently inside the `Spawns` object group.
+    in_spawns_group: bool,
+    /// The object currently being parsed, if any.
+    active_object: Option<SpawnObject>,
+    enemy_spawns: Vec<MapCoord>,
+    chest_spawns: Vec<MapCoord>,
+}
+
+impl TmxParser {
+    fn parse(&mut self, xml: &str) -> Result<(), TiledError> {
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(false);
+
+        loop {
+            match reader.read_event() {
+                Ok(Event::Start(e)) => self.handle_start(&e)?,
+                Ok(Event::Empty(e)) => self.handle_empty(&e)?,
+                Ok(Event::Text(e)) if self.in_csv_data => {
+                    self.csv.push_str(e.unescape()?.as_ref());
+                }
+                Ok(Event::End(e)) => match e.name().as_ref() {
+                    b"data" => self.in_csv_data = false,
+                    b"object" => self.finish_object(),
+                    b"objectgroup" => self.in_spawns_group = false,
+                    _ => {}
+                },
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(TiledError::Parse(e)),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_start(&mut self, e: &quick_xml::events::BytesStart<'_>) -> Result<(), TiledError> {
+        match e.name().as_ref() {
+            b"map" => {
+                for attr in e.attributes().flatten() {
+                    match attr.key.as_ref() {
+                        b"width" => {
+                            self.width = Some(parse_u32_attr("width", &attr.value)?);
+                        }
+                        b"height" => {
+                            self.height = Some(parse_u32_attr("height", &attr.value)?);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            b"data" => {
+                // Only accept CSV encoding
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"encoding" && attr.value.as_ref() == b"csv" {
+                        self.in_csv_data = true;
+                    }
+                }
+            }
+            b"objectgroup" => {
+                self.in_spawns_group = false;
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"name" && attr.value.as_ref() == b"Spawns" {
+                        self.in_spawns_group = true;
+                    }
+                }
+            }
+            b"object" if self.in_spawns_group => {
+                let mut kind: Option<SpawnKind> = None;
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"type" || attr.key.as_ref() == b"name" {
+                        let value = std::str::from_utf8(&attr.value).unwrap_or("");
+                        kind = SpawnKind::from_str(value).or(kind);
+                    }
+                }
+                if let Some(kind) = kind {
+                    self.active_object = Some(SpawnObject { kind, tile_x: None, tile_y: None });
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_empty(&mut self, e: &quick_xml::events::BytesStart<'_>) -> Result<(), TiledError> {
+        match e.name().as_ref() {
+            b"property" => {
+                let mut is_seed = false;
+                let mut value: Option<String> = None;
+                let mut name: Option<String> = None;
+
+                for attr in e.attributes().flatten() {
+                    match attr.key.as_ref() {
+                        b"name" if attr.value.as_ref() == b"seed" => is_seed = true,
+                        b"name" => {
+                            name = Some(std::str::from_utf8(&attr.value).unwrap_or("").to_owned());
+                        }
+                        b"value" => {
+                            value = Some(std::str::from_utf8(&attr.value).unwrap_or("").to_owned());
+                        }
+                        _ => {}
+                    }
+                }
+
+                if is_seed {
+                    if let Some(ref hex) = value {
+                        self.seed = hex_decode(hex)?;
+                    }
+                }
+
+                if let (Some(active), Some(name), Some(value)) =
+                    (self.active_object.as_mut(), name, value.as_deref())
+                {
+                    match name.as_str() {
+                        "tile_x" => {
+                            if let Ok(v) = value.parse::<u32>() {
+                                active.tile_x = Some(v);
+                            }
+                        }
+                        "tile_y" => {
+                            if let Ok(v) = value.parse::<u32>() {
+                                active.tile_y = Some(v);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            b"data" => {
+                // Self-closing <data/> — nothing to parse
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn into_game_map(self) -> Result<GameMap, TiledError> {
+        let width = self.width.ok_or_else(|| TiledError::MissingField("width".into()))?;
+        let height = self.height.ok_or_else(|| TiledError::MissingField("height".into()))?;
+
+        let gids = parse_csv(&self.csv)?;
+        let expected = (width * height) as usize;
+        if gids.len() != expected {
+            return Err(TiledError::DimensionMismatch {
+                expected: format!("{expected} tiles ({width}×{height})"),
+                got: format!("{} GIDs in CSV", gids.len()),
+            });
+        }
+
+        let tiles: Result<Vec<Tile>, TiledError> = gids
+            .into_iter()
+            .map(|gid| {
+                Tiles::from_gid(gid)
+                    .map(|kind| Tile { kind })
+                    .map_err(|_| TiledError::UnknownGid(gid))
+            })
+            .collect();
+
+        let mut map = GameMap::new(width, height, tiles?, self.seed).map_err(TiledError::Engine)?;
+        map.set_spawn_points(self.enemy_spawns, self.chest_spawns).map_err(TiledError::Engine)?;
+        Ok(map)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SpawnKind {
+    Enemy,
+    Chest,
+}
+
+impl SpawnKind {
+    fn from_str(raw: &str) -> Option<Self> {
+        match raw {
+            "enemy" | "EnemySpawn" => Some(Self::Enemy),
+            "chest" | "ChestSpawn" => Some(Self::Chest),
+            _ => None,
+        }
+    }
+}
+
+struct SpawnObject {
+    kind: SpawnKind,
+    tile_x: Option<u32>,
+    tile_y: Option<u32>,
+}
+
+impl TmxParser {
+    fn finish_object(&mut self) {
+        let Some(active) = self.active_object.take() else {
+            return;
+        };
+        let (Some(x), Some(y)) = (active.tile_x, active.tile_y) else {
+            return;
+        };
+        let coord = MapCoord::new(x, y);
+        match active.kind {
+            SpawnKind::Enemy => self.enemy_spawns.push(coord),
+            SpawnKind::Chest => self.chest_spawns.push(coord),
+        }
+    }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+fn parse_u32_attr(field: &str, raw: &[u8]) -> Result<u32, TiledError> {
+    let s = std::str::from_utf8(raw).unwrap_or("");
+    s.parse::<u32>()
+        .map_err(|_| TiledError::InvalidAttribute { field: field.to_owned(), value: s.to_owned() })
+}
+
+/// Parses a comma-separated list of GID strings, ignoring whitespace.
+fn parse_csv(csv: &str) -> Result<Vec<u32>, TiledError> {
+    csv.split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            s.parse::<u32>().map_err(|_| TiledError::InvalidAttribute {
+                field: "csv gid".into(),
+                value: s.to_owned(),
+            })
+        })
+        .collect()
+}
+
+/// Decodes a 64-character hex string into a 32-byte seed.
+fn hex_decode(hex: &str) -> Result<[u8; 32], TiledError> {
+    if hex.len() != 64 {
+        return Err(TiledError::InvalidAttribute { field: "seed".into(), value: hex.to_owned() });
+    }
+    let mut out = [0u8; 32];
+    for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+        let hi = hex_nibble(chunk[0])?;
+        let lo = hex_nibble(chunk[1])?;
+        out[i] = (hi << 4) | lo;
+    }
+    Ok(out)
+}
+
+fn hex_nibble(b: u8) -> Result<u8, TiledError> {
+    match b {
+        b'0'..=b'9' => Ok(b - b'0'),
+        b'a'..=b'f' => Ok(b - b'a' + 10),
+        b'A'..=b'F' => Ok(b - b'A' + 10),
+        _ => Err(TiledError::InvalidAttribute {
+            field: "seed hex char".into(),
+            value: (b as char).to_string(),
+        }),
+    }
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::exporter::export_tmx;
+    use engine::map::game_map::GameMap;
+    use engine::map::tile::{Tile, Tiles};
+
+    fn make_map(w: u32, h: u32, kind: Tiles, seed: [u8; 32]) -> GameMap {
+        let tiles = vec![Tile { kind }; (w * h) as usize];
+        GameMap::new(w, h, tiles, seed).unwrap()
+    }
+
+    #[test]
+    fn round_trip_dimensions() {
+        let map = make_map(32, 32, Tiles::Meadow, [0u8; 32]);
+        let xml = export_tmx(&map, "t.tsx");
+        let imported = import_tmx(&xml).unwrap();
+        assert_eq!(imported.tile_width(), 32);
+        assert_eq!(imported.tile_height(), 32);
+    }
+
+    #[test]
+    fn round_trip_tiles() {
+        let map = make_map(4, 4, Tiles::Water, [1u8; 32]);
+        let xml = export_tmx(&map, "t.tsx");
+        let imported = import_tmx(&xml).unwrap();
+        for tile in imported.tiles() {
+            assert_eq!(tile.kind, Tiles::Water);
+        }
+    }
+
+    #[test]
+    fn round_trip_seed() {
+        let seed: [u8; 32] = {
+            let mut s = [0u8; 32];
+            for (i, b) in s.iter_mut().enumerate() {
+                *b = i as u8;
+            }
+            s
+        };
+        let map = make_map(2, 2, Tiles::Meadow, seed);
+        let xml = export_tmx(&map, "t.tsx");
+        let imported = import_tmx(&xml).unwrap();
+        assert_eq!(imported.seed, seed);
+    }
+
+    #[test]
+    fn round_trip_mixed_tiles() {
+        let kinds = [
+            Tiles::Meadow,
+            Tiles::Water,
+            Tiles::Forest,
+            Tiles::Mountain,
+            Tiles::Road,
+            Tiles::River,
+            Tiles::City,
+            Tiles::CityEntrance,
+            Tiles::Gold,
+            Tiles::Resource,
+        ];
+        let tiles: Vec<Tile> = (0..10).map(|i| Tile { kind: kinds[i % kinds.len()] }).collect();
+        let map = GameMap::new(10, 1, tiles, [0u8; 32]).unwrap();
+        let xml = export_tmx(&map, "t.tsx");
+        let imported = import_tmx(&xml).unwrap();
+        for (orig, imp) in map.tiles().iter().zip(imported.tiles()) {
+            assert_eq!(orig.kind, imp.kind);
+        }
+    }
+
+    #[test]
+    fn missing_width_returns_error() {
+        let xml = r#"<?xml version="1.0"?>
+<map height="4">
+  <layer id="1" name="Terrain" width="0" height="4">
+    <data encoding="csv">1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1</data>
+  </layer>
+</map>"#;
+        assert!(matches!(import_tmx(xml), Err(TiledError::MissingField(_))));
+    }
+
+    #[test]
+    fn unknown_gid_returns_error() {
+        let xml = r#"<?xml version="1.0"?>
+<map width="2" height="2">
+  <layer id="1" name="Terrain" width="2" height="2">
+    <data encoding="csv">1,999,1,1</data>
+  </layer>
+</map>"#;
+        assert!(matches!(import_tmx(xml), Err(TiledError::UnknownGid(999))));
+    }
+}

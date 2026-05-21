@@ -4,3 +4,6 @@
 /**/target/
 /maps/
 /savegame/
+/.agentbridge/
+/.agent-work/
+.claude/settings.local.json

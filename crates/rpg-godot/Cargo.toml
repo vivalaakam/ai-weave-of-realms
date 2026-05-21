@@ -8,9 +8,9 @@ description = "GDExtension bridge between Godot 4 and rpg-engine. Only crate wit
 crate-type = ["cdylib"]
 
 [dependencies]
-rpg-engine = { path = "../rpg-engine" }
-rpg-mapgen = { path = "../rpg-mapgen" }
-rpg-tiled = { path = "../rpg-tiled" }
+engine = { path = "../engine" }
+mapgen = { path = "../mapgen" }
+tiled = { path = "../tiled" }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 godot = { workspace = true }

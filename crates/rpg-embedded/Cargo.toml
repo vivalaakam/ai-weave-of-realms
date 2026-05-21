@@ -1,9 +1,0 @@
-[package]
-name = "rpg-embedded"
-version = "0.1.0"
-edition = "2021"
-description = "Shared embedded-graphics frontend primitives for T-Deck and terminal runtimes."
-
-[dependencies]
-embedded-graphics = "0.8.1"
-rpg-engine = { path = "../rpg-engine", default-features = false }

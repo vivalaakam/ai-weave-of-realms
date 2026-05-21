@@ -33,7 +33,7 @@ Reference document for all map generation agents and validators.
 | `gold`           | no       | Gold mine deposit                                |
 | `resource`       | no       | Generic resource deposit                         |
 
-Passability in this table must stay aligned with [`Tiles::is_passable`](crates/rpg-engine/src/map/tile.rs).
+Passability in this table must stay aligned with [`Tiles::is_passable`](crates/engine/src/map/tile.rs).
 
 ---
 
@@ -51,7 +51,7 @@ The sections below describe the **default** terrain rules implemented by
 [`terrain.lua`](scripts/generators/terrain.lua). Alternative generators may use
 different heuristics or stage ordering as long as they:
 
-- return only valid tile identifiers from [`Tiles::as_str()`](crates/rpg-engine/src/map/tile.rs)
+- return only valid tile identifiers from [`Tiles::as_str()`](crates/engine/src/map/tile.rs)
 - remain deterministic for the same `(map_seed, cx, cy)`
 - preserve validator invariants from `scripts/rules/`
 - do not rely on global mutable Lua state

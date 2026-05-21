@@ -9,7 +9,7 @@ use std::path::Path;
 use image::{ImageBuffer, Rgba, RgbaImage};
 use tracing::{error, info};
 
-use rpg_engine::map::tile::Tiles;
+use engine::map::tile::Tiles;
 
 const TILE_SIZE: u32 = 64;
 const HALF_TILE_W: i32 = 32;

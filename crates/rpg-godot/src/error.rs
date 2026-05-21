@@ -7,15 +7,15 @@ use thiserror::Error;
 pub enum Error {
     /// An engine-level error propagated from rpg-engine.
     #[error("engine error: {0}")]
-    Engine(#[from] rpg_engine::error::Error),
+    Engine(#[from] engine::error::EngineError),
 
     /// A map generation error propagated from rpg-mapgen.
     #[error("mapgen error: {0}")]
-    MapGen(#[from] rpg_mapgen::error::Error),
+    MapGen(#[from] mapgen::error::MapgenError),
 
     /// A Tiled import/export error propagated from rpg-tiled.
     #[error("tiled error: {0}")]
-    Tiled(#[from] rpg_tiled::error::Error),
+    Tiled(#[from] tiled::error::TiledError),
 
     /// A Godot node was not found by the expected path.
     #[error("Godot node not found at path '{0}'")]

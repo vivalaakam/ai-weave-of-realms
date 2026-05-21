@@ -2,7 +2,7 @@
 
 use esp_hal::gpio::Input;
 use esp_hal::i2c::master::I2c;
-pub use rpg_embedded::input::InputEvent;
+pub use game::input::InputEvent;
 
 const KEYBOARD_I2C_ADDRESS: u8 = 0x55;
 

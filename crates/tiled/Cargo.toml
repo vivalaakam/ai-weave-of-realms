@@ -1,0 +1,16 @@
+[package]
+name = "tiled"
+version = "0.1.0"
+edition = "2021"
+description = "TMX (Tiled Map Editor) import and export for GameMap."
+
+[dependencies]
+engine = { path = "../engine" }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+quick-xml = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

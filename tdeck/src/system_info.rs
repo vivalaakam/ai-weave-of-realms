@@ -5,7 +5,7 @@ use esp_hal::Blocking;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::analog::adc::AdcCalCurve;
 use esp_hal::peripherals::{ADC1, GPIO4};
-use rpg_embedded::info_overlay::InfoOverlay;
+use game::info_overlay::InfoOverlay;
 
 const BATTERY_DIVIDER_RATIO: u32 = 2;
 const BATTERY_EMPTY_MV: u32 = 3300;

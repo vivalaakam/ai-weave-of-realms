@@ -19,15 +19,15 @@ use godot::classes::ProjectSettings;
 use godot::prelude::*;
 use tracing::{error, warn};
 
-use rpg_engine::game_state::{GameOutcome, GameState, TurnEvent, WinCondition};
-use rpg_engine::hero::{Hero, HeroId, TeamId};
-use rpg_engine::map::game_map::MapCoord;
-use rpg_engine::map::tile::Tiles;
-use rpg_engine::movement;
-use rpg_engine::spawn;
-use rpg_engine::team::Team;
-use rpg_engine::Direction;
-use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
+use engine::game_state::{GameOutcome, GameState, TurnEvent, WinCondition};
+use engine::hero::{Hero, HeroId, TeamId};
+use engine::map::game_map::MapCoord;
+use engine::map::tile::Tiles;
+use engine::movement;
+use engine::spawn;
+use engine::team::Team;
+use engine::Direction;
+use mapgen::map_assembler::{MapAssembler, MapConfig};
 use std::collections::BTreeMap;
 use std::fs;
 

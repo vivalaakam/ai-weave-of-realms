@@ -3,10 +3,10 @@
 use alloc::{string::String, string::ToString};
 
 use embedded_graphics::prelude::Size;
-use rpg_embedded::app::{AppHost, AppLayout, EmbeddedApp, LaunchConfig as SharedLaunchConfig, LoadedGame};
-use rpg_embedded::info_overlay::InfoOverlay;
-use rpg_embedded::list::ListEntry;
-use rpg_embedded::render::{RenderConfig, visible_tiles};
+use game::app::{AppHost, AppLayout, EmbeddedApp, LaunchConfig as SharedLaunchConfig, LoadedGame};
+use game::info_overlay::InfoOverlay;
+use game::list::ListEntry;
+use game::render::{RenderConfig, visible_tiles};
 use rpg_engine::game_state::GameState;
 
 use crate::input::InputEvent;

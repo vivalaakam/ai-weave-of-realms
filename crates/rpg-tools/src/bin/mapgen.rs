@@ -16,14 +16,14 @@ use clap::Parser;
 use image::{ImageBuffer, Rgb};
 use tracing::{error, info, warn};
 
-use rpg_engine::game_state::GameState;
-use rpg_engine::hero::Hero;
-use rpg_engine::map::game_map::GameMap;
-use rpg_engine::map::tile::Tiles;
-use rpg_engine::spawn;
-use rpg_engine::team::Team;
-use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
-use rpg_tiled::write_tmx;
+use engine::game_state::GameState;
+use engine::hero::Hero;
+use engine::map::game_map::GameMap;
+use engine::map::tile::Tiles;
+use engine::spawn;
+use engine::team::Team;
+use mapgen::map_assembler::{MapAssembler, MapConfig};
+use tiled::write_tmx;
 
 const TILESET_PATH: &str = "tileset/tileset.tsx";
 
@@ -86,7 +86,7 @@ fn main() {
 
     let map = match assembler.generate_validated() {
         Ok(m) => m,
-        Err(rpg_mapgen::error::Error::ValidationFailed(reason)) => {
+        Err(mapgen::error::MapgenError::ValidationFailed(reason)) => {
             warn!(%reason, "map failed validation; trying without validator");
             match assembler.generate() {
                 Ok(m) => m,
@@ -267,7 +267,7 @@ fn print_ascii(map: &GameMap) {
     for y in 0..max_rows {
         let mut row = String::with_capacity(w + 1);
         for x in 0..w {
-            let coord = rpg_engine::map::game_map::MapCoord::new(x as u32, y as u32);
+            let coord = engine::map::game_map::MapCoord::new(x as u32, y as u32);
             if let Ok(tile) = map.get_tile(coord) {
                 row.push(tile.kind.as_char());
             } else {
@@ -293,7 +293,7 @@ fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
 
     for ty in 0..map.tile_height() {
         for tx in 0..map.tile_width() {
-            let coord = rpg_engine::map::game_map::MapCoord::new(tx, ty);
+            let coord = engine::map::game_map::MapCoord::new(tx, ty);
             let tile = match map.get_tile(coord) {
                 Ok(t) => t,
                 Err(_) => continue,
@@ -320,7 +320,11 @@ fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
     }
 }
 
-fn save_rpgs(map: &GameMap, seed: &str, output: &PathBuf) -> Result<(), rpg_engine::error::Error> {
+fn save_rpgs(
+    map: &GameMap,
+    seed: &str,
+    output: &PathBuf,
+) -> Result<(), engine::error::EngineError> {
     let spawn = spawn::find_city_entrance_spawns(map, 1)
         .first()
         .copied()
@@ -336,7 +340,7 @@ fn save_rpgs(map: &GameMap, seed: &str, output: &PathBuf) -> Result<(), rpg_engi
     let _ = state.on_turn();
 
     let bytes = state.to_save_bytes_with_name(seed)?;
-    fs::write(output, bytes).map_err(|err| rpg_engine::error::Error::Save(err.to_string()))?;
+    fs::write(output, bytes).map_err(|err| engine::error::EngineError::Save(err.to_string()))?;
     Ok(())
 }
 

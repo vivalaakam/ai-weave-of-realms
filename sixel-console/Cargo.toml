@@ -5,13 +5,14 @@ edition = "2021"
 description = "Standalone sixel console launcher for AI RPG using embedded-graphics."
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
+clap = { workspace = true }
 crossterm = "0.28"
 embedded-graphics = "0.8.1"
-rpg-embedded = { path = "../crates/rpg-embedded" }
-rpg-engine = { path = "../crates/rpg-engine" }
-rpg-mapgen = { path = "../crates/rpg-mapgen" }
-rpg-tiled = { path = "../crates/rpg-tiled" }
+game = { path = "../crates/game", features = ["std"] }
+engine = { path = "../crates/engine" }
+helpers = { path = "../crates/helpers" }
+tiled = { path = "../crates/tiled" }
+mapgen = { path = "../crates/mapgen" }
 terminal_size = "0.4"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
