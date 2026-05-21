@@ -19,7 +19,7 @@ use rpg_embedded::render::{
 };
 use rpg_engine::game_state::GameState;
 use rpg_engine::hero::Hero;
-use rpg_engine::map::game_map::GameMap;
+use rpg_engine::map::game_map::{GameMap, MapCoord};
 use rpg_engine::map::tile::Tiles;
 use rpg_engine::spawn;
 use rpg_engine::team::Team;
@@ -562,28 +562,58 @@ fn generate_map(args: &Args) -> AppResult<GameMap> {
 
 fn build_default_state(map: GameMap, seed: &str) -> AppResult<GameState> {
     let spawns = spawn::find_spawn_positions(&map)?;
+    let map_width = map.tile_width();
     let mut state = GameState::new(map, seed);
     let player_team_id = state.add_team(Team::red());
     let enemy_team_id = state.add_team(Team::enemy());
 
+    let offset = MapCoord::new(
+        spawns.player.x.saturating_add(1).min(map_width - 1),
+        spawns.player.y,
+    );
     state.add_hero(Hero::new(
         0,
-        "Hero",
-        100,
-        20,
-        10,
+        "Красный",
+        120,
+        22,
+        12,
         15,
         spawns.player,
         player_team_id,
     ));
     state.add_hero(Hero::new(
         1,
-        "Enemy",
+        "Оранжевый",
+        90,
+        25,
+        8,
+        18,
+        offset,
+        player_team_id,
+    ));
+
+    let enemy_offset = MapCoord::new(
+        spawns.enemy.x.saturating_add(1).min(map_width - 1),
+        spawns.enemy.y,
+    );
+    state.add_hero(Hero::new(
+        2,
+        "Враг",
         85,
         16,
         8,
         12,
         spawns.enemy,
+        enemy_team_id,
+    ));
+    state.add_hero(Hero::new(
+        3,
+        "Босс",
+        150,
+        14,
+        20,
+        10,
+        enemy_offset,
         enemy_team_id,
     ));
     let _ = state.set_city_owner(spawns.player, Some(player_team_id));

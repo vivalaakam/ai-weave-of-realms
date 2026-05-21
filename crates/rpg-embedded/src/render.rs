@@ -1048,7 +1048,8 @@ pub fn draw_end_turn_overlay<D, C>(
     );
 
     halt_on_error(
-        Text::new("End your turn?", Point::new(origin_x + 8, origin_y + 14), text_style).draw(display),
+        Text::new("End your turn?", Point::new(origin_x + 8, origin_y + 14), text_style)
+            .draw(display),
     );
 
     let labels = ["Yes", "Cancel"];
@@ -1098,8 +1099,7 @@ pub fn draw_map_view<D, C>(
     C: PixelColor + Copy,
 {
     let text_style = MonoTextStyle::new(&FONT_6X10, theme.text);
-    let header =
-        format!("{} @{},{}", map_view.session().map_name(), map_view.view_x(), map_view.view_y(),);
+    let header = map_view.session().summary();
     let origin_x = 0i32;
     let origin_y = config.header_height as i32;
     let (visible_cols, visible_rows) = visible_tiles(screen_size, config);
@@ -1141,7 +1141,10 @@ pub fn draw_map_view<D, C>(
         Rectangle::new(Point::new(0, 0), Size::new(screen_size.width, config.header_height)),
         theme.background,
     );
-    halt_on_error(Text::new(&header, Point::new(4, 10), text_style).draw(display));
+    halt_on_error(
+        Text::new(&header, Point::new(4, config.header_height as i32 - 2), text_style)
+            .draw(display),
+    );
 
     for row in 0..visible_rows {
         for col in 0..visible_cols {
@@ -1173,7 +1176,6 @@ pub fn draw_map_view<D, C>(
         }
     }
 
-    let footer = "WASD/HJKL: pan  Arrows: move hero  Tab: next hero  Q/Back: back";
     clear_band(
         display,
         Rectangle::new(
@@ -1181,22 +1183,6 @@ pub fn draw_map_view<D, C>(
             Size::new(screen_size.width, config.footer_height),
         ),
         theme.background,
-    );
-    halt_on_error(
-        Text::new(footer, Point::new(4, screen_size.height as i32 - 2), text_style).draw(display),
-    );
-
-    if let Some(status_text) = map_view.status() {
-        halt_on_error(
-            Text::new(status_text, Point::new(4, screen_size.height as i32 - 14), text_style)
-                .draw(display),
-        );
-    }
-
-    let summary = map_view.session().summary();
-    halt_on_error(
-        Text::new(&summary, Point::new(4, config.header_height as i32 - 2), text_style)
-            .draw(display),
     );
 }
 
