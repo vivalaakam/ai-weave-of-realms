@@ -240,6 +240,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sha3",
+ "thiserror",
+]
+
+[[package]]
 name = "env_home"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -275,11 +284,11 @@ name = "game"
 version = "0.1.0"
 dependencies = [
  "embedded-graphics",
+ "engine",
  "helpers",
- "rpg-engine",
- "rpg-mapgen",
- "rpg-tiled",
+ "mapgen",
  "thiserror",
+ "tiled",
  "tracing",
 ]
 
@@ -377,6 +386,17 @@ checksum = "b3a8e7962a5368d5f264d045a5a255e90f9aa3fc1941ae15a8d2940d42cac671"
 dependencies = [
  "cc",
  "which",
+]
+
+[[package]]
+name = "mapgen"
+version = "0.1.0"
+dependencies = [
+ "engine",
+ "mlua",
+ "serde",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -546,38 +566,6 @@ name = "regex-syntax"
 version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
-
-[[package]]
-name = "rpg-engine"
-version = "0.1.0"
-dependencies = [
- "serde",
- "sha3",
- "thiserror",
-]
-
-[[package]]
-name = "rpg-mapgen"
-version = "0.1.0"
-dependencies = [
- "mlua",
- "rpg-engine",
- "serde",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "rpg-tiled"
-version = "0.1.0"
-dependencies = [
- "quick-xml",
- "rpg-engine",
- "serde",
- "serde_json",
- "thiserror",
- "tracing",
-]
 
 [[package]]
 name = "rustc-hash"
@@ -755,6 +743,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiled"
+version = "0.1.0"
+dependencies = [
+ "engine",
+ "quick-xml",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "tracing"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -857,8 +857,12 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "embedded-graphics",
+ "engine",
  "game",
+ "helpers",
+ "mapgen",
  "sdl2",
+ "tiled",
  "tracing",
  "tracing-subscriber",
 ]

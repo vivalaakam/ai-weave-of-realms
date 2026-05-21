@@ -8,6 +8,10 @@ description = "Standalone SDL2 launcher for AI RPG using embedded-graphics."
 clap = { version = "4", features = ["derive"] }
 embedded-graphics = "0.8.1"
 game = { path = "../crates/game", features = ["std"] }
+helpers = { path = "../crates/helpers" }
+engine = { path = "../crates/engine" }
+tiled = {path = "../crates/tiled"}
+mapgen = { path = "../crates/mapgen" }
 sdl2 = { version = "0.37", features = ["bundled"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

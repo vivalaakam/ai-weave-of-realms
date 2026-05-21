@@ -1,9 +1,9 @@
 //! Shared selectable list screen state and input handling.
 
 use crate::input::InputEvent;
+use crate::types::ListEntry;
 use alloc::string::String;
 use alloc::vec::Vec;
-use crate::types::ListEntry;
 
 /// Shared list browser model.
 pub struct ListScreen {

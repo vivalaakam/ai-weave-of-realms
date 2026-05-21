@@ -1,13 +1,13 @@
 //! Shared top-level application state machine for embedded frontends.
 
+use crate::types::ListEntry;
 use alloc::{
     boxed::Box,
     format,
     string::{String, ToString},
     vec::Vec,
 };
-use crate::types::ListEntry;
-use rpg_engine::game_state::GameState;
+use engine::game_state::GameState;
 
 use crate::info_overlay::{InfoOverlay, InfoOverlayOutcome};
 use crate::input::InputEvent;

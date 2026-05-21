@@ -1,24 +1,17 @@
 //! Host-side file I/O helpers for map discovery, save loading and session creation.
 #![cfg(feature = "std")]
 
+use engine::error::EngineError;
+use engine::game_state::GameState;
+use engine::hero::Hero;
+use engine::map::game_map::GameMap;
+use engine::spawn;
+use engine::team::Team;
+use mapgen::error::MapgenError;
+use mapgen::map_assembler::{MapAssembler, MapConfig};
 use std::fs;
 use std::path::{Path, PathBuf};
-
-use rpg_engine::game_state::GameState;
-use rpg_engine::hero::Hero;
-use rpg_engine::map::game_map::GameMap;
-use rpg_engine::spawn;
-use rpg_engine::team::Team;
-use rpg_mapgen::error::Error as MapgenError;
-use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
-use rpg_tiled::read_tmx;
-pub use rpg_engine::map::game_map::GameMap;
-pub use rpg_engine::hero::Hero;
-pub use rpg_engine::team::Team;
-pub use rpg_engine::spawn;
-pub use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
-pub use rpg_mapgen::error::Error as MapgenError;
-pub use rpg_tiled::read_tmx;
+use tiled::read_tmx;
 
 /// Shared list entry shown in selector UIs.
 /// Shared list entry shown in selector UIs.
@@ -38,7 +31,7 @@ pub enum IoError {
     #[error("I/O error: {0}")]
     FileIO(#[from] std::io::Error),
     #[error("Engine error: {0}")]
-    Engine(#[from] rpg_engine::error::Error),
+    Engine(#[from] EngineError),
     #[error("Mapgen error: {0}")]
     Mapgen(#[from] MapgenError),
     #[error("{0}")]
@@ -49,7 +42,15 @@ pub enum IoError {
 pub type Result<T> = std::result::Result<T, IoError>;
 
 /// Generates a map using the provided CLI arguments.
-pub fn generate_map(seed: String, width: u32, height: u32, generators: Vec<PathBuf>, validator_dir: Option<PathBuf>, validator: Option<PathBuf>, evaluator: Option<PathBuf>) -> Result<GameMap> {
+pub fn generate_map(
+    seed: String,
+    width: u32,
+    height: u32,
+    generators: Vec<PathBuf>,
+    validator_dir: Option<PathBuf>,
+    validator: Option<PathBuf>,
+    evaluator: Option<PathBuf>,
+) -> Result<GameMap> {
     let mut generators = generators;
     if generators.is_empty() {
         generators.push(PathBuf::from("scripts/generators/default.lua"));
@@ -96,7 +97,17 @@ pub fn generate_map(seed: String, width: u32, height: u32, generators: Vec<PathB
 }
 
 /// Loads a `GameState` from a save file, TMX map, or generated map.
-pub fn load_state(seed: &str, width: u32, height: u32, generators: Vec<PathBuf>, validator_dir: Option<PathBuf>, validator: Option<PathBuf>, evaluator: Option<PathBuf>, save_path: Option<&Path>, tmx_path: Option<&Path>) -> Result<GameState> {
+pub fn load_state(
+    seed: &str,
+    width: u32,
+    height: u32,
+    generators: Vec<PathBuf>,
+    validator_dir: Option<PathBuf>,
+    validator: Option<PathBuf>,
+    evaluator: Option<PathBuf>,
+    save_path: Option<&Path>,
+    tmx_path: Option<&Path>,
+) -> Result<GameState> {
     if let Some(path) = save_path {
         let bytes = fs::read(path)?;
         let state = GameState::from_save_bytes(&bytes)?;
@@ -110,7 +121,15 @@ pub fn load_state(seed: &str, width: u32, height: u32, generators: Vec<PathBuf>,
         return build_default_state(map, seed);
     }
 
-    let map = generate_map(seed.to_string(), width, height, generators, validator_dir, validator, evaluator)?;
+    let map = generate_map(
+        seed.to_string(),
+        width,
+        height,
+        generators,
+        validator_dir,
+        validator,
+        evaluator,
+    )?;
     build_default_state(map, seed)
 }
 
@@ -121,26 +140,8 @@ pub fn build_default_state(map: GameMap, seed: &str) -> Result<GameState> {
     let player_team_id = state.add_team(Team::red());
     let enemy_team_id = state.add_team(Team::enemy());
 
-    state.add_hero(Hero::new(
-        0,
-        "Hero",
-        100,
-        20,
-        10,
-        15,
-        spawns.player,
-        player_team_id,
-    ));
-    state.add_hero(Hero::new(
-        1,
-        "Enemy",
-        85,
-        16,
-        8,
-        12,
-        spawns.enemy,
-        enemy_team_id,
-    ));
+    state.add_hero(Hero::new(0, "Hero", 100, 20, 10, 15, spawns.player, player_team_id));
+    state.add_hero(Hero::new(1, "Enemy", 85, 16, 8, 12, spawns.enemy, enemy_team_id));
     let _ = state.set_city_owner(spawns.player, Some(player_team_id));
     let _ = state.on_turn();
     Ok(state)
@@ -183,10 +184,7 @@ pub fn file_entry(prefix: &str, path: &Path) -> Result<ListEntry> {
 
 /// Extracts the filename stem as a label.
 pub fn file_label(path: &Path) -> String {
-    path.file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("unnamed")
-        .to_string()
+    path.file_stem().and_then(|value| value.to_str()).unwrap_or("unnamed").to_string()
 }
 
 /// Reads the save name from the first bytes of an `.rpgs` file.

@@ -17,16 +17,26 @@ use game::render::{
     MapViewTheme, RenderConfig, SaveOverlayTheme, SplashTheme,
 };
 use helpers::{file_entry, file_label, sanitize_save_filename, HelpersError, ListEntry};
-use rpg_engine::game_state::GameState;
-use rpg_engine::map::game_map::GameMap;
-use rpg_engine::map::tile::Tiles;
-use rpg_mapgen::map_assembler::{MapAssembler, MapConfig};
-use rpg_tiled::read_tmx;
+use engine::game_state::GameState;
+use engine::map::game_map::GameMap;
+use engine::map::tile::Tiles;
+use mapgen::map_assembler::{MapAssembler, MapConfig};
+use tiled::read_tmx;
 use sdl2::controller::{Axis, Button, GameController};
 use sdl2::event::Event;
 use sdl2::keyboard::{Keycode, Mod};
 use sdl2::pixels::PixelFormatEnum;
 use tracing::{error, info, warn};
+use args::Args;
+use error::HostError;
+use frame_buffer::Framebuffer;
+use mapgen::error::MapgenError;
+use sdl_host::SdlHost;
+
+mod args;
+mod error;
+mod frame_buffer;
+mod sdl_host;
 
 const MAP_RENDER_CONFIG: RenderConfig = RenderConfig { header_height: 28, footer_height: 16 };
 
@@ -40,64 +50,6 @@ const MIN_WINDOW_WIDTH: u32 = 320;
 const MIN_WINDOW_HEIGHT: u32 = 240;
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
-
-#[derive(Clone, Debug, Parser)]
-#[command(name = "weave-of-realms-sdl2", author, version, about)]
-struct Args {
-    /// Load a saved game state from an .rpgs file.
-    #[arg(long)]
-    save: Option<PathBuf>,
-
-    /// Load a TMX map instead of generating one.
-    #[arg(long)]
-    tmx: Option<PathBuf>,
-
-    /// Seed phrase for deterministic generation.
-    #[arg(long, default_value = "default-seed")]
-    seed: String,
-
-    /// Map width in tiles when generating.
-    #[arg(long, default_value_t = 96)]
-    width: u32,
-
-    /// Map height in tiles when generating.
-    #[arg(long, default_value_t = 96)]
-    height: u32,
-
-    /// Generator script path (repeatable pipeline).
-    #[arg(long = "generator", value_name = "SCRIPT")]
-    generators: Vec<PathBuf>,
-
-    /// Directory with validation rule scripts.
-    #[arg(long)]
-    validator_dir: Option<PathBuf>,
-
-    /// Path to a single Lua validator script.
-    #[arg(long)]
-    validator: Option<PathBuf>,
-
-    /// Path to the Lua evaluator script.
-    #[arg(long)]
-    evaluator: Option<PathBuf>,
-}
-
-struct SdlHost {
-    args: Args,
-    screen_size: Size,
-    right_x_right: bool,
-    right_x_left: bool,
-    right_y_down: bool,
-    right_y_up: bool,
-    trigger_r_active: bool,
-}
-
-#[derive(Debug)]
-enum HostError {
-    Message(String),
-    Io(std::io::Error),
-    Engine(String),
-    Helpers(HelpersError),
-}
 
 fn main() {
     tracing_subscriber::fmt()
@@ -315,97 +267,6 @@ fn load_state(args: &Args, map_path: Option<&Path>) -> AppResult<GameState> {
     map.default_state(&args.seed).map_err(|error| Box::new(error) as Box<dyn std::error::Error>)
 }
 
-impl AppHost for SdlHost {
-    type Error = HostError;
-
-    fn discover_maps(&mut self) -> Result<Vec<ListEntry>, Self::Error> {
-        let mut entries = discover_rpgs_dir(Path::new("maps"), "map:")?;
-        if let Some(path) = &self.args.tmx {
-            entries.push(file_entry("tmx:", path).map_err(HostError::Helpers)?);
-        }
-        if entries.is_empty() {
-            entries.push(ListEntry {
-                id: format!("generated:{}", self.args.seed),
-                label: format!("Generated map ({})", self.args.seed),
-                meta: self.args.width.saturating_mul(self.args.height),
-            });
-        }
-        entries.sort_by(|left, right| left.label.cmp(&right.label));
-        Ok(entries)
-    }
-
-    fn discover_saves(&mut self) -> Result<Vec<ListEntry>, Self::Error> {
-        let mut entries = discover_rpgs_dir(Path::new("savegame"), "save:")?;
-        if let Some(path) = &self.args.save {
-            entries.push(file_entry("save:", path).map_err(HostError::Helpers)?);
-        }
-        entries.sort_by(|left, right| left.label.cmp(&right.label));
-        Ok(entries)
-    }
-
-    fn load_map(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error> {
-        if let Some(path) = entry.id.strip_prefix("tmx:") {
-            let state = load_state(&self.args, Some(Path::new(path)))
-                .map_err(|error| HostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame { map_name: entry.label.clone(), state });
-        }
-        if entry.id.starts_with("generated:") {
-            let state = load_state(&self.args, None)
-                .map_err(|error| HostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame { map_name: entry.label.clone(), state });
-        }
-        if let Some(path) = entry.id.strip_prefix("map:") {
-            let bytes = fs::read(path).map_err(HostError::Io)?;
-            let state = GameState::from_save_bytes(&bytes)
-                .map_err(|error| HostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame { map_name: entry.label.clone(), state });
-        }
-        Err(HostError::Message("Unknown map entry".to_string()))
-    }
-
-    fn load_save(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error> {
-        let path = entry
-            .id
-            .strip_prefix("save:")
-            .ok_or_else(|| HostError::Message("Unknown save entry".to_string()))?;
-        let bytes = fs::read(path).map_err(HostError::Io)?;
-        let state = GameState::from_save_bytes(&bytes)
-            .map_err(|error| HostError::Engine(error.to_string()))?;
-        Ok(LoadedGame { map_name: entry.label.clone(), state })
-    }
-
-    fn save_game(&mut self, name: &str, state: &GameState) -> Result<(), Self::Error> {
-        let dir = Path::new("savegame");
-        fs::create_dir_all(dir).map_err(HostError::Io)?;
-        let file_name = sanitize_save_filename(name);
-        let path = dir.join(file_name);
-        let bytes = state
-            .to_save_bytes_with_name(name)
-            .map_err(|error| HostError::Engine(error.to_string()))?;
-        fs::write(path, bytes).map_err(HostError::Io)
-    }
-
-    fn info_overlay(&mut self) -> Option<InfoOverlay> {
-        Some(InfoOverlay::new(
-            "System Info".to_string(),
-            vec![
-                format!("Viewport: {}x{}", self.screen_size.width, self.screen_size.height),
-                format!("Seed: {}", self.args.seed),
-            ],
-            "Enter or q: close".to_string(),
-        ))
-    }
-
-    fn error_message(&self, error: Self::Error) -> String {
-        match error {
-            HostError::Message(message) => message,
-            HostError::Io(error) => format!("I/O error: {error}"),
-            HostError::Engine(message) => format!("Engine error: {message}"),
-            HostError::Helpers(error) => format!("Helpers error: {error}"),
-        }
-    }
-}
-
 fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>, HostError> {
     let mut entries: Vec<ListEntry> = Vec::new();
     if !dir.is_dir() {
@@ -480,7 +341,7 @@ fn generate_map(args: &Args) -> AppResult<GameMap> {
     let assembler = MapAssembler::new(config)?;
     match assembler.generate_validated() {
         Ok(map) => Ok(map),
-        Err(rpg_mapgen::error::Error::ValidationFailed(reason)) => {
+        Err(MapgenError::ValidationFailed(reason)) => {
             info!(%reason, "map failed validation, falling back to raw generation");
             Ok(assembler.generate()?)
         }
@@ -708,75 +569,3 @@ where
     Box::new(std::io::Error::new(std::io::ErrorKind::Other, error.to_string()))
 }
 
-struct Framebuffer {
-    size: Size,
-    pixels: Vec<Rgb888>,
-}
-
-impl Framebuffer {
-    fn new(size: Size, background: Rgb888) -> AppResult<Self> {
-        let len = usize::try_from(size.width)
-            .ok()
-            .and_then(|width| {
-                usize::try_from(size.height).ok().map(|height| width.saturating_mul(height))
-            })
-            .ok_or_else(|| "framebuffer dimensions overflow".to_string())?;
-        Ok(Self { size, pixels: vec![background; len] })
-    }
-
-    fn rgb_bytes_scaled(&self, scale: usize) -> Vec<u8> {
-        let src_width = self.size.width as usize;
-        let src_height = self.size.height as usize;
-        let mut bytes = Vec::with_capacity(src_width * src_height * scale * scale * 3);
-        for y in 0..src_height {
-            let row_start = y * src_width;
-            let row = &self.pixels[row_start..row_start + src_width];
-            for _ in 0..scale {
-                for color in row {
-                    for _ in 0..scale {
-                        bytes.push(color.r());
-                        bytes.push(color.g());
-                        bytes.push(color.b());
-                    }
-                }
-            }
-        }
-        bytes
-    }
-}
-
-impl OriginDimensions for Framebuffer {
-    fn size(&self) -> Size {
-        self.size
-    }
-}
-
-impl DrawTarget for Framebuffer {
-    type Color = Rgb888;
-    type Error = core::convert::Infallible;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where
-        I: IntoIterator<Item = Pixel<Self::Color>>,
-    {
-        for Pixel(point, color) in pixels {
-            if point.x < 0
-                || point.y < 0
-                || point.x >= self.size.width as i32
-                || point.y >= self.size.height as i32
-            {
-                continue;
-            }
-            let index = point.y as usize * self.size.width as usize + point.x as usize;
-            if let Some(pixel) = self.pixels.get_mut(index) {
-                *pixel = color;
-            }
-        }
-        Ok(())
-    }
-
-    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        self.pixels.fill(color);
-        Ok(())
-    }
-}

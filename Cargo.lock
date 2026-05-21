@@ -426,6 +426,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sha3",
+ "thiserror",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "env_home"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -535,11 +545,11 @@ name = "game"
 version = "0.1.0"
 dependencies = [
  "embedded-graphics",
+ "engine",
  "helpers",
- "rpg-engine",
- "rpg-mapgen",
- "rpg-tiled",
+ "mapgen",
  "thiserror",
+ "tiled",
  "tracing",
 ]
 
@@ -844,6 +854,18 @@ checksum = "b3a8e7962a5368d5f264d045a5a255e90f9aa3fc1941ae15a8d2940d42cac671"
 dependencies = [
  "cc",
  "which",
+]
+
+[[package]]
+name = "mapgen"
+version = "0.1.0"
+dependencies = [
+ "engine",
+ "mlua",
+ "serde",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1319,49 +1341,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
 
 [[package]]
-name = "rpg-engine"
-version = "0.1.0"
-dependencies = [
- "serde",
- "sha3",
- "thiserror",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "rpg-godot"
 version = "0.1.0"
 dependencies = [
+ "engine",
  "godot",
- "rpg-engine",
- "rpg-mapgen",
- "rpg-tiled",
+ "mapgen",
  "thiserror",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "rpg-mapgen"
-version = "0.1.0"
-dependencies = [
- "mlua",
- "rpg-engine",
- "serde",
- "thiserror",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "rpg-tiled"
-version = "0.1.0"
-dependencies = [
- "quick-xml",
- "rpg-engine",
- "serde",
- "serde_json",
- "thiserror",
+ "tiled",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1371,10 +1358,10 @@ name = "rpg-tools"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "engine",
  "image",
- "rpg-engine",
- "rpg-mapgen",
- "rpg-tiled",
+ "mapgen",
+ "tiled",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1563,6 +1550,19 @@ dependencies = [
  "quick-error",
  "weezl",
  "zune-jpeg",
+]
+
+[[package]]
+name = "tiled"
+version = "0.1.0"
+dependencies = [
+ "engine",
+ "quick-xml",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -10,9 +10,9 @@ use embedded_graphics::prelude::{Point, Primitive, Size};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::text::Text;
 use embedded_graphics::{Drawable, Pixel};
-use rpg_engine::hero::HeroId;
-use rpg_engine::map::game_map::MapCoord;
-use rpg_engine::map::tile::Tiles;
+use engine::hero::HeroId;
+use engine::map::game_map::MapCoord;
+use engine::map::tile::Tiles;
 
 use crate::app::{
     AppScreen, MapViewScreen, APP_TITLE, MAP_LIST_FOOTER, MAP_LIST_TITLE, SAVE_LIST_FOOTER,
@@ -116,9 +116,9 @@ fn and_mask(mut a: WaterMask, b: &WaterMask) -> WaterMask {
 /// Computes 8-neighbor bitmask for terrain autotiling.
 /// Bits (0..7) = N, NE, E, SE, S, SW, W, NW; bit=1 means neighbor matches `target`.
 fn terrain_neighbor_bits(
-    map: &rpg_engine::map::game_map::GameMap,
+    map: &engine::map::game_map::GameMap,
     coord: MapCoord,
-    target: rpg_engine::map::tile::Tiles,
+    target: engine::map::tile::Tiles,
 ) -> u8 {
     let matcher = |cx: i32, cy: i32| -> bool {
         if cx < 0 || cy < 0 {
@@ -179,31 +179,63 @@ fn compute_terrain_composite(
     let mut mask = get_tile_mask_arr(full_tile);
 
     // Edge half-pieces
-    if w && !n { mask = and_mask(mask, &ul); }
-    if w && !s { mask = and_mask(mask, &ll); }
-    if n && !w { mask = and_mask(mask, &ll90); }
-    if n && !e { mask = and_mask(mask, &ul90); }
-    if e && !n { mask = and_mask(mask, &ll180); }
-    if e && !s { mask = and_mask(mask, &ul180); }
-    if s && !w { mask = and_mask(mask, &ul270); }
-    if s && !e { mask = and_mask(mask, &ll270); }
+    if w && !n {
+        mask = and_mask(mask, &ul);
+    }
+    if w && !s {
+        mask = and_mask(mask, &ll);
+    }
+    if n && !w {
+        mask = and_mask(mask, &ll90);
+    }
+    if n && !e {
+        mask = and_mask(mask, &ul90);
+    }
+    if e && !n {
+        mask = and_mask(mask, &ll180);
+    }
+    if e && !s {
+        mask = and_mask(mask, &ul180);
+    }
+    if s && !w {
+        mask = and_mask(mask, &ul270);
+    }
+    if s && !e {
+        mask = and_mask(mask, &ll270);
+    }
 
     // Outer corners
-    if w && n { mask = and_mask(mask, &co); }
-    if n && e { mask = and_mask(mask, &co90); }
-    if e && s { mask = and_mask(mask, &co180); }
-    if s && w { mask = and_mask(mask, &co270); }
+    if w && n {
+        mask = and_mask(mask, &co);
+    }
+    if n && e {
+        mask = and_mask(mask, &co90);
+    }
+    if e && s {
+        mask = and_mask(mask, &co180);
+    }
+    if s && w {
+        mask = and_mask(mask, &co270);
+    }
 
     // Inner corners
-    if !w && !n && nw { mask = and_mask(mask, &ci); }
-    if !n && !e && ne { mask = and_mask(mask, &ci90); }
-    if !e && !s && se { mask = and_mask(mask, &ci180); }
-    if !s && !w && sw { mask = and_mask(mask, &ci270); }
+    if !w && !n && nw {
+        mask = and_mask(mask, &ci);
+    }
+    if !n && !e && ne {
+        mask = and_mask(mask, &ci90);
+    }
+    if !e && !s && se {
+        mask = and_mask(mask, &ci180);
+    }
+    if !s && !w && sw {
+        mask = and_mask(mask, &ci270);
+    }
 
     mask
 }
 
-fn water_neighbor_bits(map: &rpg_engine::map::game_map::GameMap, coord: MapCoord) -> u8 {
+fn water_neighbor_bits(map: &engine::map::game_map::GameMap, coord: MapCoord) -> u8 {
     terrain_neighbor_bits(map, coord, Tiles::Water)
 }
 
@@ -217,7 +249,7 @@ fn compute_water_composite(bits: u8) -> WaterMask {
     )
 }
 
-fn mountain_neighbor_bits(map: &rpg_engine::map::game_map::GameMap, coord: MapCoord) -> u8 {
+fn mountain_neighbor_bits(map: &engine::map::game_map::GameMap, coord: MapCoord) -> u8 {
     terrain_neighbor_bits(map, coord, Tiles::Mountain)
 }
 
@@ -1175,7 +1207,7 @@ fn draw_cell<D, C>(
 
 fn draw_water_cell<D, C>(
     display: &mut D,
-    map: &rpg_engine::map::game_map::GameMap,
+    map: &engine::map::game_map::GameMap,
     coord: MapCoord,
     top_left: Point,
     water_masks: &mut Vec<Option<WaterMask>>,
@@ -1191,7 +1223,7 @@ fn draw_water_cell<D, C>(
 
 fn draw_mountain_cell<D, C>(
     display: &mut D,
-    map: &rpg_engine::map::game_map::GameMap,
+    map: &engine::map::game_map::GameMap,
     coord: MapCoord,
     top_left: Point,
     mountain_masks: &mut Vec<Option<WaterMask>>,

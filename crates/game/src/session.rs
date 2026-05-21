@@ -5,11 +5,11 @@ use alloc::{
     string::{String, ToString},
 };
 
-use rpg_engine::error::Error as EngineError;
-use rpg_engine::game_state::GameState;
-use rpg_engine::hero::HeroId;
-use rpg_engine::map::game_map::MapCoord;
-use rpg_engine::Direction;
+use engine::error::EngineError;
+use engine::game_state::GameState;
+use engine::hero::HeroId;
+use engine::map::game_map::MapCoord;
+use engine::Direction;
 
 /// Runtime game session stored by embedded gameplay frontends.
 pub struct GameSession {

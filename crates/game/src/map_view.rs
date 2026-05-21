@@ -2,7 +2,7 @@
 
 use alloc::{string::String, string::ToString};
 
-use rpg_engine::Direction;
+use engine::Direction;
 
 use crate::input::InputEvent;
 use crate::session::GameSession;

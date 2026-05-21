@@ -21,8 +21,8 @@ pub mod turn_overlay;
 pub mod types;
 
 #[cfg(feature = "std")]
-pub use rpg_engine::game_state::GameState;
-pub use rpg_engine::map::tile::Tiles;
+pub use engine::game_state::GameState;
+pub use engine::map::tile::Tiles;
 
 #[cfg(feature = "std")]
 pub mod io;

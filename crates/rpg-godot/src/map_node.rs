@@ -131,7 +131,7 @@ impl MapNode {
     }
 
     fn atlas_cols() -> i32 {
-        rpg_engine::map::tile::Tiles::all().len() as i32
+        engine::map::tile::Tiles::all().len() as i32
     }
 
     fn texture_cols(texture: &Gd<Texture2D>) -> i32 {

@@ -1,0 +1,492 @@
+//! Map assembler — orchestrates chunk generation, stitching, and validation.
+//!
+//! [`MapAssembler`] is the primary entry point for producing a fully assembled
+//! and validated [`GameMap`].
+//!
+//! ## Pipeline generators
+//! All registered generators are applied to **every** chunk in order.
+//! Each subsequent generator receives the tiles from the previous stage as
+//! its 4th Lua argument (`base_tiles`).  The first generator receives `nil`.
+//!
+//! ## Validation
+//! Validation can be configured as:
+//! - A directory of `.lua` rule files (loaded in sorted order by [`ValidationRuleSet`])
+//! - A single `.lua` file via [`MapConfig::validator_script`]
+//!
+//! If both are provided, the directory takes precedence.
+
+use std::path::PathBuf;
+
+use tracing::{debug, info, instrument, warn};
+
+use engine::map::chunk::{ChunkCoord, CHUNK_SIZE};
+use engine::map::game_map::{GameMap, MapCoord};
+use engine::map::tile::Tiles;
+use engine::rng::keccak256;
+use engine::rng::{derive_seed, SeededRng};
+
+use crate::chunk_generator::ChunkGenerator;
+use crate::chunk_grid::ChunkGrid;
+use crate::error::MapgenError;
+use crate::evaluator::MapEvaluator;
+use crate::stitcher::Stitcher;
+use crate::validation_rule_set::ValidationRuleSet;
+use crate::validator::MapValidator;
+
+// ─── MapConfig ────────────────────────────────────────────────────────────────
+
+/// Configuration for map generation.
+#[derive(Debug, Clone)]
+pub struct MapConfig {
+    /// Human-readable seed phrase.  Hashed to `[u8; 32]` via Keccak256.
+    pub seed: String,
+    /// Map width in tiles.  Must be a multiple of `CHUNK_SIZE` (32).
+    pub width: u32,
+    /// Map height in tiles.  Must be a multiple of `CHUNK_SIZE` (32).
+    pub height: u32,
+    /// Ordered list of generator scripts applied as a pipeline to every chunk.
+    /// Must contain at least one entry.
+    pub generators: Vec<PathBuf>,
+    /// Optional path to a directory containing validation rule `.lua` files.
+    /// Takes precedence over [`validator_script`](Self::validator_script) if set.
+    pub validator_dir: Option<PathBuf>,
+    /// Optional path to a single validation script.
+    pub validator_script: Option<PathBuf>,
+    /// Optional path to the Lua evaluator script.
+    pub evaluator_script: Option<PathBuf>,
+}
+
+impl MapConfig {
+    /// Creates a 96×96-tile (3×3 chunk) config with a single pipeline generator.
+    pub fn default_3x3(seed: impl Into<String>, generator_script: impl Into<PathBuf>) -> Self {
+        let cs = CHUNK_SIZE as u32;
+        Self {
+            seed: seed.into(),
+            width: cs * 3,
+            height: cs * 3,
+            generators: vec![generator_script.into()],
+            validator_dir: None,
+            validator_script: None,
+            evaluator_script: None,
+        }
+    }
+
+    /// Appends a generator script to the pipeline.
+    ///
+    /// Generators are applied to each chunk in the order they were added.
+    pub fn with_generator(mut self, path: impl Into<PathBuf>) -> Self {
+        self.generators.push(path.into());
+        self
+    }
+
+    /// Sets the validation rules directory.
+    pub fn with_validator_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.validator_dir = Some(path.into());
+        self
+    }
+
+    /// Sets a single validation script (ignored if `validator_dir` is also set).
+    pub fn with_validator(mut self, path: impl Into<PathBuf>) -> Self {
+        self.validator_script = Some(path.into());
+        self
+    }
+
+    /// Sets the evaluator script.
+    pub fn with_evaluator(mut self, path: impl Into<PathBuf>) -> Self {
+        self.evaluator_script = Some(path.into());
+        self
+    }
+}
+
+// ─── Validation wrapper ───────────────────────────────────────────────────────
+
+/// Internal helper: either a rule set (directory) or a single validator.
+enum Validator {
+    RuleSet(ValidationRuleSet),
+    Single(MapValidator),
+}
+
+impl Validator {
+    /// Returns `Ok(())` if the map passes all rules, or `Err(ValidationFailed)`.
+    fn validate(&self, map: &GameMap) -> Result<(), MapgenError> {
+        match self {
+            Validator::RuleSet(rs) => {
+                let results = rs.validate_all(map)?;
+                let failed: Vec<_> = results.iter().filter(|r| !r.valid).collect();
+                if let Some(first) = failed.first() {
+                    return Err(MapgenError::ValidationFailed(
+                        first.reason.clone().unwrap_or_default(),
+                    ));
+                }
+                Ok(())
+            }
+            Validator::Single(v) => {
+                let result = v.validate(map)?;
+                if !result.is_valid() {
+                    return Err(MapgenError::ValidationFailed(result.reason.unwrap_or_default()));
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+// ─── MapAssembler ─────────────────────────────────────────────────────────────
+
+/// Assembles a complete [`GameMap`] from chunks generated by a Lua pipeline.
+pub struct MapAssembler {
+    /// Pipeline generators loaded from the config, in order.
+    generators: Vec<ChunkGenerator>,
+    evaluator: Option<MapEvaluator>,
+    validator: Option<Validator>,
+    /// Derived 32-byte map seed (Keccak256 of `config.seed`).
+    map_seed: [u8; 32],
+    /// Map width in tiles.
+    width: u32,
+    /// Map height in tiles.
+    height: u32,
+}
+
+impl MapAssembler {
+    /// Creates a new [`MapAssembler`] from the given configuration.
+    ///
+    /// Loads all Lua scripts up-front so that script errors are reported
+    /// before generation begins.
+    ///
+    /// # Errors
+    /// Returns [`MapgenError::ScriptLoad`] if any script file cannot be loaded, or
+    /// [`MapgenError::InvalidState`] if the generators list is empty.
+    pub fn new(config: MapConfig) -> Result<Self, MapgenError> {
+        if config.generators.is_empty() {
+            return Err(MapgenError::Engine(engine::error::EngineError::PipelineEmpty));
+        }
+
+        // Load all generators in pipeline order
+        let mut generators = Vec::with_capacity(config.generators.len());
+        for path in &config.generators {
+            let gen = ChunkGenerator::from_script(path)?;
+            debug!(path = %path.display(), "pipeline generator loaded");
+            generators.push(gen);
+        }
+
+        // Load evaluator
+        let evaluator =
+            config.evaluator_script.as_deref().map(MapEvaluator::from_script).transpose()?;
+
+        // Load validator (directory takes precedence over single script)
+        let validator = if let Some(dir) = &config.validator_dir {
+            Some(Validator::RuleSet(ValidationRuleSet::from_dir(dir)?))
+        } else if let Some(script) = &config.validator_script {
+            Some(Validator::Single(MapValidator::from_script(script)?))
+        } else {
+            None
+        };
+
+        let map_seed = keccak256(&config.seed);
+
+        info!(
+            seed = %config.seed,
+            generators = config.generators.len(),
+            "map assembler initialised"
+        );
+
+        Ok(Self {
+            generators,
+            evaluator,
+            validator,
+            map_seed,
+            width: config.width,
+            height: config.height,
+        })
+    }
+
+    /// Returns the derived 32-byte map seed.
+    pub fn map_seed(&self) -> &[u8; 32] {
+        &self.map_seed
+    }
+
+    /// Generates a map without running the validator.
+    ///
+    /// Each chunk passes through the full generator pipeline: the first
+    /// generator receives `nil` as base, and each subsequent generator
+    /// receives the previous generator's output.
+    ///
+    /// # Errors
+    /// Returns [`MapgenError::LuaExecution`] if any chunk generator fails, or an engine
+    /// error if map assembly fails.
+    #[instrument(skip(self))]
+    pub fn generate(&self) -> Result<GameMap, MapgenError> {
+        info!("starting map generation");
+
+        let cs = CHUNK_SIZE as u32;
+        let cw = self.width / cs;
+        let ct = self.height / cs;
+        let mut chunks = Vec::with_capacity((cw * ct) as usize);
+
+        for cy in 0..ct {
+            for cx in 0..cw {
+                let coord = ChunkCoord::new(cx, cy);
+                debug!(
+                    cx,
+                    cy,
+                    pipeline_stages = self.generators.len(),
+                    "generating chunk through pipeline"
+                );
+
+                let mut chunk = None;
+                for gen in &self.generators {
+                    chunk = Some(gen.generate_with_base(coord, &self.map_seed, chunk.as_ref())?);
+                }
+
+                let Some(chunk) = chunk else {
+                    return Err(MapgenError::PipelineFailed(format!(
+                        "no chunk generated for ({cx},{cy})"
+                    )));
+                };
+
+                chunks.push(chunk);
+            }
+        }
+
+        let grid = ChunkGrid::new(cw, ct, chunks, self.map_seed)?;
+        let mut map = grid.into_game_map().map_err(MapgenError::Engine)?;
+
+        info!("stitching chunk boundaries");
+        Stitcher::stitch(&mut map, CHUNK_SIZE as u32)?;
+
+        let (enemy_spawns, chest_spawns) = generate_spawn_points(&map, &self.map_seed);
+        map.set_spawn_points(enemy_spawns, chest_spawns).map_err(MapgenError::Engine)?;
+
+        if let Some(ev) = &self.evaluator {
+            let score = ev.evaluate(&map)?;
+            info!(score, "map evaluated");
+        }
+
+        Ok(map)
+    }
+
+    /// Generates a map and validates it against all configured rules.
+    ///
+    /// Returns [`MapgenError::ValidationFailed`] if validation fails.
+    pub fn generate_validated(&self) -> Result<GameMap, MapgenError> {
+        let map = self.generate()?;
+
+        if let Some(v) = &self.validator {
+            v.validate(&map)?;
+            info!("map passed all validation rules");
+        }
+
+        Ok(map)
+    }
+
+    /// Generates up to `attempts` maps, returning the first that passes all rules.
+    ///
+    /// If no valid map is produced, returns the last [`MapgenError::ValidationFailed`].
+    /// If no validator is configured, returns the first generated map.
+    ///
+    /// # Arguments
+    /// * `attempts` — maximum number of generation attempts.
+    pub fn generate_best_of(&self, attempts: u32) -> Result<GameMap, MapgenError> {
+        let mut last_err: Option<MapgenError> = None;
+
+        for attempt in 0..attempts {
+            debug!(attempt, "generation attempt");
+            match self.generate_validated() {
+                Ok(map) => {
+                    info!(attempt, "valid map found");
+                    return Ok(map);
+                }
+                Err(MapgenError::ValidationFailed(reason)) => {
+                    warn!(attempt, %reason, "attempt failed validation, retrying");
+                    last_err = Some(MapgenError::ValidationFailed(reason));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| MapgenError::ValidationFailed("no attempts made".into())))
+    }
+}
+
+fn generate_spawn_points(map: &GameMap, map_seed: &[u8; 32]) -> (Vec<MapCoord>, Vec<MapCoord>) {
+    let mut enemy_spawns = Vec::new();
+    let mut chest_spawns = Vec::new();
+    let cs = CHUNK_SIZE as u32;
+    let chunk_w = map.tile_width() / cs;
+    let chunk_h = map.tile_height() / cs;
+
+    for cy in 0..chunk_h {
+        for cx in 0..chunk_w {
+            let seed = derive_seed(map_seed, format!("spawn_{cx}_{cy}").as_bytes());
+            let mut rng = SeededRng::from_bytes(seed);
+            let mut candidates: Vec<MapCoord> = Vec::new();
+
+            for y in 0..cs {
+                for x in 0..cs {
+                    let gx = cx * cs + x;
+                    let gy = cy * cs + y;
+                    let coord = MapCoord::new(gx, gy);
+                    if let Ok(tile) = map.get_tile(coord) {
+                        if is_spawnable_tile(tile.kind) {
+                            candidates.push(coord);
+                        }
+                    }
+                }
+            }
+
+            let target_enemy = rng.random_range_u32(4..9) as usize;
+            let target_chest = rng.random_range_u32(1..4) as usize;
+
+            let enemy_count = target_enemy.min(candidates.len());
+            for _ in 0..enemy_count {
+                let idx = rng.random_range_usize(0..candidates.len());
+                enemy_spawns.push(candidates.swap_remove(idx));
+            }
+
+            let chest_count = target_chest.min(candidates.len());
+            for _ in 0..chest_count {
+                let idx = rng.random_range_usize(0..candidates.len());
+                chest_spawns.push(candidates.swap_remove(idx));
+            }
+
+            if enemy_count < target_enemy || chest_count < target_chest {
+                warn!(
+                    cx,
+                    cy,
+                    target_enemy,
+                    target_chest,
+                    enemy_count,
+                    chest_count,
+                    "spawn points limited by available tiles"
+                );
+            }
+        }
+    }
+
+    (enemy_spawns, chest_spawns)
+}
+
+fn is_spawnable_tile(tile: Tiles) -> bool {
+    tile.is_passable() && !matches!(tile, Tiles::City | Tiles::CityEntrance)
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::init_tracing;
+    use engine::map::chunk::CHUNK_SIZE;
+
+    const MEADOW_GENERATOR: &str = r#"
+        return function(rng, x, y)
+            local tiles = {}
+            for i = 1, 32 * 32 do tiles[i] = "meadow" end
+            return tiles
+        end
+    "#;
+
+    const WATER_GENERATOR: &str = r#"
+        return function(rng, x, y)
+            local tiles = {}
+            for i = 1, 32 * 32 do tiles[i] = "water" end
+            return tiles
+        end
+    "#;
+
+    const PASSABLE_VALIDATOR: &str = r#"
+        return function(map)
+            local pass = 0
+            for _, k in ipairs(map.tiles) do
+                if k ~= "water" and k ~= "mountain" and k ~= "river" then
+                    pass = pass + 1
+                end
+            end
+            if pass / #map.tiles < 0.50 then
+                return false, "too little passable terrain"
+            end
+            return true, nil
+        end
+    "#;
+
+    fn write_temp(name: &str, content: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("rpg_asm_{name}_{n}.lua"));
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    fn write_temp_dir(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("rpg_asm_dir_{name}_{n}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (fname, content) in files {
+            std::fs::write(dir.join(fname), content).unwrap();
+        }
+        dir
+    }
+
+    fn make_config_single(gen: &str) -> MapConfig {
+        MapConfig::default_3x3("seed", write_temp("gen_single", gen))
+    }
+
+    #[test]
+    fn generates_correct_dimensions() {
+        init_tracing();
+        let asm = MapAssembler::new(make_config_single(MEADOW_GENERATOR)).unwrap();
+        let map = asm.generate().unwrap();
+        assert_eq!(map.tile_width(), 3 * CHUNK_SIZE as u32);
+        assert_eq!(map.tile_height(), 3 * CHUNK_SIZE as u32);
+    }
+
+    #[test]
+    fn same_seed_produces_same_map() {
+        init_tracing();
+        let config = make_config_single(MEADOW_GENERATOR);
+        let asm = MapAssembler::new(config).unwrap();
+        let a = asm.generate().unwrap();
+        let b = asm.generate().unwrap();
+        for (ta, tb) in a.tiles().iter().zip(b.tiles()) {
+            assert_eq!(ta, tb);
+        }
+    }
+
+    #[test]
+    fn pipeline_applies_generators_in_order() {
+        init_tracing();
+        let gen_m = write_temp("pipe_m", MEADOW_GENERATOR);
+        let gen_w = write_temp("pipe_w", WATER_GENERATOR);
+        let config = MapConfig::default_3x3("pipe", gen_m).with_generator(gen_w);
+        let asm = MapAssembler::new(config).unwrap();
+        let map = asm.generate().unwrap();
+        // WATER_GENERATOR ignores base and fills everything with water
+        // Centre of chunk (1,1): global coord = (1*32 + 16, 1*32 + 16) = (48, 48)
+        use engine::map::game_map::MapCoord;
+        assert_eq!(
+            map.get_tile(MapCoord::new(16 + 32, 16 + 32)).unwrap().kind,
+            engine::map::tile::Tiles::Water
+        );
+    }
+
+    #[test]
+    fn validator_dir_runs_all_rules() {
+        init_tracing();
+        let dir = write_temp_dir("valdir", &[("01_rule.lua", PASSABLE_VALIDATOR)]);
+        let config = make_config_single(MEADOW_GENERATOR).with_validator_dir(dir);
+        let asm = MapAssembler::new(config).unwrap();
+        assert!(asm.generate_validated().is_ok());
+    }
+
+    #[test]
+    fn validation_fails_for_water_map_via_dir() {
+        init_tracing();
+        let dir = write_temp_dir("valdir_fail", &[("01_rule.lua", PASSABLE_VALIDATOR)]);
+        let config = make_config_single(WATER_GENERATOR).with_validator_dir(dir);
+        let asm = MapAssembler::new(config).unwrap();
+        assert!(matches!(asm.generate_validated(), Err(MapgenError::ValidationFailed(_))));
+    }
+}
