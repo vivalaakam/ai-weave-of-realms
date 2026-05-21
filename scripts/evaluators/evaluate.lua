@@ -14,7 +14,9 @@ local PASSABLE = {
 
 local function evaluate(map)
     local total = #map.tiles
-    if total == 0 then return 0.0 end
+    if total == 0 then
+        return 0.0
+    end
 
     local counts = {}
     for _, kind in ipairs(map.tiles) do
@@ -24,14 +26,18 @@ local function evaluate(map)
     -- Reward passable terrain (>= 60% target)
     local passable = 0
     for kind, n in pairs(counts) do
-        if PASSABLE[kind] then passable = passable + n end
+        if PASSABLE[kind] then
+            passable = passable + n
+        end
     end
     local score = (passable / total) * 100.0
 
     -- Bonus for variety of points of interest
-    local poi_kinds = {"ruins", "gold", "resource", "village", "merchant"}
+    local poi_kinds = { "ruins", "gold", "resource", "village", "merchant" }
     for _, poi in ipairs(poi_kinds) do
-        if (counts[poi] or 0) > 0 then score = score + 5.0 end
+        if (counts[poi] or 0) > 0 then
+            score = score + 5.0
+        end
     end
 
     -- Penalty for too many impassable tiles (> 30%)

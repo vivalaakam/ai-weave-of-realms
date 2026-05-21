@@ -20,11 +20,11 @@
 -- @param tiles Optional base tile table from the previous pipeline stage.
 -- @return      table[1024] with resources applied.
 
-local CHUNK_SIZE  = 32
-local N           = CHUNK_SIZE * CHUNK_SIZE
+local CHUNK_SIZE = 32
+local N = CHUNK_SIZE * CHUNK_SIZE
 local MIN_SPACING = 4    -- minimum tile distance between any two resource/gold tiles
 local SAFE_RADIUS = 2    -- minimum tile distance from city / village tiles
-local MAX_TRIES   = 60   -- rejection-sampling attempts per item
+local MAX_TRIES = 60   -- rejection-sampling attempts per item
 
 -- Tiles that a resource may be placed on
 local PLACEABLE = { meadow = true }
@@ -75,13 +75,13 @@ local function try_place(result, rng, placed, kind)
         -- Keep 1 tile away from edges for a cleaner look
         local tx = rng:random_range_u32(1, CHUNK_SIZE - 2)
         local ty = rng:random_range_u32(1, CHUNK_SIZE - 2)
-        local i  = tile_idx(tx, ty)
+        local i = tile_idx(tx, ty)
 
         if PLACEABLE[result[i]]
-            and not near_settlement(result, tx, ty)
-            and spaced_ok(placed, tx, ty)
+                and not near_settlement(result, tx, ty)
+                and spaced_ok(placed, tx, ty)
         then
-            result[i]       = kind
+            result[i] = kind
             placed[#placed + 1] = { tx, ty }
             return true
         end
@@ -92,9 +92,13 @@ end
 local function generate_chunk(rng, x, y, tiles)
     local result = {}
     if tiles ~= nil then
-        for i = 1, N do result[i] = tiles[i] end
+        for i = 1, N do
+            result[i] = tiles[i]
+        end
     else
-        for i = 1, N do result[i] = "meadow" end
+        for i = 1, N do
+            result[i] = "meadow"
+        end
     end
 
     local placed = {}

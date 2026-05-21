@@ -5,11 +5,11 @@ edition = "2021"
 description = "Standalone SDL2 launcher for AI RPG using embedded-graphics."
 
 [dependencies]
-clap = { workspace = true}
+clap = { workspace = true }
 game = { path = "../crates/game", features = ["std"] }
 helpers = { path = "../crates/helpers" }
 engine = { path = "../crates/engine" }
-tiled = {path = "../crates/tiled"}
+tiled = { path = "../crates/tiled" }
 mapgen = { path = "../crates/mapgen" }
 sdl2 = { version = "0.37", features = ["bundled"] }
 tracing = { workspace = true }

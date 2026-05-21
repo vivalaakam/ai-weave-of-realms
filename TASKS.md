@@ -9,128 +9,128 @@ Update status as work progresses.
 
 ## Phase 0 — Foundation
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 0.1 | Init Cargo workspace with crates: rpg-engine, rpg-mapgen, rpg-tiled, rpg-godot | — | DONE | |
-| 0.2 | Implement `SeededRng`, `keccak256`, `derive_seed` in rpg-engine::rng | — | DONE | 21 тест, детерминированность подтверждена |
-| 0.3 | Define map types: `TileKind`, `Tile`, `Chunk`, `GameMap` in rpg-engine::map | — | DONE | Vec<Tile> вместо Box<[Tile;1024]> из-за serde |
-| 0.4 | Define `Error` enums via thiserror in all crates | — | DONE | |
-| 0.5 | Set up tracing-subscriber in test harness (once_cell or similar) | — | DONE | OnceLock в test_utils.rs |
-| 0.6 | Init Godot 4 project in `godot/` directory | — | DONE | project.godot + .gdextension + Lua scripts |
+| ID  | Task                                                                           | Assignee | Status | Notes                                         |
+|-----|--------------------------------------------------------------------------------|----------|--------|-----------------------------------------------|
+| 0.1 | Init Cargo workspace with crates: rpg-engine, rpg-mapgen, rpg-tiled, rpg-godot | —        | DONE   |                                               |
+| 0.2 | Implement `SeededRng`, `keccak256`, `derive_seed` in rpg-engine::rng           | —        | DONE   | 21 тест, детерминированность подтверждена     |
+| 0.3 | Define map types: `TileKind`, `Tile`, `Chunk`, `GameMap` in rpg-engine::map    | —        | DONE   | Vec<Tile> вместо Box<[Tile;1024]> из-за serde |
+| 0.4 | Define `Error` enums via thiserror in all crates                               | —        | DONE   |                                               |
+| 0.5 | Set up tracing-subscriber in test harness (once_cell or similar)               | —        | DONE   | OnceLock в test_utils.rs                      |
+| 0.6 | Init Godot 4 project in `godot/` directory                                     | —        | DONE   | project.godot + .gdextension + Lua scripts    |
 
 ## Phase 1 — Map Generator
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 1.1 | `LuaEngine` struct: init mlua runtime, load/call script | — | DONE | Встроен в каждый компонент |
-| 1.2 | Expose `SeededRng` to Lua as mlua UserData | — | DONE | LuaRng(RefCell<SeededRng>) |
-| 1.3 | Chunk generator: invoke Lua `generate_chunk` → `Chunk` | — | DONE | ChunkGenerator |
-| 1.4 | Chunk stitcher: blend/smooth chunk boundaries | — | DONE | majority-vote по 4 соседям |
-| 1.5 | Map assembler: generate N×M chunks → `GameMap` | — | DONE | MapAssembler + generate_best_of |
-| 1.6 | `scripts/generators/default.lua` — basic terrain generation | — | DONE | |
-| 1.7 | Lua evaluator: invoke `evaluate(map)` → f64 score | — | DONE | MapEvaluator |
-| 1.8 | Lua validator: invoke `validate(map)` → (bool, msg) | — | DONE | MapValidator |
-| 1.9 | `scripts/rules/evaluate.lua` — basic map scoring rules | — | DONE | |
-| 1.10 | `scripts/rules/validate.lua` — basic map validity rules | — | DONE | |
-| 1.11 | Проанализировать правила генерации, исправить `MAP_GENERATION_RULES.md` и добавить альтернативный генератор `scripts/generators/codex-variant.lua` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 1.12 | Расширить `mapgen`: сохранять каждую генерацию в timestamp-директорию, экспортировать PNG + TMX и поддержать `--open` для итогового `.tmx` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 1.13 | Ввести правила касания чанков по краям: только позиции `index % 3 = 1` для дорог/рек и согласованные полосы для леса/гор/воды; обновить генераторы и `MAP_GENERATION_RULES.md` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| ID   | Task                                                                                                                                                                           | Assignee | Status | Notes                                                                          |
+|------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|--------|--------------------------------------------------------------------------------|
+| 1.1  | `LuaEngine` struct: init mlua runtime, load/call script                                                                                                                        | —        | DONE   | Встроен в каждый компонент                                                     |
+| 1.2  | Expose `SeededRng` to Lua as mlua UserData                                                                                                                                     | —        | DONE   | LuaRng(RefCell<SeededRng>)                                                     |
+| 1.3  | Chunk generator: invoke Lua `generate_chunk` → `Chunk`                                                                                                                         | —        | DONE   | ChunkGenerator                                                                 |
+| 1.4  | Chunk stitcher: blend/smooth chunk boundaries                                                                                                                                  | —        | DONE   | majority-vote по 4 соседям                                                     |
+| 1.5  | Map assembler: generate N×M chunks → `GameMap`                                                                                                                                 | —        | DONE   | MapAssembler + generate_best_of                                                |
+| 1.6  | `scripts/generators/default.lua` — basic terrain generation                                                                                                                    | —        | DONE   |                                                                                |
+| 1.7  | Lua evaluator: invoke `evaluate(map)` → f64 score                                                                                                                              | —        | DONE   | MapEvaluator                                                                   |
+| 1.8  | Lua validator: invoke `validate(map)` → (bool, msg)                                                                                                                            | —        | DONE   | MapValidator                                                                   |
+| 1.9  | `scripts/rules/evaluate.lua` — basic map scoring rules                                                                                                                         | —        | DONE   |                                                                                |
+| 1.10 | `scripts/rules/validate.lua` — basic map validity rules                                                                                                                        | —        | DONE   |                                                                                |
+| 1.11 | Проанализировать правила генерации, исправить `MAP_GENERATION_RULES.md` и добавить альтернативный генератор `scripts/generators/codex-variant.lua`                             | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 1.12 | Расширить `mapgen`: сохранять каждую генерацию в timestamp-директорию, экспортировать PNG + TMX и поддержать `--open` для итогового `.tmx`                                     | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 1.13 | Ввести правила касания чанков по краям: только позиции `index % 3 = 1` для дорог/рек и согласованные полосы для леса/гор/воды; обновить генераторы и `MAP_GENERATION_RULES.md` | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 
 ## Phase 2 — Tiled Integration
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 2.1 | TMX data model structs (Map, Layer, Tileset, Tile) | — | DONE | Встроено в exporter/importer, seed как custom property |
-| 2.2 | TMX exporter: `GameMap` → `.tmx` XML | — | DONE | `rpg-tiled::exporter`, `mapgen` использует библиотеку |
-| 2.3 | TMX importer: `.tmx` XML → `GameMap` | — | DONE | `rpg-tiled::importer`, quick-xml event parser |
-| 2.4 | Isometric tileset descriptor (GID ↔ TileKind mapping) | — | DONE | `Tiles::to_gid` / `from_gid` в rpg-engine |
-| 2.5 | Integration test: generate → export TMX → import TMX → compare | — | DONE | round_trip_* тесты в importer.rs |
-| 2.6 | Добавить точки спавна врагов/сундуков в чанках и отрисовку в TMX, Godot, T-Deck | — | DONE | TMX object layer + маркеры в Godot/T-Deck, удалён Lua-spawner |
-| 2.7 | Отрисовать точки спавна врагов/сундуков в PNG-экспорте | — | DONE | Маркеры кружками в mapgen PNG |
+| ID  | Task                                                                            | Assignee | Status | Notes                                                         |
+|-----|---------------------------------------------------------------------------------|----------|--------|---------------------------------------------------------------|
+| 2.1 | TMX data model structs (Map, Layer, Tileset, Tile)                              | —        | DONE   | Встроено в exporter/importer, seed как custom property        |
+| 2.2 | TMX exporter: `GameMap` → `.tmx` XML                                            | —        | DONE   | `rpg-tiled::exporter`, `mapgen` использует библиотеку         |
+| 2.3 | TMX importer: `.tmx` XML → `GameMap`                                            | —        | DONE   | `rpg-tiled::importer`, quick-xml event parser                 |
+| 2.4 | Isometric tileset descriptor (GID ↔ TileKind mapping)                           | —        | DONE   | `Tiles::to_gid` / `from_gid` в rpg-engine                     |
+| 2.5 | Integration test: generate → export TMX → import TMX → compare                  | —        | DONE   | round_trip_* тесты в importer.rs                              |
+| 2.6 | Добавить точки спавна врагов/сундуков в чанках и отрисовку в TMX, Godot, T-Deck | —        | DONE   | TMX object layer + маркеры в Godot/T-Deck, удалён Lua-spawner |
+| 2.7 | Отрисовать точки спавна врагов/сундуков в PNG-экспорте                          | —        | DONE   | Маркеры кружками в mapgen PNG                                 |
 
 ## Phase 3 — Game Mechanics
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 3.1 | `Hero` struct with stats: hp, atk, def, spd, mov | — | DONE | hero.rs, Faction enum, serde |
-| 3.2 | Movement: compute reachable tiles given MOV budget | — | DONE | movement.rs, Dijkstra 4-way, road cost=0 |
-| 3.3 | Auto-resolve combat: `resolve_combat(attacker, defender, rng)` | — | DONE | combat.rs, initiative by spd, damage formula |
-| 3.4 | `ScoreBoard`: track events, compute total score | — | DONE | score.rs, 5 event types |
-| 3.5 | `GameState`: map + heroes + turn counter + score | — | DONE | game_state.rs, move_hero, attack_hero |
-| 3.6 | Turn manager: advance turn, reset MOV, trigger events | — | DONE | advance_turn в GameState, TurnEvent enum |
+| ID  | Task                                                           | Assignee | Status | Notes                                        |
+|-----|----------------------------------------------------------------|----------|--------|----------------------------------------------|
+| 3.1 | `Hero` struct with stats: hp, atk, def, spd, mov               | —        | DONE   | hero.rs, Faction enum, serde                 |
+| 3.2 | Movement: compute reachable tiles given MOV budget             | —        | DONE   | movement.rs, Dijkstra 4-way, road cost=0     |
+| 3.3 | Auto-resolve combat: `resolve_combat(attacker, defender, rng)` | —        | DONE   | combat.rs, initiative by spd, damage formula |
+| 3.4 | `ScoreBoard`: track events, compute total score                | —        | DONE   | score.rs, 5 event types                      |
+| 3.5 | `GameState`: map + heroes + turn counter + score               | —        | DONE   | game_state.rs, move_hero, attack_hero        |
+| 3.6 | Turn manager: advance turn, reset MOV, trigger events          | —        | DONE   | advance_turn в GameState, TurnEvent enum     |
 
 ## Phase 4 — Godot Bridge
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 4.1 | GDExtension scaffold: gdext setup, `.gdextension` file | — | DONE | rpg-godot crate, RpgGodotExtension entry point |
-| 4.2 | `MapNode`: render `GameMap` as Godot TileMapLayer | — | DONE | map_node.rs, populate_tilemap, tilemap_populated signal |
-| 4.3 | `HeroNode`: render hero sprite, handle tile click → move | — | DONE | hero_node.rs, move_requested/selected signals |
-| 4.4 | `GameManager`: owns `GameState`, drives turn loop | — | DONE | game_manager.rs, все сигналы и функции |
-| 4.5 | `CombatResolver`: trigger auto-resolve on enemy encounter | — | DONE | встроен в GameManager.move_hero (combat_resolved сигнал) |
-| 4.6 | `ScoreUI`: display current score as HUD label | — | DONE | score_ui.rs, format var, on_score_changed |
-| 4.7 | Isometric camera + tile hover highlight | — | DONE | camera_controller.gd, tile_highlight.gd, main.tscn |
-| 4.8 | Перевести визуализацию Godot-карты на рабочую изометрию и подготовить изометрические тайловые ассеты на основе цветовой привязки `TileKind` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 4.9 | Восстановить изометрический tileset после `just clean` и исключить его удаление из workflow очистки | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 4.10 | Исправить падение Godot при создании TileSet после обновления изометрического атласа | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 4.11 | Исправить потерю регистрации GDExtension-классов в Godot на macOS | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 4.12 | Убрать зависимость runtime-рендера карты от `.godot/imported/*.ctex` для tileset | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 4.13 | Диагностировать отсутствие видимой карты после восстановления tileset runtime-загрузки | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 4.14 | Добавить keyboard zoom на `-` / `=` и корректное растяжение сцены при fullscreen | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 4.10 | Исправить runtime-настройку `TileSet` в Godot, чтобы `TileMapLayer` использовал изометрический diamond-layout, а не прямоугольную сетку | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 4.15 | Исправить zoom и fullscreen-resize: до `1920×1080` окно должно показывать больше карты без глобального stretch, выше порога — масштабировать содержимое | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| ID   | Task                                                                                                                                                    | Assignee | Status | Notes                                                                          |
+|------|---------------------------------------------------------------------------------------------------------------------------------------------------------|----------|--------|--------------------------------------------------------------------------------|
+| 4.1  | GDExtension scaffold: gdext setup, `.gdextension` file                                                                                                  | —        | DONE   | rpg-godot crate, RpgGodotExtension entry point                                 |
+| 4.2  | `MapNode`: render `GameMap` as Godot TileMapLayer                                                                                                       | —        | DONE   | map_node.rs, populate_tilemap, tilemap_populated signal                        |
+| 4.3  | `HeroNode`: render hero sprite, handle tile click → move                                                                                                | —        | DONE   | hero_node.rs, move_requested/selected signals                                  |
+| 4.4  | `GameManager`: owns `GameState`, drives turn loop                                                                                                       | —        | DONE   | game_manager.rs, все сигналы и функции                                         |
+| 4.5  | `CombatResolver`: trigger auto-resolve on enemy encounter                                                                                               | —        | DONE   | встроен в GameManager.move_hero (combat_resolved сигнал)                       |
+| 4.6  | `ScoreUI`: display current score as HUD label                                                                                                           | —        | DONE   | score_ui.rs, format var, on_score_changed                                      |
+| 4.7  | Isometric camera + tile hover highlight                                                                                                                 | —        | DONE   | camera_controller.gd, tile_highlight.gd, main.tscn                             |
+| 4.8  | Перевести визуализацию Godot-карты на рабочую изометрию и подготовить изометрические тайловые ассеты на основе цветовой привязки `TileKind`             | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.9  | Восстановить изометрический tileset после `just clean` и исключить его удаление из workflow очистки                                                     | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.10 | Исправить падение Godot при создании TileSet после обновления изометрического атласа                                                                    | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.11 | Исправить потерю регистрации GDExtension-классов в Godot на macOS                                                                                       | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.12 | Убрать зависимость runtime-рендера карты от `.godot/imported/*.ctex` для tileset                                                                        | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.13 | Диагностировать отсутствие видимой карты после восстановления tileset runtime-загрузки                                                                  | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.14 | Добавить keyboard zoom на `-` / `=` и корректное растяжение сцены при fullscreen                                                                        | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.10 | Исправить runtime-настройку `TileSet` в Godot, чтобы `TileMapLayer` использовал изометрический diamond-layout, а не прямоугольную сетку                 | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 4.15 | Исправить zoom и fullscreen-resize: до `1920×1080` окно должно показывать больше карты без глобального stretch, выше порога — масштабировать содержимое | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
 
 ## Phase 5 — Polish & Integration
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 5.1 | Map generation on game start from seed input | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 5.2 | Hero placement on generated map start position | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 5.3 | Enemy spawning driven by Lua rules | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 5.4 | Win/loss conditions via score threshold | — | DONE | `GameOutcome`, `WinCondition`, `check_outcome`, signals, tests |
-| 5.5 | Save/load `GameState` (serde + JSON or binary) | — | DONE | Added compact `RPGS` binary format, mapgen export, T-Deck load |
-| 5.6 | Добавить циклическое переключение героев по `Tab` и ограничить камеру по краям карты | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 5.7 | Добавить debug-панель камеры: seed, позиция курсора и ручной ввод центральной клетки | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 5.8 | Временно отключить camera clamp для отладки системы координат | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 5.9 | Синхронизировать координаты ввода/камеры с реальным `TileMapLayer` | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 5.10 | Добавить в debug-панель сброс zoom и показ текущего значения | Codex | DONE | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
-| 5.11 | T-Deck: меню сохранения/загрузки по `P` с именованием файлов | Codex | DONE | Savegame dir + modal UI |
-| 5.12 | T-Deck: стартовое меню New Game / Load Game | Codex | DONE | Splash menu selects maps or saves |
-| 5.13 | T-Deck: убрать TMX-парсер и clippy warnings | Codex | DONE | Cleanup storage module |
-| 5.14 | T-Deck: сохранение с верификацией и .rpgs/.rpg фильтр | Codex | DONE | Save hash verify + extension handling |
-| 5.15 | T-Deck: единое расширение .rpgs | Codex | DONE | Save/map filters and filenames |
+| ID   | Task                                                                                 | Assignee | Status | Notes                                                                          |
+|------|--------------------------------------------------------------------------------------|----------|--------|--------------------------------------------------------------------------------|
+| 5.1  | Map generation on game start from seed input                                         | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.2  | Hero placement on generated map start position                                       | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.3  | Enemy spawning driven by Lua rules                                                   | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.4  | Win/loss conditions via score threshold                                              | —        | DONE   | `GameOutcome`, `WinCondition`, `check_outcome`, signals, tests                 |
+| 5.5  | Save/load `GameState` (serde + JSON or binary)                                       | —        | DONE   | Added compact `RPGS` binary format, mapgen export, T-Deck load                 |
+| 5.6  | Добавить циклическое переключение героев по `Tab` и ограничить камеру по краям карты | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.7  | Добавить debug-панель камеры: seed, позиция курсора и ручной ввод центральной клетки | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.8  | Временно отключить camera clamp для отладки системы координат                        | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.9  | Синхронизировать координаты ввода/камеры с реальным `TileMapLayer`                   | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.10 | Добавить в debug-панель сброс zoom и показ текущего значения                         | Codex    | DONE   | `spawn_enemies.lua` + `EnemySpawner`, интеграция в `GameManager` и `MainScene` |
+| 5.11 | T-Deck: меню сохранения/загрузки по `P` с именованием файлов                         | Codex    | DONE   | Savegame dir + modal UI                                                        |
+| 5.12 | T-Deck: стартовое меню New Game / Load Game                                          | Codex    | DONE   | Splash menu selects maps or saves                                              |
+| 5.13 | T-Deck: убрать TMX-парсер и clippy warnings                                          | Codex    | DONE   | Cleanup storage module                                                         |
+| 5.14 | T-Deck: сохранение с верификацией и .rpgs/.rpg фильтр                                | Codex    | DONE   | Save hash verify + extension handling                                          |
+| 5.15 | T-Deck: единое расширение .rpgs                                                      | Codex    | DONE   | Save/map filters and filenames                                                 |
 
 ---
 
 ## Decisions Log
 
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| 2026-03-27 | Use Keccak256-based `SeededRng` ([u8;32] seed) | Deterministic, user-provided implementation |
-| 2026-03-27 | Use Lua 5.4 via mlua for generation scripts | Simpler than TypeScript, well-supported in Rust |
-| 2026-03-27 | Chunk size fixed at 32×32 tiles | Balances granularity and generation performance |
-| 2026-03-27 | Default map is 3×3 chunks (96×96 tiles) | Extensible — assembler accepts any N×M |
-| 2026-03-27 | Isometric staggered diamond layout | Matches Disciples 2 visual style |
-| 2026-03-27 | `anyhow` forbidden, use `thiserror` per crate | Consistent structured error handling |
-| 2026-03-27 | `tracing` for all logging | Structured, filterable, async-compatible |
-| 2026-03-27 | `MAP_GENERATION_RULES.md` must match runtime truth from `Tiles` and Lua validators | Avoid drift between documentation, generator scripts, and validation invariants |
-| 2026-03-27 | `mapgen` exports both PNG and TMX into a per-run timestamp directory | Keeps generation artefacts grouped and lets TMX reference the shared root tileset |
-| 2026-03-27 | Chunk edges use a 3-step connection grid (`pos % 3 == 1`) for roads/rivers and anchored continuous segments for forest/mountain/water | Ensures deterministic chunk-to-chunk connectivity and prevents ragged seam contacts |
-| 2026-03-31 | Isometric tileset atlas is generated from `rpg_engine::map::tile::Tiles` instead of being maintained manually | Keeps Godot rendering, TMX export, tile count, and color semantics in sync from one source of truth |
+| Date       | Decision                                                                                                                              | Rationale                                                                                           |
+|------------|---------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| 2026-03-27 | Use Keccak256-based `SeededRng` ([u8;32] seed)                                                                                        | Deterministic, user-provided implementation                                                         |
+| 2026-03-27 | Use Lua 5.4 via mlua for generation scripts                                                                                           | Simpler than TypeScript, well-supported in Rust                                                     |
+| 2026-03-27 | Chunk size fixed at 32×32 tiles                                                                                                       | Balances granularity and generation performance                                                     |
+| 2026-03-27 | Default map is 3×3 chunks (96×96 tiles)                                                                                               | Extensible — assembler accepts any N×M                                                              |
+| 2026-03-27 | Isometric staggered diamond layout                                                                                                    | Matches Disciples 2 visual style                                                                    |
+| 2026-03-27 | `anyhow` forbidden, use `thiserror` per crate                                                                                         | Consistent structured error handling                                                                |
+| 2026-03-27 | `tracing` for all logging                                                                                                             | Structured, filterable, async-compatible                                                            |
+| 2026-03-27 | `MAP_GENERATION_RULES.md` must match runtime truth from `Tiles` and Lua validators                                                    | Avoid drift between documentation, generator scripts, and validation invariants                     |
+| 2026-03-27 | `mapgen` exports both PNG and TMX into a per-run timestamp directory                                                                  | Keeps generation artefacts grouped and lets TMX reference the shared root tileset                   |
+| 2026-03-27 | Chunk edges use a 3-step connection grid (`pos % 3 == 1`) for roads/rivers and anchored continuous segments for forest/mountain/water | Ensures deterministic chunk-to-chunk connectivity and prevents ragged seam contacts                 |
+| 2026-03-31 | Isometric tileset atlas is generated from `rpg_engine::map::tile::Tiles` instead of being maintained manually                         | Keeps Godot rendering, TMX export, tile count, and color semantics in sync from one source of truth |
 
 ## Phase 6 — Build Version Tracking
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 6.1 | Add build script to generate version info from git | Codex | DONE | `crates/rpg-godot/build.rs` generates BUILD_GIT_HASH, BUILD_NUMBER, BUILD_PROFILE |
-| 6.2 | Add `build_info` module for runtime version access | Codex | DONE | `crates/rpg-godot/src/build_info.rs` exposes `version_string()` and `build_info()` |
-| 6.3 | Display version in UI and console on startup | Codex | DONE | Added `VersionLabel` in main.tscn, `update_version_label()` in MainScene |
-| 6.4 | WASD camera controls + arrow keys hero movement | Codex | DONE | Camera uses WASD, active hero moves with arrow keys |
-| 6.5 | Highlight selected hero in UI list | Codex | DONE | Yellow modulate on selected hero button |
-| 6.6 | Fix borrow conflict on hero movement via arrow keys | Codex | DONE | Collect data before mutation, drop borrow, then mutate |
-| 6.7 | Добавить поддержку Sony gamepad: Cross/Circle/R1/L1 + стики для героя и камеры | Codex | DONE | Cross=confirm, Circle=cancel, R1=next hero, L1=end turn dialog, LS=hero movement, RS=camera pan |
-| 6.8 | Исправить confirm/cancel в end-turn диалоге на Sony gamepad (работа через polling и авто device id) | Codex | DONE | Убрана зависимость от fixed `device=0`; confirm/cancel читаются через polling + rising-edge по первому подключенному gamepad |
-| 6.9 | Переназначить gamepad: D-pad двигает героя, левый стик двигает активный курсор клетки с подсветкой | Codex | DONE | D-pad=hero step movement, LS=grid cursor movement with forced active highlight in `TileHighlight` |
+| ID  | Task                                                                                                | Assignee | Status | Notes                                                                                                                        |
+|-----|-----------------------------------------------------------------------------------------------------|----------|--------|------------------------------------------------------------------------------------------------------------------------------|
+| 6.1 | Add build script to generate version info from git                                                  | Codex    | DONE   | `crates/rpg-godot/build.rs` generates BUILD_GIT_HASH, BUILD_NUMBER, BUILD_PROFILE                                            |
+| 6.2 | Add `build_info` module for runtime version access                                                  | Codex    | DONE   | `crates/rpg-godot/src/build_info.rs` exposes `version_string()` and `build_info()`                                           |
+| 6.3 | Display version in UI and console on startup                                                        | Codex    | DONE   | Added `VersionLabel` in main.tscn, `update_version_label()` in MainScene                                                     |
+| 6.4 | WASD camera controls + arrow keys hero movement                                                     | Codex    | DONE   | Camera uses WASD, active hero moves with arrow keys                                                                          |
+| 6.5 | Highlight selected hero in UI list                                                                  | Codex    | DONE   | Yellow modulate on selected hero button                                                                                      |
+| 6.6 | Fix borrow conflict on hero movement via arrow keys                                                 | Codex    | DONE   | Collect data before mutation, drop borrow, then mutate                                                                       |
+| 6.7 | Добавить поддержку Sony gamepad: Cross/Circle/R1/L1 + стики для героя и камеры                      | Codex    | DONE   | Cross=confirm, Circle=cancel, R1=next hero, L1=end turn dialog, LS=hero movement, RS=camera pan                              |
+| 6.8 | Исправить confirm/cancel в end-turn диалоге на Sony gamepad (работа через polling и авто device id) | Codex    | DONE   | Убрана зависимость от fixed `device=0`; confirm/cancel читаются через polling + rising-edge по первому подключенному gamepad |
+| 6.9 | Переназначить gamepad: D-pad двигает героя, левый стик двигает активный курсор клетки с подсветкой  | Codex    | DONE   | D-pad=hero step movement, LS=grid cursor movement with forced active highlight in `TileHighlight`                            |
 
 ---
 
@@ -145,10 +145,10 @@ Update status as work progresses.
 
 ## Phase 8 — City Interaction & Hero Hiring
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 8.1 | Показывать диалог найма героя при клике/нажатии X на городе без героя игрока | Copilot | DONE | Мышь + gamepad X; `is_city_tile()` и `get_next_hero_id()` в GameManager; `_create_hire_hero_dialog` в MainScene |
-| 8.2 | Три команды Red/Blue/Enemy, разные города, цветные маркеры, владение городами | Copilot | DONE | `Team::color()`, `Team::red/blue/enemies()`, `GameState::city_owners`, `find_city_entrance_spawns()`, HeroNode modulate по team_name, найм только в своих городах |
+| ID  | Task                                                                          | Assignee | Status | Notes                                                                                                                                                             |
+|-----|-------------------------------------------------------------------------------|----------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 8.1 | Показывать диалог найма героя при клике/нажатии X на городе без героя игрока  | Copilot  | DONE   | Мышь + gamepad X; `is_city_tile()` и `get_next_hero_id()` в GameManager; `_create_hire_hero_dialog` в MainScene                                                   |
+| 8.2 | Три команды Red/Blue/Enemy, разные города, цветные маркеры, владение городами | Copilot  | DONE   | `Team::color()`, `Team::red/blue/enemies()`, `GameState::city_owners`, `find_city_entrance_spawns()`, HeroNode modulate по team_name, найм только в своих городах |
 
 ---
 
@@ -162,9 +162,9 @@ Update status as work progresses.
 - Gamepad Cross/Circle confirms/cancels the hire dialog (same pattern as end-turn dialog)
 - Input blocked for all dialogs via `is_any_dialog_visible()`
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 7.1 | Replace coordinate-based `move_hero` with direction-based single-step movement | — | DONE | Added `Direction` enum (N/E/S/W) in `map/game_map.rs`; `move_hero` now takes `Direction`, checks passability, occupancy, budget; errors: `ImpassableTile`, `NoMovementPoints`, `OutOfBounds` |
+| ID  | Task                                                                           | Assignee | Status | Notes                                                                                                                                                                                        |
+|-----|--------------------------------------------------------------------------------|----------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 7.1 | Replace coordinate-based `move_hero` with direction-based single-step movement | —        | DONE   | Added `Direction` enum (N/E/S/W) in `map/game_map.rs`; `move_hero` now takes `Direction`, checks passability, occupancy, budget; errors: `ImpassableTile`, `NoMovementPoints`, `OutOfBounds` |
 
 ---
 
@@ -172,64 +172,68 @@ Update status as work progresses.
 
 - Added `Direction` enum (North/East/South/West) with `apply()` method to `rpg-engine::map::game_map`
 - Added `ImpassableTile` and `NoMovementPoints` error variants to `rpg-engine::error`
-- `GameState::move_hero` now accepts `Direction` instead of `MapCoord`; performs single-step adjacency move with passability and occupancy checks; no longer uses Dijkstra pathfinding
+- `GameState::move_hero` now accepts `Direction` instead of `MapCoord`; performs single-step adjacency move with
+  passability and occupancy checks; no longer uses Dijkstra pathfinding
 - Updated Godot bridge `GameManager::move_hero(hero_id, direction: i64)` (0=N, 1=E, 2=S, 3=W)
 - Updated `HeroNode::move_requested` signal and `request_move` to pass direction int
 - Updated keyboard handler (arrow keys → direction) and mouse-click handler (adjacent tile → direction)
-- Added Sony gamepad controls in Godot bridge: Cross confirm, Circle cancel, R1 next hero, L1 end-turn dialog, left stick hero movement (deadzone + repeat), right stick camera pan
-- Fixed Sony confirm/cancel reliability in end-turn dialog: use connected-gamepad auto-detect and per-frame button polling with edge detection
-- Remapped controls: D-pad now moves selected hero; left stick now moves active grid cursor; `TileHighlight` supports forced active tile with stronger color to indicate gamepad focus
+- Added Sony gamepad controls in Godot bridge: Cross confirm, Circle cancel, R1 next hero, L1 end-turn dialog, left
+  stick hero movement (deadzone + repeat), right stick camera pan
+- Fixed Sony confirm/cancel reliability in end-turn dialog: use connected-gamepad auto-detect and per-frame button
+  polling with edge detection
+- Remapped controls: D-pad now moves selected hero; left stick now moves active grid cursor; `TileHighlight` supports
+  forced active tile with stronger color to indicate gamepad focus
 
 ---
 
 ## Phase 9 — City Ownership Indicators & Ghost Sprite Fix
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 9.1 | Fix ghost sprite when hero exits city | — | DONE | `clear_hero_nodes` now calls `remove_child` before `queue_free` so stale nodes are detached immediately, preventing `_on_hero_moved` from finding them on the same frame |
-| 9.2 | BFS city ownership propagation | — | DONE | `set_city_owner` in `game_state.rs` now floods all connected `City`/`CityEntrance` tiles; returns changed coords; `move_hero` uses same flood logic |
-| 9.3 | `city_owner_changed(x,y,team)` signal | — | DONE | Added to `GameManager`; emitted from `move_hero` handler and `set_city_owner #[func]`; connected in `MainScene::ready` |
-| 9.4 | `get_city_center_coords()` | — | DONE | `#[func]` on `GameManager` returns all `City` (center-body, not entrance) tile coords |
-| 9.5 | City ownership markers (`owner.svg`) | — | DONE | `setup_city_markers()` creates `Sprite2D(owner.svg)` at each `City` tile; coloured by team (red/blue/neutral); `_on_city_owner_changed` updates colour live; `World/CityMarkers` node created in code |
-| 9.6 | Fix `city_owner_changed` runtime panic and resize city ownership marker to 16x16 | Codex | DONE | Initial city ownership assignment now uses deferred `set_city_owner` calls to avoid reentrant `MainScene` mutable borrows; marker size is clamped to 16x16 and `owner.svg` width/height normalized |
+| ID  | Task                                                                             | Assignee | Status | Notes                                                                                                                                                                                                 |
+|-----|----------------------------------------------------------------------------------|----------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 9.1 | Fix ghost sprite when hero exits city                                            | —        | DONE   | `clear_hero_nodes` now calls `remove_child` before `queue_free` so stale nodes are detached immediately, preventing `_on_hero_moved` from finding them on the same frame                              |
+| 9.2 | BFS city ownership propagation                                                   | —        | DONE   | `set_city_owner` in `game_state.rs` now floods all connected `City`/`CityEntrance` tiles; returns changed coords; `move_hero` uses same flood logic                                                   |
+| 9.3 | `city_owner_changed(x,y,team)` signal                                            | —        | DONE   | Added to `GameManager`; emitted from `move_hero` handler and `set_city_owner #[func]`; connected in `MainScene::ready`                                                                                |
+| 9.4 | `get_city_center_coords()`                                                       | —        | DONE   | `#[func]` on `GameManager` returns all `City` (center-body, not entrance) tile coords                                                                                                                 |
+| 9.5 | City ownership markers (`owner.svg`)                                             | —        | DONE   | `setup_city_markers()` creates `Sprite2D(owner.svg)` at each `City` tile; coloured by team (red/blue/neutral); `_on_city_owner_changed` updates colour live; `World/CityMarkers` node created in code |
+| 9.6 | Fix `city_owner_changed` runtime panic and resize city ownership marker to 16x16 | Codex    | DONE   | Initial city ownership assignment now uses deferred `set_city_owner` calls to avoid reentrant `MainScene` mutable borrows; marker size is clamped to 16x16 and `owner.svg` width/height normalized    |
 
 ## Phase 10 — T-Deck Prototype
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 10.1 | Создать standalone Rust embedded-проект в `tdeck/` для LilyGO T-Deck с `cargo run` через `espflash` и стартовым экраном `weave of realms` на magenta-фоне | Codex | DONE | Изолирован от основного workspace; `cargo run` шьёт `esp32s3` через `espflash`, проверено на `/dev/cu.usbmodem2101`; wiring и display init опираются на `joshmarinacci/rust-tdeck-experiments` |
-| 10.2 | Экспортировать отдельные `bmp`-тайлы для `tdeck` из общего Godot tileset, заменив прозрачность на magenta и сохранив совместимость по размеру и содержимому | Codex | DONE | Созданы 14 отдельных `64x64` BMP-файлов в `tdeck/assets/tiles/`; источник: `godot/assets/tileset.png`; все прозрачные и полупрозрачные пиксели сплющены на `#FF00FF` |
-| 10.3 | Уменьшить экспортированные `tdeck`-тайлы до `32x32` пикселей, сохранив BMP-формат, magenta-фон и соответствие Godot tileset | Codex | DONE | Все 14 файлов в `tdeck/assets/tiles/` пересобраны напрямую из `godot/assets/tileset.png` в `32x32` BMP v3; имена и порядок тайлов сохранены |
-| 10.4 | Добавить в `tdeck` выбор `.tmx`-карты с SD, запуск по `Enter`, загрузку карты и отрисовку только видимой области, а также поддержку прямого старта с выбранной картой через аргументы/конфиг запуска | Codex | DONE | Boot screen → map select → map view; чтение `/maps/*.tmx` с SD через `embedded-sdmmc`, TMX CSV-парсер в `no_std`, compile-time env `TDECK_START_MAP`/`TDECK_VIEW_X`/`TDECK_VIEW_Y` вместо runtime argv |
-| 10.5 | Оптимизировать `tdeck`-рендер: не перерисовывать экран без изменений состояния, чтобы убрать постоянное мерцание | Codex | DONE | Главный цикл теперь рисует только при изменении `Screen`; idle loop больше не делает постоянный full-screen repaint |
-| 10.6 | Оптимизировать скролл карты в `tdeck`: при изменении viewport перерисовывать только реально изменившиеся клетки, учитывая одинаковые типы тайлов | Codex | DONE | Для `MapView` добавлен cache видимого окна (`gid` по экранным ячейкам); при pan перерисовываются только позиции, где тайл реально изменился, а header/footer обновляются отдельно |
+| ID   | Task                                                                                                                                                                                                 | Assignee | Status | Notes                                                                                                                                                                                                  |
+|------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 10.1 | Создать standalone Rust embedded-проект в `tdeck/` для LilyGO T-Deck с `cargo run` через `espflash` и стартовым экраном `weave of realms` на magenta-фоне                                            | Codex    | DONE   | Изолирован от основного workspace; `cargo run` шьёт `esp32s3` через `espflash`, проверено на `/dev/cu.usbmodem2101`; wiring и display init опираются на `joshmarinacci/rust-tdeck-experiments`         |
+| 10.2 | Экспортировать отдельные `bmp`-тайлы для `tdeck` из общего Godot tileset, заменив прозрачность на magenta и сохранив совместимость по размеру и содержимому                                          | Codex    | DONE   | Созданы 14 отдельных `64x64` BMP-файлов в `tdeck/assets/tiles/`; источник: `godot/assets/tileset.png`; все прозрачные и полупрозрачные пиксели сплющены на `#FF00FF`                                   |
+| 10.3 | Уменьшить экспортированные `tdeck`-тайлы до `32x32` пикселей, сохранив BMP-формат, magenta-фон и соответствие Godot tileset                                                                          | Codex    | DONE   | Все 14 файлов в `tdeck/assets/tiles/` пересобраны напрямую из `godot/assets/tileset.png` в `32x32` BMP v3; имена и порядок тайлов сохранены                                                            |
+| 10.4 | Добавить в `tdeck` выбор `.tmx`-карты с SD, запуск по `Enter`, загрузку карты и отрисовку только видимой области, а также поддержку прямого старта с выбранной картой через аргументы/конфиг запуска | Codex    | DONE   | Boot screen → map select → map view; чтение `/maps/*.tmx` с SD через `embedded-sdmmc`, TMX CSV-парсер в `no_std`, compile-time env `TDECK_START_MAP`/`TDECK_VIEW_X`/`TDECK_VIEW_Y` вместо runtime argv |
+| 10.5 | Оптимизировать `tdeck`-рендер: не перерисовывать экран без изменений состояния, чтобы убрать постоянное мерцание                                                                                     | Codex    | DONE   | Главный цикл теперь рисует только при изменении `Screen`; idle loop больше не делает постоянный full-screen repaint                                                                                    |
+| 10.6 | Оптимизировать скролл карты в `tdeck`: при изменении viewport перерисовывать только реально изменившиеся клетки, учитывая одинаковые типы тайлов                                                     | Codex    | DONE   | Для `MapView` добавлен cache видимого окна (`gid` по экранным ячейкам); при pan перерисовываются только позиции, где тайл реально изменился, а header/footer обновляются отдельно                      |
 
 ## Phase 11 — Map Export
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 11.1 | Сгенерировать карту текущими инструментами проекта, близкую к стартовой Godot-конфигурации, и сохранить TMX в `tmp/` | Codex | DONE | Использован `terrain.lua`, seed `default-seed`, размер 96×96 как в `MainScene`; итоговый TMX: `tmp/default-seed-terrain-96x96.tmx`, артефакты прогона: `tmp/gen-1775226082-961/` |
+| ID   | Task                                                                                                                 | Assignee | Status | Notes                                                                                                                                                                            |
+|------|----------------------------------------------------------------------------------------------------------------------|----------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 11.1 | Сгенерировать карту текущими инструментами проекта, близкую к стартовой Godot-конфигурации, и сохранить TMX в `tmp/` | Codex    | DONE   | Использован `terrain.lua`, seed `default-seed`, размер 96×96 как в `MainScene`; итоговый TMX: `tmp/default-seed-terrain-96x96.tmx`, артефакты прогона: `tmp/gen-1775226082-961/` |
 
 ## Phase 12 — T-Deck Integration Cleanup
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 12.1 | Интегрировать `tdeck` с `rpg-engine`, загрузкой карты и стартовой инициализацией игрока/команды, а также разнести экранную логику по отдельным файлам | Codex | DONE | `tdeck` теперь грузит TMX в `rpg_engine::GameMap`, создаёт стартовую команду `Team::red()` и героя на city spawn, поддерживает режимы pan/hero move; экранная логика вынесена в `app.rs`, `render.rs`, `storage.rs`, `session.rs`, `screens/*` |
-| 12.2 | Добавить в `tdeck` info-окно по кнопке `i` с зарядом батареи и использованием RAM, закрываемое по `Enter` или `q` | Codex | DONE | Overlay в `MapView`; RAM читается из `esp_alloc::HEAP.stats()`, батарея через ADC1 на `GPIO4` (`BOARD_BAT_ADC` у LilyGO T-Deck), `Enter`/`q` закрывают окно |
-| 12.3 | Исправить исчезновение info-overlay в `tdeck` при закрытии по `Enter`/`q` | Codex | DONE | В `RenderCache` добавлен учёт `overlay_visible`; при открытии/закрытии overlay делается полный redraw `MapView`, поэтому окно корректно пропадает |
+| ID   | Task                                                                                                                                                  | Assignee | Status | Notes                                                                                                                                                                                                                                          |
+|------|-------------------------------------------------------------------------------------------------------------------------------------------------------|----------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 12.1 | Интегрировать `tdeck` с `rpg-engine`, загрузкой карты и стартовой инициализацией игрока/команды, а также разнести экранную логику по отдельным файлам | Codex    | DONE   | `tdeck` теперь грузит TMX в `rpg_engine::GameMap`, создаёт стартовую команду `Team::red()` и героя на city spawn, поддерживает режимы pan/hero move; экранная логика вынесена в `app.rs`, `render.rs`, `storage.rs`, `session.rs`, `screens/*` |
+| 12.2 | Добавить в `tdeck` info-окно по кнопке `i` с зарядом батареи и использованием RAM, закрываемое по `Enter` или `q`                                     | Codex    | DONE   | Overlay в `MapView`; RAM читается из `esp_alloc::HEAP.stats()`, батарея через ADC1 на `GPIO4` (`BOARD_BAT_ADC` у LilyGO T-Deck), `Enter`/`q` закрывают окно                                                                                    |
+| 12.3 | Исправить исчезновение info-overlay в `tdeck` при закрытии по `Enter`/`q`                                                                             | Codex    | DONE   | В `RenderCache` добавлен учёт `overlay_visible`; при открытии/закрытии overlay делается полный redraw `MapView`, поэтому окно корректно пропадает                                                                                              |
 
 ## Phase 13 — Console Sixel Launcher
 
-| ID | Task | Assignee | Status | Notes |
-|----|------|----------|--------|-------|
-| 13.1 | Добавить хостовый консольный запуск через sixel с рендером карты через `embedded-graphics` | Codex | DONE | Отдельный standalone package `sixel-console/` по аналогии с `tdeck`; поддерживает `--save`, `--tmx` и генерацию по seed, рисует в framebuffer через `embedded-graphics` и кодирует sixel в stdout |
-| 13.2 | Подогнать `sixel-console` под все доступное место терминала при запуске | Codex | DONE | Размер viewport теперь по умолчанию берется из terminal size; `--max-width/--max-height` остались как manual override |
-| 13.3 | Зафиксировать размер клетки `64px` и добавить интерактивный цикл с выходом по `Ctrl+Q` | Codex | DONE | `sixel-console` теперь рендерит viewport фиксированными `64px` тайлами, держит процесс живым, слушает raw keyboard input через `crossterm` и завершает loop по `Ctrl+Q` |
-| 13.4 | Вынести общий embedded frontend-слой в `rpg-embedded` и подключить его в `tdeck` и `sixel-console` | Codex | DONE | Создан `crates/rpg-embedded` (`no_std + alloc`) с общими `InputEvent`, `GameSession`, `MapViewApp` и renderer для gameplay map-view; `tdeck` и `sixel-console` используют один и тот же control/render pipeline, а platform-specific storage/system/terminal I/O оставлены локально |
-| 13.5 | Убрать постоянное мерцание `sixel-console` и добавить splash screen перед входом в карту | Codex | DONE | В `sixel-console` добавлен state machine `Splash -> Map`, redraw теперь делается только по resize/вводу/смене состояния, а стартовый кадр показывает приветственный экран вместо немедленной карты |
-| 13.6 | Довести перенос логики из `tdeck`: вынести shared splash/input flow в `rpg-embedded` | Codex | DONE | В `rpg-embedded` добавлены shared `SplashScreen`, `ListScreen`, их input handling и renderer; `tdeck` переведен на общий splash/list app-layer, а локальными остались только storage/system/save-overlay детали |
-| 13.7 | Вынести save overlay state/render из `tdeck` в `rpg-embedded` | Codex | DONE | В `rpg-embedded` добавлены shared `SaveOverlay`, `SaveOverlayOutcome` и renderer overlay; `tdeck` оставляет только host actions `discover_saves`, `save_game`, `load_save` и интеграцию с map session |
-| 13.8 | Вынести info overlay state/render из `tdeck` в `rpg-embedded` | Codex | DONE | В `rpg-embedded` добавлены generic `InfoOverlay`, `InfoOverlayOutcome` и renderer modal-окна; `tdeck` теперь только конвертирует battery/RAM snapshot в строки через `to_info_overlay()` |
-| 13.9 | Вынести общий app-controller и screen flow целиком в `rpg-embedded`, чтобы `tdeck` и `sixel` использовали идентичные экраны начиная со splash | Codex | DONE | Добавлены shared `EmbeddedApp`, `AppScreen`, `MapViewScreen`, `AppHost`, screen-level renderer и единые тексты/переходы `Splash -> MapSelect/SaveSelect -> MapView`; `tdeck` и `sixel` сведены к thin host adapters вокруг storage/system/input |
-| 13.10 | Добавить standalone SDL2 launcher по аналогии с `tdeck` и `sixel-console`, использующий общий `rpg-embedded` app-layer | Codex | DONE | Добавлен standalone package `sdl2-console/` вне workspace; SDL2 launcher использует тот же `EmbeddedApp`/`AppHost`/renderer из `rpg-embedded`, а локально держит только filesystem host, SDL2 window/texture loop и keyboard events |
-| 13.11 | Добавить scale при выводе framebuffer в `sixel-console` и `sdl2-console` | Codex | DONE | В обоих standalone launchers добавлен platform-output scale `2x`: `sixel-console` масштабирует пиксели перед sixel encoding, `sdl2-console` — перед загрузкой RGB буфера в SDL2 texture; shared `rpg-embedded` renderer не менялся |
+| ID    | Task                                                                                                                                          | Assignee | Status | Notes                                                                                                                                                                                                                                                                               |
+|-------|-----------------------------------------------------------------------------------------------------------------------------------------------|----------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 13.1  | Добавить хостовый консольный запуск через sixel с рендером карты через `embedded-graphics`                                                    | Codex    | DONE   | Отдельный standalone package `sixel-console/` по аналогии с `tdeck`; поддерживает `--save`, `--tmx` и генерацию по seed, рисует в framebuffer через `embedded-graphics` и кодирует sixel в stdout                                                                                   |
+| 13.2  | Подогнать `sixel-console` под все доступное место терминала при запуске                                                                       | Codex    | DONE   | Размер viewport теперь по умолчанию берется из terminal size; `--max-width/--max-height` остались как manual override                                                                                                                                                               |
+| 13.3  | Зафиксировать размер клетки `64px` и добавить интерактивный цикл с выходом по `Ctrl+Q`                                                        | Codex    | DONE   | `sixel-console` теперь рендерит viewport фиксированными `64px` тайлами, держит процесс живым, слушает raw keyboard input через `crossterm` и завершает loop по `Ctrl+Q`                                                                                                             |
+| 13.4  | Вынести общий embedded frontend-слой в `rpg-embedded` и подключить его в `tdeck` и `sixel-console`                                            | Codex    | DONE   | Создан `crates/rpg-embedded` (`no_std + alloc`) с общими `InputEvent`, `GameSession`, `MapViewApp` и renderer для gameplay map-view; `tdeck` и `sixel-console` используют один и тот же control/render pipeline, а platform-specific storage/system/terminal I/O оставлены локально |
+| 13.5  | Убрать постоянное мерцание `sixel-console` и добавить splash screen перед входом в карту                                                      | Codex    | DONE   | В `sixel-console` добавлен state machine `Splash -> Map`, redraw теперь делается только по resize/вводу/смене состояния, а стартовый кадр показывает приветственный экран вместо немедленной карты                                                                                  |
+| 13.6  | Довести перенос логики из `tdeck`: вынести shared splash/input flow в `rpg-embedded`                                                          | Codex    | DONE   | В `rpg-embedded` добавлены shared `SplashScreen`, `ListScreen`, их input handling и renderer; `tdeck` переведен на общий splash/list app-layer, а локальными остались только storage/system/save-overlay детали                                                                     |
+| 13.7  | Вынести save overlay state/render из `tdeck` в `rpg-embedded`                                                                                 | Codex    | DONE   | В `rpg-embedded` добавлены shared `SaveOverlay`, `SaveOverlayOutcome` и renderer overlay; `tdeck` оставляет только host actions `discover_saves`, `save_game`, `load_save` и интеграцию с map session                                                                               |
+| 13.8  | Вынести info overlay state/render из `tdeck` в `rpg-embedded`                                                                                 | Codex    | DONE   | В `rpg-embedded` добавлены generic `InfoOverlay`, `InfoOverlayOutcome` и renderer modal-окна; `tdeck` теперь только конвертирует battery/RAM snapshot в строки через `to_info_overlay()`                                                                                            |
+| 13.9  | Вынести общий app-controller и screen flow целиком в `rpg-embedded`, чтобы `tdeck` и `sixel` использовали идентичные экраны начиная со splash | Codex    | DONE   | Добавлены shared `EmbeddedApp`, `AppScreen`, `MapViewScreen`, `AppHost`, screen-level renderer и единые тексты/переходы `Splash -> MapSelect/SaveSelect -> MapView`; `tdeck` и `sixel` сведены к thin host adapters вокруг storage/system/input                                     |
+| 13.10 | Добавить standalone SDL2 launcher по аналогии с `tdeck` и `sixel-console`, использующий общий `rpg-embedded` app-layer                        | Codex    | DONE   | Добавлен standalone package `sdl2-console/` вне workspace; SDL2 launcher использует тот же `EmbeddedApp`/`AppHost`/renderer из `rpg-embedded`, а локально держит только filesystem host, SDL2 window/texture loop и keyboard events                                                 |
+| 13.11 | Добавить scale при выводе framebuffer в `sixel-console` и `sdl2-console`                                                                      | Codex    | DONE   | В обоих standalone launchers добавлен platform-output scale `2x`: `sixel-console` масштабирует пиксели перед sixel encoding, `sdl2-console` — перед загрузкой RGB буфера в SDL2 texture; shared `rpg-embedded` renderer не менялся                                                  |

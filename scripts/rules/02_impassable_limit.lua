@@ -15,7 +15,7 @@ return function(map)
     local ratio = blocked / #map.tiles
     if ratio > 0.40 then
         return false, string.format(
-            "impassable terrain %.1f%% exceeds the 40%% limit", ratio * 100
+                "impassable terrain %.1f%% exceeds the 40%% limit", ratio * 100
         )
     end
 

@@ -24,11 +24,11 @@ local CHUNK_SIZE = 32
 local N = CHUNK_SIZE * CHUNK_SIZE
 
 local PROTECTED = {
-    city          = true,
+    city = true,
     city_entrance = true,
-    mountain      = true,
-    river         = true,
-    road          = true,
+    mountain = true,
+    river = true,
+    road = true,
 }
 
 local function idx(tx, ty)
@@ -36,7 +36,9 @@ local function idx(tx, ty)
 end
 
 local function try_place(result, tx, ty, kind)
-    if tx < 0 or tx >= CHUNK_SIZE or ty < 0 or ty >= CHUNK_SIZE then return end
+    if tx < 0 or tx >= CHUNK_SIZE or ty < 0 or ty >= CHUNK_SIZE then
+        return
+    end
     local i = idx(tx, ty)
     if not PROTECTED[result[i]] then
         result[i] = kind
@@ -46,9 +48,13 @@ end
 local function generate_chunk(rng, x, y, tiles)
     local result = {}
     if tiles ~= nil then
-        for i = 1, N do result[i] = tiles[i] end
+        for i = 1, N do
+            result[i] = tiles[i]
+        end
     else
-        for i = 1, N do result[i] = "meadow" end
+        for i = 1, N do
+            result[i] = "meadow"
+        end
     end
 
     local num_lakes = rng:random_range_u32(1, 4)   -- [1, 3]
@@ -78,9 +84,9 @@ local function generate_chunk(rng, x, y, tiles)
         -- ── Organic arms ─────────────────────────────────────────────────────
         local num_arms = rng:random_range_u32(2, 6)  -- [2, 5]
         for _ = 1, num_arms do
-            local angle  = rng:next_f64() * 2.0 * math.pi
+            local angle = rng:next_f64() * 2.0 * math.pi
             local arm_len = rng:random_range_u32(2, radius + 3)
-            local ax, ay  = cx + 0.0, cy + 0.0
+            local ax, ay = cx + 0.0, cy + 0.0
 
             for _ = 1, arm_len do
                 -- Drift along the arm direction with slight jitter

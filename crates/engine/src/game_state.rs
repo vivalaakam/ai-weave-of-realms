@@ -157,7 +157,7 @@ impl GameState {
     }
 
     /// Returns all player-controlled teams.
-    pub fn player_teams(&self) -> impl Iterator<Item = &Team> {
+    pub fn player_teams(&self) -> impl Iterator<Item=&Team> {
         self.teams.iter().filter(|(_, t)| t.is_player_controlled()).map(|(_, t)| t)
     }
 
@@ -550,8 +550,8 @@ impl GameState {
             self.teams.values().filter(|t| t.is_player_controlled()).map(|t| t.get_id()).collect();
         if !player_teams.is_empty()
             && player_teams.iter().all(|tid| {
-                self.heroes.values().filter(|h| h.team_id == *tid).all(|h| !h.is_alive())
-            })
+            self.heroes.values().filter(|h| h.team_id == *tid).all(|h| !h.is_alive())
+        })
         {
             return Some(GameOutcome::Defeat);
         }

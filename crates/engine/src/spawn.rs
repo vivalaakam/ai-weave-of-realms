@@ -75,8 +75,8 @@ pub fn find_enemy_spawn(map: &GameMap, player: MapCoord) -> Result<MapCoord, Spa
 
         match best {
             Some((_, best_distance, best_tie_break))
-                if distance < best_distance
-                    || (distance == best_distance && tie_break <= best_tie_break) => {}
+            if distance < best_distance
+                || (distance == best_distance && tie_break <= best_tie_break) => {}
             _ => best = Some((coord, distance, tie_break)),
         }
     });
@@ -159,7 +159,7 @@ fn find_best_tile(
 
         match best {
             Some((_, best_rank, best_distance))
-                if rank > best_rank || (rank == best_rank && center_distance >= best_distance) => {}
+            if rank > best_rank || (rank == best_rank && center_distance >= best_distance) => {}
             _ => best = Some((coord, rank, center_distance)),
         }
     });

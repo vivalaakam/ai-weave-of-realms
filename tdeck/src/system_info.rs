@@ -1,10 +1,10 @@
 //! Runtime system information for the T-Deck.
 
 use alloc::{format, string::ToString, vec};
-use esp_hal::Blocking;
-use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::analog::adc::AdcCalCurve;
+use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::peripherals::{ADC1, GPIO4};
+use esp_hal::Blocking;
 use game::info_overlay::InfoOverlay;
 
 const BATTERY_DIVIDER_RATIO: u32 = 2;

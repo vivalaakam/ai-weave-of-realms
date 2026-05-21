@@ -108,10 +108,10 @@ fn run() -> AppResult<()> {
                     needs_redraw = true;
                 }
                 Event::KeyDown { keycode: Some(Keycode::Q), keymod, repeat: false, .. }
-                    if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) =>
-                {
-                    break 'running
-                }
+                if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) =>
+                    {
+                        break 'running
+                    }
                 Event::KeyDown { keycode: Some(keycode), keymod, repeat: false, .. } => {
                     let input = map_key_event(keycode, keymod);
                     if app_state.handle_input(

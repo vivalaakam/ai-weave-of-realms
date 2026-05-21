@@ -23,11 +23,11 @@ local CHUNK_SIZE = 32
 
 -- Tiles that must not be overwritten by forest
 local PROTECTED = {
-    city          = true,
+    city = true,
     city_entrance = true,
-    water         = true,
-    mountain      = true,
-    river         = true,
+    water = true,
+    mountain = true,
+    river = true,
 }
 
 local function tile_index(lx, ly)

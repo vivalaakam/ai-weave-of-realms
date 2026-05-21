@@ -53,7 +53,7 @@ local function valid_natural_fill(map, chunk_x, chunk_y, side, pos, kind)
     end
 
     return edge_kind(map, chunk_x, chunk_y, side, left) == kind
-        and edge_kind(map, chunk_x, chunk_y, side, right) == kind
+            and edge_kind(map, chunk_x, chunk_y, side, right) == kind
 end
 
 return function(map)
@@ -65,17 +65,17 @@ return function(map)
 
                     if CORRIDOR[kind] and not is_anchor(pos) then
                         return false, string.format(
-                            "chunk edge tile '%s' at chunk (%d,%d) side %d pos %d violates anchor rule",
-                            kind, chunk_x / CHUNK_SIZE, chunk_y / CHUNK_SIZE, side, pos
+                                "chunk edge tile '%s' at chunk (%d,%d) side %d pos %d violates anchor rule",
+                                kind, chunk_x / CHUNK_SIZE, chunk_y / CHUNK_SIZE, side, pos
                         )
                     end
 
                     if NATURAL[kind] and not is_anchor(pos)
-                        and not valid_natural_fill(map, chunk_x, chunk_y, side, pos, kind)
+                            and not valid_natural_fill(map, chunk_x, chunk_y, side, pos, kind)
                     then
                         return false, string.format(
-                            "chunk edge tile '%s' at chunk (%d,%d) side %d pos %d must be part of an anchored continuous border segment",
-                            kind, chunk_x / CHUNK_SIZE, chunk_y / CHUNK_SIZE, side, pos
+                                "chunk edge tile '%s' at chunk (%d,%d) side %d pos %d must be part of an anchored continuous border segment",
+                                kind, chunk_x / CHUNK_SIZE, chunk_y / CHUNK_SIZE, side, pos
                         )
                     end
                 end

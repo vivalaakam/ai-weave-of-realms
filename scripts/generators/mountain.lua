@@ -24,10 +24,10 @@ local CHUNK_SIZE = 32
 
 -- Tiles that must not be overwritten by mountains
 local PROTECTED = {
-    city          = true,
+    city = true,
     city_entrance = true,
-    water         = true,
-    river         = true,
+    water = true,
+    river = true,
 }
 
 -- Tiles that mountains are allowed to overwrite
@@ -53,7 +53,9 @@ local function paint_segment(result, rng, x1, y1, x2, y2, half_width)
     local seg_dy = y2 - y1
     local seg_len = math.sqrt(seg_dx * seg_dx + seg_dy * seg_dy)
 
-    if seg_len < 0.001 then return end
+    if seg_len < 0.001 then
+        return
+    end
 
     for ty = min_y, max_y do
         for tx = min_x, max_x do
@@ -126,9 +128,9 @@ local function generate_chunk(rng, x, y, tiles)
         -- Paint along each segment of the polyline
         for i = 1, num_points - 1 do
             paint_segment(result, rng,
-                pts_x[i], pts_y[i],
-                pts_x[i + 1], pts_y[i + 1],
-                half_width)
+                    pts_x[i], pts_y[i],
+                    pts_x[i + 1], pts_y[i + 1],
+                    half_width)
         end
     end
 

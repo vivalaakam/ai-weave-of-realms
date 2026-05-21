@@ -25,11 +25,11 @@ local CHUNK_SIZE = 32
 local N = CHUNK_SIZE * CHUNK_SIZE
 
 local PROTECTED = {
-    city          = true,
+    city = true,
     city_entrance = true,
-    mountain      = true,
-    water         = true,
-    road          = true,
+    mountain = true,
+    water = true,
+    road = true,
 }
 
 local function idx(tx, ty)
@@ -40,16 +40,22 @@ end
 -- Keeps a margin of 3 from corners for cleaner entry/exit.
 local function edge_point(rng, edge)
     local pos = rng:random_range_u32(3, CHUNK_SIZE - 4)
-    if edge == 0 then return pos, 0
-    elseif edge == 1 then return CHUNK_SIZE - 1, pos
-    elseif edge == 2 then return pos, CHUNK_SIZE - 1
-    else             return 0, pos
+    if edge == 0 then
+        return pos, 0
+    elseif edge == 1 then
+        return CHUNK_SIZE - 1, pos
+    elseif edge == 2 then
+        return pos, CHUNK_SIZE - 1
+    else
+        return 0, pos
     end
 end
 
 --- Place a river tile at (tx, ty) if not protected.
 local function place(result, tx, ty)
-    if tx < 0 or tx >= CHUNK_SIZE or ty < 0 or ty >= CHUNK_SIZE then return end
+    if tx < 0 or tx >= CHUNK_SIZE or ty < 0 or ty >= CHUNK_SIZE then
+        return
+    end
     local i = idx(tx, ty)
     if not PROTECTED[result[i]] then
         result[i] = "river"
@@ -100,9 +106,13 @@ end
 local function generate_chunk(rng, x, y, tiles)
     local result = {}
     if tiles ~= nil then
-        for i = 1, N do result[i] = tiles[i] end
+        for i = 1, N do
+            result[i] = tiles[i]
+        end
     else
-        for i = 1, N do result[i] = "meadow" end
+        for i = 1, N do
+            result[i] = "meadow"
+        end
     end
 
     local num_rivers = rng:random_range_u32(1, 3)  -- [1, 2]
@@ -141,15 +151,27 @@ local function generate_chunk(rng, x, y, tiles)
 
             -- Stop when we reach the exit edge
             local done = false
-            if end_edge == 0 and cy <= 0 then done = true end
-            if end_edge == 2 and cy >= CHUNK_SIZE - 1 then done = true end
-            if end_edge == 1 and cx >= CHUNK_SIZE - 1 then done = true end
-            if end_edge == 3 and cx <= 0 then done = true end
-            if done then break end
+            if end_edge == 0 and cy <= 0 then
+                done = true
+            end
+            if end_edge == 2 and cy >= CHUNK_SIZE - 1 then
+                done = true
+            end
+            if end_edge == 1 and cx >= CHUNK_SIZE - 1 then
+                done = true
+            end
+            if end_edge == 3 and cx <= 0 then
+                done = true
+            end
+            if done then
+                break
+            end
 
             local dx = ex - cx
             local dy = ey - cy
-            if math.abs(dx) + math.abs(dy) == 0 then break end
+            if math.abs(dx) + math.abs(dy) == 0 then
+                break
+            end
 
             cx, cy = walk_step(result, cx, cy, ex, ey, rng)
         end

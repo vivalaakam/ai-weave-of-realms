@@ -167,7 +167,7 @@ mod tests {
         let map = flat_map(5, 1, Tiles::Meadow);
         let mut tiles = reachable_tiles(&map, MapCoord::new(0, 0), 3);
         tiles.sort_by_key(|c| c.x);
-        assert_eq!(tiles, vec![MapCoord::new(1, 0), MapCoord::new(2, 0), MapCoord::new(3, 0),]);
+        assert_eq!(tiles, vec![MapCoord::new(1, 0), MapCoord::new(2, 0), MapCoord::new(3, 0), ]);
     }
 
     #[test]

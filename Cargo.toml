@@ -7,10 +7,10 @@ members = [
     "crates/rpg-godot",
     "crates/rpg-tools",
     "crates/helpers",
-     "sixel-console",
-     "sdl2-console"
+    "sixel-console",
+    "sdl2-console"
 ]
-exclude = ["tdeck",]
+exclude = ["tdeck", ]
 resolver = "2"
 
 [workspace.dependencies]
@@ -22,10 +22,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 # Hashing / PRNG
-sha3 = "0.10"
+sha3 = "0.12"
 
 # Lua scripting
-mlua = { version = "0.10", features = ["lua54", "vendored"] }
+mlua = { version = "0.11", features = ["lua54", "vendored"] }
 
 # TMX / XML
 quick-xml = { version = "0.37", features = ["serialize"] }
@@ -37,4 +37,4 @@ serde_json = "1"
 # Godot
 godot = { git = "https://github.com/godot-rust/gdext", branch = "master" }
 
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }

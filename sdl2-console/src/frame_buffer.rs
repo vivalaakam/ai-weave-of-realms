@@ -50,7 +50,7 @@ impl DrawTarget for Framebuffer {
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
-        I: IntoIterator<Item = Pixel<Self::Color>>,
+        I: IntoIterator<Item=Pixel<Self::Color>>,
     {
         for Pixel(point, color) in pixels {
             if point.x < 0

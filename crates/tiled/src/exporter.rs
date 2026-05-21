@@ -32,22 +32,22 @@ pub fn export_tmx(map: &GameMap, tileset_source: &str) -> String {
 
     format!(
         concat!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
-            "<map version=\"1.10\" tiledversion=\"1.11.0\" orientation=\"staggered\" ",
-            "renderorder=\"right-down\" width=\"{width}\" height=\"{height}\" ",
-            "tilewidth=\"{tw}\" tileheight=\"{th}\" infinite=\"0\" ",
-            "staggeraxis=\"x\" staggerindex=\"odd\" nextlayerid=\"3\" nextobjectid=\"{next_object_id}\">\n",
-            "  <properties>\n",
-            "    <property name=\"seed\" type=\"string\" value=\"{seed}\"/>\n",
-            "  </properties>\n",
-            "  <tileset firstgid=\"1\" source=\"{tileset}\"/>\n",
-            "  <layer id=\"1\" name=\"Terrain\" width=\"{width}\" height=\"{height}\">\n",
-            "    <data encoding=\"csv\">\n",
-            "{csv}\n",
-            "    </data>\n",
-            "  </layer>\n",
-            "{spawn_layer}",
-            "</map>\n"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+        "<map version=\"1.10\" tiledversion=\"1.11.0\" orientation=\"staggered\" ",
+        "renderorder=\"right-down\" width=\"{width}\" height=\"{height}\" ",
+        "tilewidth=\"{tw}\" tileheight=\"{th}\" infinite=\"0\" ",
+        "staggeraxis=\"x\" staggerindex=\"odd\" nextlayerid=\"3\" nextobjectid=\"{next_object_id}\">\n",
+        "  <properties>\n",
+        "    <property name=\"seed\" type=\"string\" value=\"{seed}\"/>\n",
+        "  </properties>\n",
+        "  <tileset firstgid=\"1\" source=\"{tileset}\"/>\n",
+        "  <layer id=\"1\" name=\"Terrain\" width=\"{width}\" height=\"{height}\">\n",
+        "    <data encoding=\"csv\">\n",
+        "{csv}\n",
+        "    </data>\n",
+        "  </layer>\n",
+        "{spawn_layer}",
+        "</map>\n"
         ),
         width = map.tile_width(),
         height = map.tile_height(),
@@ -119,13 +119,13 @@ fn spawn_object_xml(id: u32, coord: &MapCoord, kind: &str, name: &str) -> String
     let (x, y) = spawn_object_point(coord.x, coord.y);
     format!(
         concat!(
-            "    <object id=\"{id}\" name=\"{name}\" type=\"{kind}\" x=\"{x}\" y=\"{y}\">\n",
-            "      <properties>\n",
-            "        <property name=\"tile_x\" type=\"int\" value=\"{tile_x}\"/>\n",
-            "        <property name=\"tile_y\" type=\"int\" value=\"{tile_y}\"/>\n",
-            "      </properties>\n",
-            "      <point/>\n",
-            "    </object>\n"
+        "    <object id=\"{id}\" name=\"{name}\" type=\"{kind}\" x=\"{x}\" y=\"{y}\">\n",
+        "      <properties>\n",
+        "        <property name=\"tile_x\" type=\"int\" value=\"{tile_x}\"/>\n",
+        "        <property name=\"tile_y\" type=\"int\" value=\"{tile_y}\"/>\n",
+        "      </properties>\n",
+        "      <point/>\n",
+        "    </object>\n"
         ),
         id = id,
         name = name,

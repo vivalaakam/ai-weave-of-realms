@@ -30,9 +30,9 @@ pub fn flood_city(map: &GameMap, start: MapCoord) -> Vec<MapCoord> {
             if let Some(neighbor) = dir.apply(coord, w, h) {
                 if !visited.contains(&neighbor)
                     && map
-                        .get_tile(neighbor)
-                        .map(|t| matches!(t.kind, Tiles::City | Tiles::CityEntrance))
-                        .unwrap_or(false)
+                    .get_tile(neighbor)
+                    .map(|t| matches!(t.kind, Tiles::City | Tiles::CityEntrance))
+                    .unwrap_or(false)
                 {
                     visited.insert(neighbor);
                     queue.push_back(neighbor);

@@ -269,7 +269,7 @@ fn mask_pixel(mask: &[u8], x: usize, y: usize) -> bool {
 
 fn draw_grass_sprite<D, C>(display: &mut D, top_left: Point, mask: &[u8], color: C)
 where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let mut pixels = vec![];
@@ -511,7 +511,7 @@ pub fn draw_app_screen<D, C>(
     list_rows: usize,
     save_rows: usize,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     match screen {
@@ -577,7 +577,7 @@ fn draw_app_map_view<D, C>(
     theme: AppTheme<C>,
     save_rows: usize,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let overlay_visible = map_view.info_overlay.is_some()
@@ -631,7 +631,7 @@ pub fn draw_splash_screen<D, C>(
     footer: &str,
     theme: SplashTheme<C>,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     halt_on_error(display.clear(theme.background));
@@ -650,7 +650,7 @@ pub fn draw_splash_screen<D, C>(
             title_style,
             embedded_graphics::text::Alignment::Center,
         )
-        .draw(display),
+            .draw(display),
     );
 
     let menu_top = center_y + 2;
@@ -664,7 +664,7 @@ pub fn draw_splash_screen<D, C>(
                 body_style,
                 embedded_graphics::text::Alignment::Center,
             )
-            .draw(display),
+                .draw(display),
         );
     }
 
@@ -675,7 +675,7 @@ pub fn draw_splash_screen<D, C>(
             body_style,
             embedded_graphics::text::Alignment::Center,
         )
-        .draw(display),
+            .draw(display),
     );
 
     if let Some(status_text) = splash.status.as_deref() {
@@ -686,7 +686,7 @@ pub fn draw_splash_screen<D, C>(
                 body_style,
                 embedded_graphics::text::Alignment::Center,
             )
-            .draw(display),
+                .draw(display),
         );
     }
 }
@@ -710,7 +710,7 @@ pub fn draw_list_screen<D, C>(
     visible_rows: usize,
     theme: ListTheme<C>,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     halt_on_error(display.clear(theme.background));
@@ -766,7 +766,7 @@ pub fn draw_save_overlay<D, C>(
     theme: SaveOverlayTheme<C>,
     visible_rows: usize,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let box_width: u32 = 204;
@@ -802,8 +802,8 @@ pub fn draw_save_overlay<D, C>(
                             Point::new(origin_x + 4, y - 9),
                             Size::new(box_width - 8, 12),
                         )
-                        .into_styled(selected_style)
-                        .draw(display),
+                            .into_styled(selected_style)
+                            .draw(display),
                     );
                 }
                 let prefix = if idx == *selected { ">" } else { " " };
@@ -818,7 +818,7 @@ pub fn draw_save_overlay<D, C>(
                     Point::new(origin_x + 8, origin_y + 102),
                     text_style,
                 )
-                .draw(display),
+                    .draw(display),
             );
             if let Some(status) = status.as_deref() {
                 halt_on_error(
@@ -843,7 +843,7 @@ pub fn draw_save_overlay<D, C>(
                     Point::new(origin_x + 8, origin_y + 102),
                     text_style,
                 )
-                .draw(display),
+                    .draw(display),
             );
             if let Some(status) = status.as_deref() {
                 halt_on_error(
@@ -866,8 +866,8 @@ pub fn draw_save_overlay<D, C>(
                             Point::new(origin_x + 4, y - 9),
                             Size::new(box_width - 8, 12),
                         )
-                        .into_styled(selected_style)
-                        .draw(display),
+                            .into_styled(selected_style)
+                            .draw(display),
                     );
                 }
                 let prefix = if entry_index == list.selected { ">" } else { " " };
@@ -882,7 +882,7 @@ pub fn draw_save_overlay<D, C>(
                     Point::new(origin_x + 8, origin_y + 102),
                     text_style,
                 )
-                .draw(display),
+                    .draw(display),
             );
             if let Some(status) = list.status.as_deref() {
                 halt_on_error(
@@ -907,7 +907,7 @@ pub fn draw_info_overlay<D, C>(
     overlay: &InfoOverlay,
     theme: InfoOverlayTheme<C>,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let box_width: u32 = 188;
@@ -956,7 +956,7 @@ pub fn draw_end_turn_overlay<D, C>(
     overlay: &EndTurnOverlay,
     theme: EndTurnOverlayTheme<C>,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let box_width: u32 = 180;
@@ -1004,7 +1004,7 @@ pub fn draw_end_turn_overlay<D, C>(
             Point::new(origin_x + 8, origin_y + 66),
             text_style,
         )
-        .draw(display),
+            .draw(display),
     );
 }
 
@@ -1025,7 +1025,7 @@ pub fn draw_map_view<D, C>(
     config: RenderConfig,
     theme: MapViewTheme<C>,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let text_style = MonoTextStyle::new(&FONT_6X10, theme.text);
@@ -1125,7 +1125,7 @@ fn draw_cell<D, C>(
     mountain_masks: &mut Vec<Option<WaterMask>>,
     theme: MapViewTheme<C>,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let map = &map_view.session().state().map;
@@ -1213,7 +1213,7 @@ fn draw_water_cell<D, C>(
     water_masks: &mut Vec<Option<WaterMask>>,
     theme: MapViewTheme<C>,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let bits = water_neighbor_bits(map, coord);
@@ -1229,7 +1229,7 @@ fn draw_mountain_cell<D, C>(
     mountain_masks: &mut Vec<Option<WaterMask>>,
     theme: MapViewTheme<C>,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let bits = mountain_neighbor_bits(map, coord);
@@ -1244,7 +1244,7 @@ fn draw_hero_marker<D, C>(
     top_left: Point,
     theme: MapViewTheme<C>,
 ) where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     let color = if hero_id == selected_hero_id { theme.selected_hero } else { theme.hero };
@@ -1276,7 +1276,7 @@ fn cell_signature(map_view: &MapViewApp, coord: MapCoord) -> u32 {
 
 fn clear_band<D, C>(display: &mut D, rect: Rectangle, color: C)
 where
-    D: DrawTarget<Color = C>,
+    D: DrawTarget<Color=C>,
     C: PixelColor + Copy,
 {
     halt_on_error(rect.into_styled(PrimitiveStyle::with_fill(color)).draw(display));

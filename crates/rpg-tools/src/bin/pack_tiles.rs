@@ -156,7 +156,7 @@ fn process_png(
             "image {}×{} is smaller than one tile ({}×{})",
             img_w, img_h, tile_w, tile_h
         )
-        .into());
+            .into());
     }
 
     let mut tiles = Vec::with_capacity(cols * rows);
