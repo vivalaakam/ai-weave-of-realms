@@ -5,7 +5,6 @@ use alloc::{format, vec::Vec};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
-use crate::game_map_error::GameMapError;
 use crate::game_state::GameState;
 use crate::hero::Hero;
 use crate::map::tile::Tile;
@@ -120,7 +119,7 @@ impl GameMap {
         Ok(Self { width, height, tiles, enemy_spawns: Vec::new(), chest_spawns: Vec::new(), seed })
     }
 
-    pub fn default_state(&self, seed: &str) -> Result<GameState, GameMapError> {
+    pub fn default_state(&self, seed: &str) -> Result<GameState, Error> {
         let spawns = spawn::find_spawn_positions(self)?;
         let map_width = self.tile_width();
         let mut state = GameState::new(self.clone(), seed);

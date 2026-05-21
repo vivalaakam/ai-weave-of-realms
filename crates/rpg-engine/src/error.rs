@@ -1,7 +1,6 @@
 //! Error types for the rpg-engine crate.
 
-use crate::game_map_error::GameMapError;
-use crate::hero::HeroId;
+use crate::hero::{HeroId, TeamId};
 use crate::spawn::SpawnError;
 use alloc::string::String;
 
@@ -50,8 +49,15 @@ pub enum Error {
     /// Save/load serialization failed.
     #[error("save error: {0}")]
     Save(String),
+    /// There is no active team in the current state.
+    #[error("no active team")]
+    NoActiveTeam,
+    /// Rotating to the next active team failed unexpectedly.
+    #[error("next active team does not exist")]
+    NextActiveTeam,
+    /// The active team id does not correspond to a registered team.
+    #[error("active team {0} does not exist")]
+    ActiveTeamNotFound(TeamId),
     #[error("spawn error: {0}")]
     SpawnError(#[from] SpawnError),
-    #[error("game map error: {0}")]
-    GameMapError(#[from] GameMapError),
 }

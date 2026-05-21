@@ -48,7 +48,6 @@ const FOREST_TILE_COUNT: usize = FOREST_INDICES.len();
 const WATER_BASE: usize = 1078;
 const WATER_FULL: usize = WATER_BASE; // tile 0: full water rectangle
 const WATER_SHORE_LL: usize = WATER_BASE + 1; // tile 1: shore, lower-left half of W edge
-const WATER_SHORE_UL: usize = WATER_BASE + 2; // tile 2: shore, upper-left half of W edge
 const WATER_CORNER_OUTER: usize = WATER_BASE + 3; // tile 3: outer corner, upper-left
 const WATER_CORNER_INNER: usize = WATER_BASE + 4; // tile 4: inner corner, upper-left
 
@@ -56,7 +55,6 @@ const WATER_CORNER_INNER: usize = WATER_BASE + 4; // tile 4: inner corner, upper
 const MOUNTAIN_BASE: usize = 1083;
 const MOUNTAIN_FULL: usize = MOUNTAIN_BASE;
 const MOUNTAIN_SHORE_LL: usize = MOUNTAIN_BASE + 1;
-const MOUNTAIN_SHORE_UL: usize = MOUNTAIN_BASE + 2;
 const MOUNTAIN_CORNER_OUTER: usize = MOUNTAIN_BASE + 3;
 const MOUNTAIN_CORNER_INNER: usize = MOUNTAIN_BASE + 4;
 
@@ -115,223 +113,123 @@ fn and_mask(mut a: WaterMask, b: &WaterMask) -> WaterMask {
 
 // Neighbor bits: bit0=N, bit1=NE, bit2=E, bit3=SE, bit4=S, bit5=SW, bit6=W, bit7=NW
 // 1 = neighbor is water, 0 = neighbor is land or out-of-bounds
-fn water_neighbor_bits(map: &rpg_engine::map::game_map::GameMap, coord: MapCoord) -> u8 {
-    let is_water = |cx: i32, cy: i32| -> bool {
+/// Computes 8-neighbor bitmask for terrain autotiling.
+/// Bits (0..7) = N, NE, E, SE, S, SW, W, NW; bit=1 means neighbor matches `target`.
+fn terrain_neighbor_bits(
+    map: &rpg_engine::map::game_map::GameMap,
+    coord: MapCoord,
+    target: rpg_engine::map::tile::Tiles,
+) -> u8 {
+    let matcher = |cx: i32, cy: i32| -> bool {
         if cx < 0 || cy < 0 {
             return false;
         }
         let c = MapCoord::new(cx as u32, cy as u32);
-        map.get_tile(c).is_ok_and(|t| matches!(t.kind, Tiles::Water))
+        map.get_tile(c).is_ok_and(|t| t.kind == target)
     };
     let x = coord.x as i32;
     let y = coord.y as i32;
-    let n = is_water(x, y - 1) as u8;
-    let ne = is_water(x + 1, y - 1) as u8;
-    let e = is_water(x + 1, y) as u8;
-    let se = is_water(x + 1, y + 1) as u8;
-    let s = is_water(x, y + 1) as u8;
-    let sw = is_water(x - 1, y + 1) as u8;
-    let w = is_water(x - 1, y) as u8;
-    let nw = is_water(x - 1, y - 1) as u8;
+    let n = matcher(x, y - 1) as u8;
+    let ne = matcher(x + 1, y - 1) as u8;
+    let e = matcher(x + 1, y) as u8;
+    let se = matcher(x + 1, y + 1) as u8;
+    let s = matcher(x, y + 1) as u8;
+    let sw = matcher(x - 1, y + 1) as u8;
+    let w = matcher(x - 1, y) as u8;
+    let nw = matcher(x - 1, y - 1) as u8;
     n | (ne << 1) | (e << 2) | (se << 3) | (s << 4) | (sw << 5) | (w << 6) | (nw << 7)
+}
+
+/// Autotile composite mask: `bits` describes neighbors matching the terrain.
+/// `land()` returns true when the neighbor does *not* match (== land).
+fn compute_terrain_composite(
+    bits: u8,
+    full_tile: usize,
+    shore_ll: usize,
+    corner_outer: usize,
+    corner_inner: usize,
+) -> WaterMask {
+    let land = |bit: u8| (bits & bit) == 0;
+    let n = land(0x01);
+    let ne = land(0x02);
+    let e = land(0x04);
+    let se = land(0x08);
+    let s = land(0x10);
+    let sw = land(0x20);
+    let w = land(0x40);
+    let nw = land(0x80);
+
+    let ll = get_tile_mask_arr(shore_ll);
+    let ul = get_tile_mask_arr(shore_ll + 1);
+    let co = get_tile_mask_arr(corner_outer);
+    let ci = get_tile_mask_arr(corner_inner);
+    let ll90 = rotate_cw90(&ll);
+    let ll180 = rotate_cw90(&ll90);
+    let ll270 = rotate_cw90(&ll180);
+    let ul90 = rotate_cw90(&ul);
+    let ul180 = rotate_cw90(&ul90);
+    let ul270 = rotate_cw90(&ul180);
+    let co90 = rotate_cw90(&co);
+    let co180 = rotate_cw90(&co90);
+    let co270 = rotate_cw90(&co180);
+    let ci90 = rotate_cw90(&ci);
+    let ci180 = rotate_cw90(&ci90);
+    let ci270 = rotate_cw90(&ci180);
+
+    let mut mask = get_tile_mask_arr(full_tile);
+
+    // Edge half-pieces
+    if w && !n { mask = and_mask(mask, &ul); }
+    if w && !s { mask = and_mask(mask, &ll); }
+    if n && !w { mask = and_mask(mask, &ll90); }
+    if n && !e { mask = and_mask(mask, &ul90); }
+    if e && !n { mask = and_mask(mask, &ll180); }
+    if e && !s { mask = and_mask(mask, &ul180); }
+    if s && !w { mask = and_mask(mask, &ul270); }
+    if s && !e { mask = and_mask(mask, &ll270); }
+
+    // Outer corners
+    if w && n { mask = and_mask(mask, &co); }
+    if n && e { mask = and_mask(mask, &co90); }
+    if e && s { mask = and_mask(mask, &co180); }
+    if s && w { mask = and_mask(mask, &co270); }
+
+    // Inner corners
+    if !w && !n && nw { mask = and_mask(mask, &ci); }
+    if !n && !e && ne { mask = and_mask(mask, &ci90); }
+    if !e && !s && se { mask = and_mask(mask, &ci180); }
+    if !s && !w && sw { mask = and_mask(mask, &ci270); }
+
+    mask
+}
+
+fn water_neighbor_bits(map: &rpg_engine::map::game_map::GameMap, coord: MapCoord) -> u8 {
+    terrain_neighbor_bits(map, coord, Tiles::Water)
 }
 
 fn compute_water_composite(bits: u8) -> WaterMask {
-    let land = |bit: u8| (bits & bit) == 0;
-    let n = land(0x01);
-    let ne = land(0x02);
-    let e = land(0x04);
-    let se = land(0x08);
-    let s = land(0x10);
-    let sw = land(0x20);
-    let w = land(0x40);
-    let nw = land(0x80);
-
-    let ll = get_tile_mask_arr(WATER_SHORE_LL);
-    let ul = get_tile_mask_arr(WATER_SHORE_UL);
-    let co = get_tile_mask_arr(WATER_CORNER_OUTER);
-    let ci = get_tile_mask_arr(WATER_CORNER_INNER);
-    let ll90 = rotate_cw90(&ll);
-    let ll180 = rotate_cw90(&ll90);
-    let ll270 = rotate_cw90(&ll180);
-    let ul90 = rotate_cw90(&ul);
-    let ul180 = rotate_cw90(&ul90);
-    let ul270 = rotate_cw90(&ul180);
-    let co90 = rotate_cw90(&co);
-    let co180 = rotate_cw90(&co90);
-    let co270 = rotate_cw90(&co180);
-    let ci90 = rotate_cw90(&ci);
-    let ci180 = rotate_cw90(&ci90);
-    let ci270 = rotate_cw90(&ci180);
-
-    let mut mask = get_tile_mask_arr(WATER_FULL);
-
-    // Edge half-pieces: each half is skipped when replaced by an adjacent outer corner.
-    // W edge
-    if w && !n {
-        mask = and_mask(mask, &ul);
-    } // W upper half
-    if w && !s {
-        mask = and_mask(mask, &ll);
-    } // W lower half
-      // N edge
-    if n && !w {
-        mask = and_mask(mask, &ll90);
-    } // N left half
-    if n && !e {
-        mask = and_mask(mask, &ul90);
-    } // N right half
-      // E edge
-    if e && !n {
-        mask = and_mask(mask, &ll180);
-    } // E upper half
-    if e && !s {
-        mask = and_mask(mask, &ul180);
-    } // E lower half
-      // S edge
-    if s && !w {
-        mask = and_mask(mask, &ul270);
-    } // S left half
-    if s && !e {
-        mask = and_mask(mask, &ll270);
-    } // S right half
-
-    // Outer corners (two adjacent land edges meet)
-    if w && n {
-        mask = and_mask(mask, &co);
-    } // NW outer
-    if n && e {
-        mask = and_mask(mask, &co90);
-    } // NE outer
-    if e && s {
-        mask = and_mask(mask, &co180);
-    } // SE outer
-    if s && w {
-        mask = and_mask(mask, &co270);
-    } // SW outer
-
-    // Inner corners (diagonal land, both orthogonal neighbors are water)
-    if !w && !n && nw {
-        mask = and_mask(mask, &ci);
-    } // NW inner
-    if !n && !e && ne {
-        mask = and_mask(mask, &ci90);
-    } // NE inner
-    if !e && !s && se {
-        mask = and_mask(mask, &ci180);
-    } // SE inner
-    if !s && !w && sw {
-        mask = and_mask(mask, &ci270);
-    } // SW inner
-
-    mask
+    compute_terrain_composite(
+        bits,
+        WATER_FULL,
+        WATER_SHORE_LL,
+        WATER_CORNER_OUTER,
+        WATER_CORNER_INNER,
+    )
 }
 
 fn mountain_neighbor_bits(map: &rpg_engine::map::game_map::GameMap, coord: MapCoord) -> u8 {
-    let is_mountain = |cx: i32, cy: i32| -> bool {
-        if cx < 0 || cy < 0 {
-            return false;
-        }
-        let c = MapCoord::new(cx as u32, cy as u32);
-        map.get_tile(c).is_ok_and(|t| matches!(t.kind, Tiles::Mountain))
-    };
-    let x = coord.x as i32;
-    let y = coord.y as i32;
-    let n = is_mountain(x, y - 1) as u8;
-    let ne = is_mountain(x + 1, y - 1) as u8;
-    let e = is_mountain(x + 1, y) as u8;
-    let se = is_mountain(x + 1, y + 1) as u8;
-    let s = is_mountain(x, y + 1) as u8;
-    let sw = is_mountain(x - 1, y + 1) as u8;
-    let w = is_mountain(x - 1, y) as u8;
-    let nw = is_mountain(x - 1, y - 1) as u8;
-    n | (ne << 1) | (e << 2) | (se << 3) | (s << 4) | (sw << 5) | (w << 6) | (nw << 7)
+    terrain_neighbor_bits(map, coord, Tiles::Mountain)
 }
 
 fn compute_mountain_composite(bits: u8) -> WaterMask {
-    let land = |bit: u8| (bits & bit) == 0;
-    let n = land(0x01);
-    let ne = land(0x02);
-    let e = land(0x04);
-    let se = land(0x08);
-    let s = land(0x10);
-    let sw = land(0x20);
-    let w = land(0x40);
-    let nw = land(0x80);
-
-    let ll = get_tile_mask_arr(MOUNTAIN_SHORE_LL);
-    let ul = get_tile_mask_arr(MOUNTAIN_SHORE_UL);
-    let co = get_tile_mask_arr(MOUNTAIN_CORNER_OUTER);
-    let ci = get_tile_mask_arr(MOUNTAIN_CORNER_INNER);
-    let ll90 = rotate_cw90(&ll);
-    let ll180 = rotate_cw90(&ll90);
-    let ll270 = rotate_cw90(&ll180);
-    let ul90 = rotate_cw90(&ul);
-    let ul180 = rotate_cw90(&ul90);
-    let ul270 = rotate_cw90(&ul180);
-    let co90 = rotate_cw90(&co);
-    let co180 = rotate_cw90(&co90);
-    let co270 = rotate_cw90(&co180);
-    let ci90 = rotate_cw90(&ci);
-    let ci180 = rotate_cw90(&ci90);
-    let ci270 = rotate_cw90(&ci180);
-
-    let mut mask = get_tile_mask_arr(MOUNTAIN_FULL);
-
-    if w && !n {
-        mask = and_mask(mask, &ul);
-    }
-    if w && !s {
-        mask = and_mask(mask, &ll);
-    }
-    if n && !w {
-        mask = and_mask(mask, &ll90);
-    }
-    if n && !e {
-        mask = and_mask(mask, &ul90);
-    }
-    if e && !n {
-        mask = and_mask(mask, &ll180);
-    }
-    if e && !s {
-        mask = and_mask(mask, &ul180);
-    }
-    if s && !w {
-        mask = and_mask(mask, &ul270);
-    }
-    if s && !e {
-        mask = and_mask(mask, &ll270);
-    }
-
-    if w && n {
-        mask = and_mask(mask, &co);
-    }
-    if n && e {
-        mask = and_mask(mask, &co90);
-    }
-    if e && s {
-        mask = and_mask(mask, &co180);
-    }
-    if s && w {
-        mask = and_mask(mask, &co270);
-    }
-
-    if !w && !n && nw {
-        mask = and_mask(mask, &ci);
-    }
-    if !n && !e && ne {
-        mask = and_mask(mask, &ci90);
-    }
-    if !e && !s && se {
-        mask = and_mask(mask, &ci180);
-    }
-    if !s && !w && sw {
-        mask = and_mask(mask, &ci270);
-    }
-
-    mask
+    compute_terrain_composite(
+        bits,
+        MOUNTAIN_FULL,
+        MOUNTAIN_SHORE_LL,
+        MOUNTAIN_CORNER_OUTER,
+        MOUNTAIN_CORNER_INNER,
+    )
 }
-
 fn mask_pixel(mask: &[u8], x: usize, y: usize) -> bool {
     let bit = y * TILESET_TILE_W + x;
     (mask[bit / 8] >> (7 - bit % 8)) & 1 != 0
