@@ -26,9 +26,9 @@ pub enum Tiles {
     Mountain,
     /// Deep water. Impassable (unless crossing a bridge).
     Water,
-    /// City tile. Passable; special game object.
+    /// City tile. Impassable (must use CityEntrance to enter).
     City,
-    /// City entrance tile. Passable; marks city entry point.
+    /// City entrance tile. Passable; marks city entry point (cost 1).
     CityEntrance,
     /// Paved road. Passable, −1 movement cost (minimum 1).
     Road,
@@ -93,7 +93,7 @@ impl Tiles {
 
     /// Returns `true` if a unit can enter this tile without special equipment.
     pub fn is_passable(self) -> bool {
-        !matches!(self, Tiles::Mountain | Tiles::Water | Tiles::River)
+        !matches!(self, Tiles::Mountain | Tiles::City)
     }
 
     /// Returns `true` if a building can be constructed on this tile.
@@ -115,6 +115,7 @@ impl Tiles {
         match self {
             Tiles::Road => -1,
             Tiles::Forest => 1,
+            Tiles::Water | Tiles::River => 3,
             _ => 0,
         }
     }
@@ -330,9 +331,10 @@ mod tests {
         assert!(Tiles::Meadow.is_passable());
         assert!(Tiles::Road.is_passable());
         assert!(Tiles::Bridge.is_passable());
-        assert!(!Tiles::Water.is_passable());
-        assert!(!Tiles::Mountain.is_passable());
-        assert!(!Tiles::River.is_passable());
+        assert!(Tiles::Water.is_passable());   // passable with penalty
+        assert!(Tiles::River.is_passable());   // passable with penalty
+        assert!(!Tiles::City.is_passable());    // impassable
+        assert!(!Tiles::Mountain.is_passable()); // impassable
     }
 
     #[test]

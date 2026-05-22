@@ -73,7 +73,11 @@ impl SplashScreen {
             | InputEvent::PanUp
             | InputEvent::PanDown
             | InputEvent::PanLeft
-            | InputEvent::PanRight => SplashOutcome::NoChange,
+            | InputEvent::PanRight
+            | InputEvent::CursorUp
+            | InputEvent::CursorDown
+            | InputEvent::CursorLeft
+            | InputEvent::CursorRight => SplashOutcome::NoChange,
         }
     }
 }

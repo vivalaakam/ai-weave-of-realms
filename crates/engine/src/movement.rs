@@ -8,7 +8,9 @@
 //! | Meadow   | 1    |
 //! | Forest   | 2    |
 //! | Road     | 1    |
-//! | Impassable (water, mountain, river) | blocked |
+//! | Water    | 4    |
+//! | River    | 4    |
+//! | Impassable (mountain, city) | blocked |
 //! | All others | 1  |
 //!
 //! Movement is 4-directional (N/S/E/W).
@@ -181,11 +183,21 @@ mod tests {
     }
 
     #[test]
-    fn water_tile_is_blocked() {
+    fn water_tile_is_passable_with_penalty() {
         let map = mixed_map();
+        // Water at x=3 costs 4, x=4 (meadow) costs 1 — total 5 through water.
         let reachable = reachable_tiles(&map, MapCoord::new(0, 0), 10);
-        assert!(!reachable.contains(&MapCoord::new(3, 0)));
-        assert!(!reachable.contains(&MapCoord::new(4, 0)));
+        assert!(reachable.contains(&MapCoord::new(3, 0)));
+        assert!(reachable.contains(&MapCoord::new(4, 0)));
+        // With budget 3 water is still reachable via road (cost 1) + forest (2)
+        // Actually from x=0 cost 0:
+        //   x=1 road cost 1
+        //   x=2 forest cost 1+1=2
+        //   x=3 water cost 2+3=5 (too much)
+        // So with budget 3: x=1(1), x=2(2). x=3 needs budget >=5.
+        let reachable_small = reachable_tiles(&map, MapCoord::new(0, 0), 3);
+        assert!(!reachable_small.contains(&MapCoord::new(3, 0)));
+        assert!(!reachable_small.contains(&MapCoord::new(4, 0)));
     }
 
     #[test]
@@ -198,10 +210,19 @@ mod tests {
     }
 
     #[test]
-    fn find_path_unreachable_returns_none() {
+    fn find_path_through_water_is_possible_with_budget() {
         let map = mixed_map();
-        // x=4 is beyond the water blocker at x=3
+        // x=4 reachable through water (cost: 1+1+2+4+1 = 9)
         let path = find_path(&map, MapCoord::new(0, 0), MapCoord::new(4, 0), 10);
+        assert!(path.is_some());
+    }
+
+    #[test]
+    fn find_path_unreachable_when_budget_insufficient_for_water() {
+        let map = mixed_map();
+        // x=4 costs 6 total (1+0+1+3+1=6 via road shortcut, or 1+1+2+4+1=9).
+        // With budget=5 path should not exist.
+        let path = find_path(&map, MapCoord::new(0, 0), MapCoord::new(4, 0), 5);
         assert!(path.is_none());
     }
 

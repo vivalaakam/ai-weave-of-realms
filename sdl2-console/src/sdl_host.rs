@@ -11,6 +11,10 @@ use std::path::Path;
 pub struct SdlHost {
     pub(crate) args: Args,
     pub(crate) screen_size: Size,
+    pub(crate) left_x_right: bool,
+    pub(crate) left_x_left: bool,
+    pub(crate) left_y_down: bool,
+    pub(crate) left_y_up: bool,
     pub(crate) right_x_right: bool,
     pub(crate) right_x_left: bool,
     pub(crate) right_y_down: bool,

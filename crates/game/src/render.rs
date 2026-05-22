@@ -325,6 +325,8 @@ where
     pub tile_sprite_color: fn(Tiles) -> C,
     /// Converts team id into a device color.
     pub team_color: fn(usize) -> C,
+    /// Cursor highlight border color.
+    pub cursor: C,
 }
 
 /// Shared theme colors for splash rendering.
@@ -450,6 +452,8 @@ struct MapViewCache {
     visible_rows: usize,
     view_x: usize,
     view_y: usize,
+    cursor_x: isize,
+    cursor_y: isize,
     visible_cells: Vec<u32>,
 }
 
@@ -1046,6 +1050,8 @@ pub fn draw_map_view<D, C>(
                 || cache.visible_rows != visible_rows
                 || cache.view_x != map_view.view_x()
                 || cache.view_y != map_view.view_y()
+                || cache.cursor_x != map_view.cursor_x()
+                || cache.cursor_y != map_view.cursor_y()
         }
         None => true,
     };
@@ -1060,6 +1066,8 @@ pub fn draw_map_view<D, C>(
             visible_rows,
             view_x: map_view.view_x(),
             view_y: map_view.view_y(),
+            cursor_x: map_view.cursor_x(),
+            cursor_y: map_view.cursor_y(),
             visible_cells: vec![EMPTY_TILE; visible_cols * visible_rows],
         });
     }
@@ -1104,6 +1112,13 @@ pub fn draw_map_view<D, C>(
                 theme,
             );
         }
+    }
+
+    // Draw cursor highlight.
+    if map_view.cursor_structure().is_some() {
+        draw_cursor_rect(display, map_view, config, theme, origin_x, origin_y);
+    } else {
+        draw_cursor_outline(display, map_view, config, theme, origin_x, origin_y);
     }
 
     clear_band(
@@ -1250,6 +1265,85 @@ fn draw_hero_marker<D, C>(
     let color = if hero_id == selected_hero_id { theme.selected_hero } else { theme.hero };
     let mask = tile_atlas_mask(25);
     draw_grass_sprite(display, top_left, mask, color);
+}
+
+fn draw_cursor_outline<D, C>(
+    display: &mut D,
+    map_view: &MapViewApp,
+    _config: RenderConfig,
+    theme: MapViewTheme<C>,
+    origin_x: i32,
+    origin_y: i32,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    let cursor_x = map_view.cursor_x();
+    let cursor_y = map_view.cursor_y();
+    let view_x = map_view.view_x() as isize;
+    let view_y = map_view.view_y() as isize;
+    let rel_x = cursor_x - view_x;
+    let rel_y = cursor_y - view_y;
+    if rel_x < 0 || rel_y < 0 {
+        return;
+    }
+    let x = origin_x + (rel_x as i32) * TILE_WIDTH as i32;
+    let y = origin_y + (rel_y as i32) * TILE_HEIGHT as i32;
+    draw_rect_stroke(display, x, y, TILE_WIDTH, TILE_HEIGHT, theme.cursor);
+}
+
+fn draw_cursor_rect<D, C>(
+    display: &mut D,
+    map_view: &MapViewApp,
+    _config: RenderConfig,
+    theme: MapViewTheme<C>,
+    origin_x: i32,
+    origin_y: i32,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    if let Some(info) = map_view.cursor_structure() {
+        let view_x = map_view.view_x() as isize;
+        let view_y = map_view.view_y() as isize;
+        let start_x = (info.min_x as isize - view_x) as i32;
+        let start_y = (info.min_y as isize - view_y) as i32;
+        let end_x = start_x + (info.max_x - info.min_x + 1) as i32;
+        let end_y = start_y + (info.max_y - info.min_y + 1) as i32;
+
+        // visible area in tiles
+        let visible_cols = 1000i32; // will be clamped by screen below
+        let visible_rows = 1000i32;
+
+        if end_x <= 0 || end_y <= 0 || start_x >= visible_cols || start_y >= visible_rows {
+            return;
+        }
+
+        let clamped_start_x = start_x.max(0);
+        let clamped_start_y = start_y.max(0);
+        let clamped_end_x = (end_x as i32).min(visible_cols);
+        let clamped_end_y = (end_y as i32).min(visible_rows);
+
+        let width = ((clamped_end_x - clamped_start_x).max(0) as u32) * TILE_WIDTH;
+        let height = ((clamped_end_y - clamped_start_y).max(0) as u32) * TILE_HEIGHT;
+
+        let x = origin_x + clamped_start_x * TILE_WIDTH as i32;
+        let y = origin_y + clamped_start_y * TILE_HEIGHT as i32;
+
+        if width > 0 && height > 0 {
+            draw_rect_stroke(display, x, y, width, height, theme.cursor);
+        }
+    }
+}
+
+fn draw_rect_stroke<D, C>(display: &mut D, x: i32, y: i32, width: u32, height: u32, color: C)
+where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    let stroke = PrimitiveStyle::with_stroke(color, 2);
+    let rect = Rectangle::new(Point::new(x, y), Size::new(width, height)).into_styled(stroke);
+    halt_on_error(rect.draw(display));
 }
 
 fn cell_signature(map_view: &MapViewApp, coord: MapCoord) -> u32 {

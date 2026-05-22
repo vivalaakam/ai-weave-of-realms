@@ -19,6 +19,14 @@ pub enum InputEvent {
     Left,
     /// Right direction.
     Right,
+    /// Cursor up.
+    CursorUp,
+    /// Cursor down.
+    CursorDown,
+    /// Cursor left.
+    CursorLeft,
+    /// Cursor right.
+    CursorRight,
     /// Cycle to the next hero.
     NextHero,
     /// End current player's turn.
