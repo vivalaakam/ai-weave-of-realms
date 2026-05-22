@@ -562,11 +562,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gdextension-api"
-version = "0.5.0"
-source = "git+https://github.com/godot-rust/godot4-prebuilt?branch=release-v0.5#e5748cc227a9596581379505835cacef83911268"
-
-[[package]]
 name = "getrandom"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -586,79 +581,6 @@ checksum = "ee8cfcc411d9adbbaba82fb72661cc1bcca13e8bba98b364e62b2dba8f960159"
 dependencies = [
  "color_quant",
  "weezl",
-]
-
-[[package]]
-name = "glam"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
-
-[[package]]
-name = "godot"
-version = "0.5.3"
-source = "git+https://github.com/godot-rust/gdext?branch=master#315df8eeb11e8f70d4b2cc5f1d52cb882310c335"
-dependencies = [
- "godot-core",
- "godot-macros",
-]
-
-[[package]]
-name = "godot-bindings"
-version = "0.5.3"
-source = "git+https://github.com/godot-rust/gdext?branch=master#315df8eeb11e8f70d4b2cc5f1d52cb882310c335"
-dependencies = [
- "gdextension-api",
-]
-
-[[package]]
-name = "godot-cell"
-version = "0.5.3"
-source = "git+https://github.com/godot-rust/gdext?branch=master#315df8eeb11e8f70d4b2cc5f1d52cb882310c335"
-
-[[package]]
-name = "godot-codegen"
-version = "0.5.3"
-source = "git+https://github.com/godot-rust/gdext?branch=master#315df8eeb11e8f70d4b2cc5f1d52cb882310c335"
-dependencies = [
- "godot-bindings",
- "heck",
- "nanoserde",
- "proc-macro2",
- "quote",
-]
-
-[[package]]
-name = "godot-core"
-version = "0.5.3"
-source = "git+https://github.com/godot-rust/gdext?branch=master#315df8eeb11e8f70d4b2cc5f1d52cb882310c335"
-dependencies = [
- "glam",
- "godot-bindings",
- "godot-cell",
- "godot-codegen",
- "godot-ffi",
-]
-
-[[package]]
-name = "godot-ffi"
-version = "0.5.3"
-source = "git+https://github.com/godot-rust/gdext?branch=master#315df8eeb11e8f70d4b2cc5f1d52cb882310c335"
-dependencies = [
- "godot-bindings",
- "godot-codegen",
- "libc",
-]
-
-[[package]]
-name = "godot-macros"
-version = "0.5.3"
-source = "git+https://github.com/godot-rust/gdext?branch=master#315df8eeb11e8f70d4b2cc5f1d52cb882310c335"
-dependencies = [
- "godot-bindings",
- "proc-macro2",
- "quote",
- "venial",
 ]
 
 [[package]]
@@ -973,21 +895,6 @@ dependencies = [
  "num-traits",
  "pxfm",
 ]
-
-[[package]]
-name = "nanoserde"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a36fb3a748a4c9736ed7aeb5f2dfc99665247f1ce306abbddb2bf0ba2ac530a4"
-dependencies = [
- "nanoserde-derive",
-]
-
-[[package]]
-name = "nanoserde-derive"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a846cbc04412cf509efcd8f3694b114fc700a035fb5a37f21517f9fb019f1ebc"
 
 [[package]]
 name = "new_debug_unreachable"
@@ -1363,19 +1270,6 @@ name = "rgb"
 version = "0.8.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
-
-[[package]]
-name = "rpg-godot"
-version = "0.1.0"
-dependencies = [
- "engine",
- "godot",
- "mapgen",
- "thiserror",
- "tiled",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "rpg-tools"
@@ -1769,16 +1663,6 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
-
-[[package]]
-name = "venial"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a42528baceab6c7784446df2a10f4185078c39bf73dc614f154353f1a6b1229"
-dependencies = [
- "proc-macro2",
- "quote",
-]
 
 [[package]]
 name = "version-compare"
