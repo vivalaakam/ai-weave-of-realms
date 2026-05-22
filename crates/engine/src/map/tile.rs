@@ -331,9 +331,9 @@ mod tests {
         assert!(Tiles::Meadow.is_passable());
         assert!(Tiles::Road.is_passable());
         assert!(Tiles::Bridge.is_passable());
-        assert!(Tiles::Water.is_passable());   // passable with penalty
-        assert!(Tiles::River.is_passable());   // passable with penalty
-        assert!(!Tiles::City.is_passable());    // impassable
+        assert!(Tiles::Water.is_passable()); // passable with penalty
+        assert!(Tiles::River.is_passable()); // passable with penalty
+        assert!(!Tiles::City.is_passable()); // impassable
         assert!(!Tiles::Mountain.is_passable()); // impassable
     }
 

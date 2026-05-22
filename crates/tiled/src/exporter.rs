@@ -119,13 +119,13 @@ fn spawn_object_xml(id: u32, coord: &MapCoord, kind: &str, name: &str) -> String
     let (x, y) = spawn_object_point(coord.x, coord.y);
     format!(
         concat!(
-        "    <object id=\"{id}\" name=\"{name}\" type=\"{kind}\" x=\"{x}\" y=\"{y}\">\n",
-        "      <properties>\n",
-        "        <property name=\"tile_x\" type=\"int\" value=\"{tile_x}\"/>\n",
-        "        <property name=\"tile_y\" type=\"int\" value=\"{tile_y}\"/>\n",
-        "      </properties>\n",
-        "      <point/>\n",
-        "    </object>\n"
+            "    <object id=\"{id}\" name=\"{name}\" type=\"{kind}\" x=\"{x}\" y=\"{y}\">\n",
+            "      <properties>\n",
+            "        <property name=\"tile_x\" type=\"int\" value=\"{tile_x}\"/>\n",
+            "        <property name=\"tile_y\" type=\"int\" value=\"{tile_y}\"/>\n",
+            "      </properties>\n",
+            "      <point/>\n",
+            "    </object>\n"
         ),
         id = id,
         name = name,

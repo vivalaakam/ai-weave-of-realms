@@ -75,8 +75,8 @@ pub fn find_enemy_spawn(map: &GameMap, player: MapCoord) -> Result<MapCoord, Spa
 
         match best {
             Some((_, best_distance, best_tie_break))
-            if distance < best_distance
-                || (distance == best_distance && tie_break <= best_tie_break) => {}
+                if distance < best_distance
+                    || (distance == best_distance && tie_break <= best_tie_break) => {}
             _ => best = Some((coord, distance, tie_break)),
         }
     });
@@ -159,7 +159,7 @@ fn find_best_tile(
 
         match best {
             Some((_, best_rank, best_distance))
-            if rank > best_rank || (rank == best_rank && center_distance >= best_distance) => {}
+                if rank > best_rank || (rank == best_rank && center_distance >= best_distance) => {}
             _ => best = Some((coord, rank, center_distance)),
         }
     });
@@ -189,8 +189,7 @@ fn fallback_passable_priority(
 }
 
 fn is_enemy_spawnable(kind: Tiles) -> bool {
-    kind.is_passable()
-        && !matches!(kind, Tiles::CityEntrance | Tiles::Gold | Tiles::Resource)
+    kind.is_passable() && !matches!(kind, Tiles::CityEntrance | Tiles::Gold | Tiles::Resource)
 }
 
 fn for_each_coord(map: &GameMap, mut callback: impl FnMut(MapCoord, Tiles)) {
@@ -267,9 +266,7 @@ mod tests {
     #[test]
     fn spawn_selection_errors_on_fully_blocked_map() {
         let map =
-            map_from_rows(&[&[Tiles::City, Tiles::Mountain],
-                &[Tiles::Mountain, Tiles::City],
-            ]);
+            map_from_rows(&[&[Tiles::City, Tiles::Mountain], &[Tiles::Mountain, Tiles::City]]);
 
         let result = find_spawn_positions(&map);
         assert!(matches!(result, Err(SpawnError::OutOfBounds)));

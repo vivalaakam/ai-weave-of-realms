@@ -1,15 +1,15 @@
 //! Shared gameplay map-view state and input handling.
 
+use alloc::collections::{BTreeSet, VecDeque};
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
-use alloc::collections::{BTreeSet, VecDeque};
 
-use engine::Direction;
 use engine::map::game_map::Direction as MapDir;
 use engine::map::game_map::GameMap;
 use engine::map::game_map::MapCoord;
 use engine::map::tile::Tiles;
+use engine::Direction;
 
 use crate::input::InputEvent;
 use crate::session::GameSession;
@@ -113,7 +113,14 @@ pub struct MapViewApp {
 impl MapViewApp {
     /// Creates a new shared map-view state.
     pub fn new(session: GameSession, view_x: usize, view_y: usize, status: Option<String>) -> Self {
-        let mut app = Self { session, view_x, view_y, cursor_x: view_x as isize, cursor_y: view_y as isize, status };
+        let mut app = Self {
+            session,
+            view_x,
+            view_y,
+            cursor_x: view_x as isize,
+            cursor_y: view_y as isize,
+            status,
+        };
         app.sync_cursor_to_hero();
         app
     }
@@ -219,23 +226,15 @@ impl MapViewApp {
                     max_x = max_x.max(c.x);
                     max_y = max_y.max(c.y);
                 }
-                Some(StructureInfo {
-                    name: "City".to_string(),
-                    min_x,
-                    min_y,
-                    max_x,
-                    max_y,
-                })
+                Some(StructureInfo { name: "City".to_string(), min_x, min_y, max_x, max_y })
             }
-            Tiles::CityEntrance => {
-                Some(StructureInfo {
-                    name: "City Entrance".to_string(),
-                    min_x: x,
-                    min_y: y,
-                    max_x: x,
-                    max_y: y,
-                })
-            }
+            Tiles::CityEntrance => Some(StructureInfo {
+                name: "City Entrance".to_string(),
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            }),
             Tiles::Ruins => Some(StructureInfo {
                 name: "Ruins".to_string(),
                 min_x: x,

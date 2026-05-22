@@ -151,13 +151,13 @@ fn run() -> AppResult<()> {
         if event::poll(Duration::from_millis(120))? {
             match event::read()? {
                 Event::Key(key)
-                if key.code == KeyCode::Char('q')
-                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
-                        clear_screen(&mut handle)?;
-                        handle.flush()?;
-                        break;
-                    }
+                    if key.code == KeyCode::Char('q')
+                        && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    clear_screen(&mut handle)?;
+                    handle.flush()?;
+                    break;
+                }
                 Event::Key(key) => {
                     if app_state.handle_input(
                         &mut host,
@@ -714,7 +714,7 @@ impl DrawTarget for Framebuffer {
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
-        I: IntoIterator<Item=Pixel<Self::Color>>,
+        I: IntoIterator<Item = Pixel<Self::Color>>,
     {
         for Pixel(point, color) in pixels {
             if let Some(index) = self.index_of(point) {
