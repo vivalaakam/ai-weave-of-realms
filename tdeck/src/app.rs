@@ -6,7 +6,7 @@ use embedded_graphics::prelude::Size;
 use game::app::{AppHost, AppLayout, EmbeddedApp, LaunchConfig as SharedLaunchConfig, LoadedGame};
 use game::info_overlay::InfoOverlay;
 use game::list::ListEntry;
-use game::render::{RenderConfig, visible_tiles};
+use game::render::{visible_tiles, RenderConfig};
 use rpg_engine::game_state::GameState;
 
 use crate::input::InputEvent;

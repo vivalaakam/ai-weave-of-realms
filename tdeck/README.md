@@ -3,6 +3,7 @@
 Minimal Rust embedded project for the LilyGO T-Deck.
 
 Current behavior:
+
 - `cargo run` builds for `xtensa-esp32s3-none-elf`
 - `espflash` immediately flashes the firmware to the connected board
 - boot screen waits for `Enter`
@@ -46,7 +47,8 @@ Example:
 
 ## Start With A Specific Map
 
-Bare-metal `no_std` firmware does not have normal runtime `argv`, so direct launch is implemented with compile-time environment variables:
+Bare-metal `no_std` firmware does not have normal runtime `argv`, so direct launch is implemented with compile-time
+environment variables:
 
 ```sh
 cd tdeck
@@ -74,4 +76,5 @@ espflash monitor
 ```
 
 The display pinout and boot sequence are based on:
+
 - `joshmarinacci/rust-tdeck-experiments`

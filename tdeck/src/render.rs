@@ -5,8 +5,8 @@ use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::{RgbColor, Size};
 use game::app::EmbeddedApp;
 use game::render::{
-    AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme, MapViewTheme, SaveOverlayTheme,
-    SplashTheme, draw_app_screen,
+    draw_app_screen, AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme, MapViewTheme,
+    SaveOverlayTheme, SplashTheme,
 };
 
 use crate::app;
@@ -21,7 +21,7 @@ pub fn draw_screen<D>(
     screen_size: Size,
     render_cache: &mut RenderCache,
 ) where
-    D: DrawTarget<Color = Rgb565>,
+    D: DrawTarget<Color=Rgb565>,
 {
     draw_app_screen(
         display,

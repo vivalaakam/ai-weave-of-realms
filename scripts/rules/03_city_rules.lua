@@ -22,11 +22,11 @@ local function check_city(map, entrance_x, entrance_y)
     -- Above (bx,   by+1) is inside the block, so we skip it.
     -- Also check (bx-1, by+2) and (bx+3, by+2) for left/right of entrance row.
     local neighbours = {
-        { bx - 1, by + 2 },  -- left of entrance
-        { bx + 3, by + 2 },  -- right of entrance (3 wide block ends at bx+2)
-        { bx,     by + 3 },  -- below entrance
-        { bx + 1, by + 3 },  -- below middle of block bottom row
-        { bx + 2, by + 3 },  -- below right of block bottom row
+        { bx - 1, by + 2 }, -- left of entrance
+        { bx + 3, by + 2 }, -- right of entrance (3 wide block ends at bx+2)
+        { bx, by + 3 }, -- below entrance
+        { bx + 1, by + 3 }, -- below middle of block bottom row
+        { bx + 2, by + 3 }, -- below right of block bottom row
     }
 
     for _, nb in ipairs(neighbours) do
@@ -34,8 +34,8 @@ local function check_city(map, entrance_x, entrance_y)
         local kind = map.get(nx, ny)
         if kind ~= "out_of_bounds" and not ALLOWED_NEAR_ENTRANCE[kind] then
             return false, string.format(
-                "tile '%s' at (%d,%d) adjacent to city entrance at (%d,%d) must be meadow or road",
-                kind, nx, ny, entrance_x, entrance_y
+                    "tile '%s' at (%d,%d) adjacent to city entrance at (%d,%d) must be meadow or road",
+                    kind, nx, ny, entrance_x, entrance_y
             )
         end
     end
@@ -53,7 +53,9 @@ return function(map)
                 entrances[#entrances + 1] = { gx, gy }
 
                 local ok, reason = check_city(map, gx, gy)
-                if not ok then return false, reason end
+                if not ok then
+                    return false, reason
+                end
             end
         end
     end

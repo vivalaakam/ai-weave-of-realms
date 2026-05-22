@@ -1,4 +1,4 @@
-use crate::AppResult;
+use crate::error::HostError;
 use game::prelude::render::{DrawTarget, OriginDimensions, Pixel, Rgb888, RgbColor, Size};
 
 pub struct Framebuffer {
@@ -7,7 +7,7 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
-    pub fn new(size: Size, background: Rgb888) -> AppResult<Self> {
+    pub fn new(size: Size, background: Rgb888) -> Result<Self, HostError> {
         let len = usize::try_from(size.width)
             .ok()
             .and_then(|width| {

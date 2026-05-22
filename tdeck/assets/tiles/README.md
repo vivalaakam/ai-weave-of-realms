@@ -7,7 +7,8 @@ These BMP files are exported from the shared Godot tileset at `godot/assets/tile
 - Export format: Windows BMP v3 (`24-bit`)
 - Transparency handling: all non-opaque pixels are flattened onto `#FF00FF` magenta
 
-This keeps the visual tile content aligned with the Godot assets while producing files that are easier to consume on the T-Deck side.
+This keeps the visual tile content aligned with the Godot assets while producing files that are easier to consume on the
+T-Deck side.
 
 ## Tile Mapping
 

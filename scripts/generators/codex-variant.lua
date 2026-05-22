@@ -145,10 +145,15 @@ local function stage_ridge(result, rng, state)
 
     local function side_point(side)
         local pos = random_edge_anchor(rng, 4, CHUNK_SIZE - 4)
-        if side == 0 then return pos, 0
-        elseif side == 1 then return CHUNK_SIZE - 1, pos
-        elseif side == 2 then return pos, CHUNK_SIZE - 1
-        else return 0, pos end
+        if side == 0 then
+            return pos, 0
+        elseif side == 1 then
+            return CHUNK_SIZE - 1, pos
+        elseif side == 2 then
+            return pos, CHUNK_SIZE - 1
+        else
+            return 0, pos
+        end
     end
 
     local ax, ay = side_point(start_side)
@@ -479,21 +484,21 @@ end
 local function stage_poi(result, rng)
     place_poi(result, rng, "village", 80, function(tx, ty)
         return near_any(result, tx, ty, 1, { road = true, bridge = true })
-            and not near_any(result, tx, ty, 2, SETTLEMENT)
-            and not near_any(result, tx, ty, 2, { city = true, city_entrance = true })
+                and not near_any(result, tx, ty, 2, SETTLEMENT)
+                and not near_any(result, tx, ty, 2, { city = true, city_entrance = true })
     end)
 
     place_poi(result, rng, "merchant", 80, function(tx, ty)
         return near_any(result, tx, ty, 1, { road = true, bridge = true })
-            and near_any(result, tx, ty, 5, SETTLEMENT)
-            and not near_any(result, tx, ty, 2, { city = true, city_entrance = true })
-            and not near_any(result, tx, ty, 1, WET)
+                and near_any(result, tx, ty, 5, SETTLEMENT)
+                and not near_any(result, tx, ty, 2, { city = true, city_entrance = true })
+                and not near_any(result, tx, ty, 1, WET)
     end)
 
     place_poi(result, rng, "ruins", 80, function(tx, ty)
         return near_any(result, tx, ty, 1, { forest = true, mountain = true })
-            and not near_any(result, tx, ty, 2, SETTLEMENT)
-            and not near_any(result, tx, ty, 2, { city = true, city_entrance = true })
+                and not near_any(result, tx, ty, 2, SETTLEMENT)
+                and not near_any(result, tx, ty, 2, { city = true, city_entrance = true })
     end)
 end
 
@@ -530,9 +535,9 @@ local function stage_resources(result, rng)
             local tx = rng:random_range_u32(1, CHUNK_SIZE - 1)
             local ty = rng:random_range_u32(1, CHUNK_SIZE - 1)
             if meadow_ring_clear(result, tx, ty)
-                and spaced_from(placed, tx, ty, 4.0)
-                and not near_any(result, tx, ty, 2, RESOURCE_KEEP_OUT)
-                and prefer(tx, ty)
+                    and spaced_from(placed, tx, ty, 4.0)
+                    and not near_any(result, tx, ty, 2, RESOURCE_KEEP_OUT)
+                    and prefer(tx, ty)
             then
                 result[idx(tx, ty)] = kind
                 placed[#placed + 1] = { tx, ty }

@@ -5,6 +5,7 @@ use alloc::{
     boxed::Box,
     format,
     string::{String, ToString},
+    vec,
     vec::Vec,
 };
 use engine::game_state::GameState;
@@ -447,6 +448,7 @@ where
             map_view.status = map_view.app.status().map(ToString::to_string);
             ScreenOutcome { changed: true, next_screen: None }
         }
+        MapViewOutcome::CursorChanged => ScreenOutcome { changed: true, next_screen: None },
         MapViewOutcome::BackRequested => match host.discover_maps() {
             Ok(maps) => {
                 let mut screen =
@@ -477,6 +479,14 @@ where
                 changed: true,
                 next_screen: Some(AppScreen::Splash(SplashScreen::new(selected, Some(message)))),
             }
+        }
+        MapViewOutcome::OpenStructureOverlay { name } => {
+            map_view.info_overlay = Some(crate::info_overlay::InfoOverlay::new(
+                name.clone(),
+                vec![format!("This is a {name}.")],
+                "Enter/Back: close".to_string(),
+            ));
+            ScreenOutcome { changed: true, next_screen: None }
         }
     }
 }

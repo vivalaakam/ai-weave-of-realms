@@ -189,8 +189,7 @@ fn fallback_passable_priority(
 }
 
 fn is_enemy_spawnable(kind: Tiles) -> bool {
-    kind.is_passable()
-        && !matches!(kind, Tiles::City | Tiles::CityEntrance | Tiles::Gold | Tiles::Resource)
+    kind.is_passable() && !matches!(kind, Tiles::CityEntrance | Tiles::Gold | Tiles::Resource)
 }
 
 fn for_each_coord(map: &GameMap, mut callback: impl FnMut(MapCoord, Tiles)) {
@@ -267,7 +266,7 @@ mod tests {
     #[test]
     fn spawn_selection_errors_on_fully_blocked_map() {
         let map =
-            map_from_rows(&[&[Tiles::Water, Tiles::Mountain], &[Tiles::Mountain, Tiles::Water]]);
+            map_from_rows(&[&[Tiles::City, Tiles::Mountain], &[Tiles::Mountain, Tiles::City]]);
 
         let result = find_spawn_positions(&map);
         assert!(matches!(result, Err(SpawnError::OutOfBounds)));

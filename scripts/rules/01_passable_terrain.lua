@@ -15,7 +15,7 @@ return function(map)
     local ratio = pass / #map.tiles
     if ratio < 0.50 then
         return false, string.format(
-            "passable terrain %.1f%% is below the required 50%%", ratio * 100
+                "passable terrain %.1f%% is below the required 50%%", ratio * 100
         )
     end
 

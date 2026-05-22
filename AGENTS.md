@@ -28,11 +28,11 @@ Every agent MUST read and follow these rules before touching any code.
 
 - **`println!` and `eprintln!` are forbidden** for diagnostic output
 - Use **`tracing`** crate for all logging:
-  - `tracing::info!` — normal flow events
-  - `tracing::warn!` — recoverable anomalies
-  - `tracing::error!` — errors
-  - `tracing::debug!` — detailed debug info
-  - `tracing::trace!` — fine-grained tracing
+    - `tracing::info!` — normal flow events
+    - `tracing::warn!` — recoverable anomalies
+    - `tracing::error!` — errors
+    - `tracing::debug!` — detailed debug info
+    - `tracing::trace!` — fine-grained tracing
 - Initialize subscriber in main entry points only (`tracing_subscriber`)
 
 ---
@@ -41,15 +41,16 @@ Every agent MUST read and follow these rules before touching any code.
 
 - **Every public function must have a doc comment** (`///`)
 - Doc comments must include:
-  - What the function does (one line summary)
-  - `# Arguments` section if there are non-obvious parameters
-  - `# Returns` section if return value needs explanation
-  - `# Errors` section if the function returns `Result`
-  - `# Panics` section if the function can panic
+    - What the function does (one line summary)
+    - `# Arguments` section if there are non-obvious parameters
+    - `# Returns` section if return value needs explanation
+    - `# Errors` section if the function returns `Result`
+    - `# Panics` section if the function can panic
 - Every public struct and enum must have a doc comment
 - Every module (`lib.rs`, `mod.rs`) must have a module-level doc comment (`//!`)
 
 Example:
+
 ```rust
 /// Generates a single 32×32 chunk using the provided seed and Lua script.
 ///
@@ -89,15 +90,15 @@ pub fn generate_chunk(seed: [u8; 32], script: &LuaScript) -> Result<Chunk, Error
 
 ## Dependency Policy
 
-| Allowed | Forbidden |
-|---------|-----------|
-| `thiserror` | `anyhow` |
-| `tracing`, `tracing-subscriber` | `log`, `env_logger`, `println!` |
-| `mlua` (Lua 5.4) | Any other scripting runtime |
-| `sha3` (Keccak256) | `rand`, `rand_chacha` (use SeededRng) |
-| `gdext` | `godot-rust` (old API) |
-| `serde`, `serde_json` | — |
-| `quick-xml` | — |
+| Allowed                         | Forbidden                             |
+|---------------------------------|---------------------------------------|
+| `thiserror`                     | `anyhow`                              |
+| `tracing`, `tracing-subscriber` | `log`, `env_logger`, `println!`       |
+| `mlua` (Lua 5.4)                | Any other scripting runtime           |
+| `sha3` (Keccak256)              | `rand`, `rand_chacha` (use SeededRng) |
+| `gdext`                         | `godot-rust` (old API)                |
+| `serde`, `serde_json`           | —                                     |
+| `quick-xml`                     | —                                     |
 
 ---
 
@@ -143,14 +144,14 @@ ai-rpg-v2/
 
 ## Crate Responsibilities
 
-| Crate | Responsibility | Godot dep |
-|-------|---------------|-----------|
-| `rpg-engine` | Hero, combat, score, map types, PRNG | No |
-| `rpg-mapgen` | Chunk generation, stitching, Lua loader, evaluator, validator | No |
-| `rpg-tiled` | TMX parse/serialize, chunk↔TMX conversion | No |
-| `rpg-godot` | GodotNode wrappers, signals, scene bridging | Yes |
-| `rpg-embedded` | embedded-graphics UI primitives (T-Deck, sixel, SDL2) | No |
-| `rpg-tools` | `mapgen` CLI — renders map PNG+TMX for testing | No |
+| Crate          | Responsibility                                                | Godot dep |
+|----------------|---------------------------------------------------------------|-----------|
+| `rpg-engine`   | Hero, combat, score, map types, PRNG                          | No        |
+| `rpg-mapgen`   | Chunk generation, stitching, Lua loader, evaluator, validator | No        |
+| `rpg-tiled`    | TMX parse/serialize, chunk↔TMX conversion                     | No        |
+| `rpg-godot`    | GodotNode wrappers, signals, scene bridging                   | Yes       |
+| `rpg-embedded` | embedded-graphics UI primitives (T-Deck, sixel, SDL2)         | No        |
+| `rpg-tools`    | `mapgen` CLI — renders map PNG+TMX for testing                | No        |
 
 ---
 
@@ -160,8 +161,8 @@ Project-local skill guides live in `.agents/skills/`. Each skill is a `SKILL.md`
 domain knowledge, step-by-step patterns, and common pitfalls for a specific area of the codebase.
 **Read the relevant skill before starting work in that area.**
 
-| Skill | Path | When to use |
-|-------|------|-------------|
+| Skill             | Path                                      | When to use                                                                                               |
+|-------------------|-------------------------------------------|-----------------------------------------------------------------------------------------------------------|
 | `rpg-tile-render` | `.agents/skills/rpg-tile-render/SKILL.md` | Adding/fixing terrain tile rendering, autotile compositing, tile atlas, water/mountain/road/river sprites |
 
 ### How to use a skill

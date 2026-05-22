@@ -1,6 +1,6 @@
-GODOT        := "godot"
+GODOT := "godot"
 GODOT_PROJECT := "godot"
-BIN_DIR      := "godot/bin"
+BIN_DIR := "godot/bin"
 
 # Sync scripts and tileset into the Godot project directory so res:// can reach them.
 _sync-assets:
@@ -11,14 +11,14 @@ _sync-assets:
 # Build GDExtension (debug) and sync assets.
 build: _sync-assets
     cargo build -p rpg-godot
-    cp target/debug/librpg_godot.dylib {{BIN_DIR}}/librpg_godot.dylib
-    install_name_tool -id @rpath/librpg_godot.dylib {{BIN_DIR}}/librpg_godot.dylib
+    cp target/debug/librpg_godot.dylib {{ BIN_DIR }}/librpg_godot.dylib
+    install_name_tool -id @rpath/librpg_godot.dylib {{ BIN_DIR }}/librpg_godot.dylib
 
 # Build GDExtension (release) and sync assets.
 build-release: _sync-assets
     cargo build -p rpg-godot --release
-    cp target/release/librpg_godot.dylib {{BIN_DIR}}/librpg_godot.dylib
-    install_name_tool -id @rpath/librpg_godot.dylib {{BIN_DIR}}/librpg_godot.dylib
+    cp target/release/librpg_godot.dylib {{ BIN_DIR }}/librpg_godot.dylib
+    install_name_tool -id @rpath/librpg_godot.dylib {{ BIN_DIR }}/librpg_godot.dylib
 
 # Run all workspace tests.
 test:

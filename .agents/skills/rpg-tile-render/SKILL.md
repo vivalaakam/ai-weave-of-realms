@@ -33,11 +33,11 @@ Reference doc: `docs/tile-rendering.md` — **read this first** for the full sys
 
 ## Atlas layout (current)
 
-| File | Start index | Tile count |
-|------|-------------|-----------|
-| `1_main.png` | 0 | 1078 |
-| `2_water.png` | 1078 | 5 |
-| `3_mountains.png` | 1083 | 5 |
+| File              | Start index | Tile count |
+|-------------------|-------------|------------|
+| `1_main.png`      | 0           | 1078       |
+| `2_water.png`     | 1078        | 5          |
+| `3_mountains.png` | 1083        | 5          |
 
 When you add a new PNG, sort alphabetically to find its start index.
 
@@ -72,6 +72,7 @@ bit 5  SW | bit 4  S  | bit 3  SE
 Start with `WATER_FULL`. AND-in fragment pieces:
 
 **Half-edge pieces** (skipped automatically when adjacent outer corner is active):
+
 ```
 W land, N water  →  &ul        (W upper half)
 W land, S water  →  &ll        (W lower half)
@@ -83,9 +84,11 @@ S land, W water  →  &ul270     (S left half)
 S land, E water  →  &ll270     (S right half)
 ```
 
-> **E-edge asymmetry:** after 180° rotation the lower piece becomes upper. `ll180` = E upper; `ul180` = E lower. Getting this backwards causes visual "bumps" on the right side of water tiles.
+> **E-edge asymmetry:** after 180° rotation the lower piece becomes upper. `ll180` = E upper; `ul180` = E lower. Getting
+> this backwards causes visual "bumps" on the right side of water tiles.
 
 **Outer corners** (two adjacent land edges):
+
 ```
 W && N  →  &co      (NW, upper-left)
 N && E  →  &co90    (NE, upper-right)
@@ -94,6 +97,7 @@ S && W  →  &co270   (SW, lower-left)
 ```
 
 **Inner corners** (diagonal land, both orthogonal neighbors are water):
+
 ```
 !W && !N && NW land  →  &ci
 !N && !E && NE land  →  &ci90
@@ -131,13 +135,13 @@ Rotation direction reference: left edge → top (CW90), top → right (CW90), ri
 Create `assets/N_<name>.png` (replace N to control atlas position alphabetically).  
 All 5 tiles are 16×16. Design only the **W / upper-left** orientation:
 
-| Tile | Content |
-|------|---------|
-| 0 FULL | All pixels set (or the full base pattern for this terrain) |
-| 1 SHORE_LL | Lower half of W edge missing (terrain fades toward lower-left) |
-| 2 SHORE_UL | Upper half of W edge missing (terrain fades toward upper-left) |
-| 3 CORNER_OUTER | Diagonal cut at upper-left — where two land edges meet |
-| 4 CORNER_INNER | 3-pixel notch at upper-left — diagonal land neighbor only |
+| Tile           | Content                                                        |
+|----------------|----------------------------------------------------------------|
+| 0 FULL         | All pixels set (or the full base pattern for this terrain)     |
+| 1 SHORE_LL     | Lower half of W edge missing (terrain fades toward lower-left) |
+| 2 SHORE_UL     | Upper half of W edge missing (terrain fades toward upper-left) |
+| 3 CORNER_OUTER | Diagonal cut at upper-left — where two land edges meet         |
+| 4 CORNER_INNER | 3-pixel notch at upper-left — diagonal land neighbor only      |
 
 Run `scripts/gen_water_tiles.py` as reference for how the water tiles were built.
 
@@ -148,6 +152,7 @@ cargo run -p rpg-tools --bin pack-tiles -- --tile-width 16 --tile-height 16
 ```
 
 In `render.rs`:
+
 ```rust
 const MY_BASE: usize = <start_index>;          // determined by alphabetical PNG order
 const MY_FULL: usize         = MY_BASE;
@@ -175,6 +180,7 @@ Add a `cached_my_mask(my_masks: &mut Vec<Option<MyMask>>, bits: u8) -> MyMask` f
 ### Step 4 — implement compute function
 
 Copy `compute_water_composite` verbatim. Change only:
+
 - The 5 source tile constants (`MY_FULL`, etc.)
 - The neighbor predicate if needed (e.g., river matches river OR lake)
 
@@ -218,20 +224,25 @@ The `x * 31 + y * 17` hash gives stable pseudo-random variation without a PRNG.
 ## Debugging checklist
 
 - **Bumps on E edge**: `ll180` and `ul180` are swapped. `ll180` = E upper, `ul180` = E lower.
-- **Wrong corner shape**: verify `CORNER_OUTER` tile was drawn for the NW (W+N land) case; other corners are 90°/180°/270° rotations.
-- **Tile index off by one**: check alphabetical sort order of PNGs; rerun pack-tiles and print first few bytes of tiles.bin to verify count.
-- **Cache stale after map scroll**: `reset_cache` clears `map_view` but NOT `water_masks` — terrain mask cache is intentionally persistent (atlas is compile-time). If atlas changes at runtime (impossible in current design), clear the Vec.
-- **Borrow conflict in draw loop**: `cache` borrows `render_cache.map_view`; pass `&mut render_cache.my_masks` as a separate parameter to avoid double-borrow.
+- **Wrong corner shape**: verify `CORNER_OUTER` tile was drawn for the NW (W+N land) case; other corners are
+  90°/180°/270° rotations.
+- **Tile index off by one**: check alphabetical sort order of PNGs; rerun pack-tiles and print first few bytes of
+  tiles.bin to verify count.
+- **Cache stale after map scroll**: `reset_cache` clears `map_view` but NOT `water_masks` — terrain mask cache is
+  intentionally persistent (atlas is compile-time). If atlas changes at runtime (impossible in current design), clear
+  the Vec.
+- **Borrow conflict in draw loop**: `cache` borrows `render_cache.map_view`; pass `&mut render_cache.my_masks` as a
+  separate parameter to avoid double-borrow.
 
 ---
 
 ## File locations
 
-| Path | Purpose |
-|------|---------|
-| `crates/rpg-embedded/src/render.rs` | All rendering logic |
-| `crates/rpg-tools/src/bin/pack_tiles.rs` | Atlas packer |
-| `scripts/gen_water_tiles.py` | Water tile generator (reference) |
-| `assets/2_water.png` | Water source tiles (5 tiles, 80×16 px) |
-| `assets/tiles.bin` | Packed atlas (binary, committed) |
-| `docs/tile-rendering.md` | Full system documentation |
+| Path                                     | Purpose                                |
+|------------------------------------------|----------------------------------------|
+| `crates/rpg-embedded/src/render.rs`      | All rendering logic                    |
+| `crates/rpg-tools/src/bin/pack_tiles.rs` | Atlas packer                           |
+| `scripts/gen_water_tiles.py`             | Water tile generator (reference)       |
+| `assets/2_water.png`                     | Water source tiles (5 tiles, 80×16 px) |
+| `assets/tiles.bin`                       | Packed atlas (binary, committed)       |
+| `docs/tile-rendering.md`                 | Full system documentation              |

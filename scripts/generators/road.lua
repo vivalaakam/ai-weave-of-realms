@@ -25,11 +25,11 @@ local CHUNK_SIZE = 32
 local N = CHUNK_SIZE * CHUNK_SIZE
 
 local BLOCKED = {
-    city          = true,
+    city = true,
     city_entrance = true,
-    water         = true,
-    mountain      = true,
-    river         = true,
+    water = true,
+    mountain = true,
+    river = true,
 }
 
 local function idx(tx, ty)
@@ -41,16 +41,22 @@ local function edge_point(rng, edge)
     local lo = math.floor(CHUNK_SIZE / 3)
     local hi = math.floor(2 * CHUNK_SIZE / 3)
     local pos = rng:random_range_u32(lo, hi)
-    if edge == 0 then return pos, 0
-    elseif edge == 1 then return CHUNK_SIZE - 1, pos
-    elseif edge == 2 then return pos, CHUNK_SIZE - 1
-    else             return 0, pos
+    if edge == 0 then
+        return pos, 0
+    elseif edge == 1 then
+        return CHUNK_SIZE - 1, pos
+    elseif edge == 2 then
+        return pos, CHUNK_SIZE - 1
+    else
+        return 0, pos
     end
 end
 
 --- Try to place a road tile at (tx, ty) if not blocked.
 local function place(result, tx, ty)
-    if tx < 0 or tx >= CHUNK_SIZE or ty < 0 or ty >= CHUNK_SIZE then return false end
+    if tx < 0 or tx >= CHUNK_SIZE or ty < 0 or ty >= CHUNK_SIZE then
+        return false
+    end
     local i = idx(tx, ty)
     if not BLOCKED[result[i]] then
         result[i] = "road"
@@ -87,15 +93,19 @@ local function candidate_moves(cx, cy, ex, ey, rng)
     local alt2_x, alt2_y = -my, -mx                        -- 90° counter-clockwise
     local alt3_x, alt3_y = -mx, -my                        -- backtrack
 
-    return { {mx, my}, {alt1_x, alt1_y}, {alt2_x, alt2_y}, {alt3_x, alt3_y} }
+    return { { mx, my }, { alt1_x, alt1_y }, { alt2_x, alt2_y }, { alt3_x, alt3_y } }
 end
 
 local function generate_chunk(rng, x, y, tiles)
     local result = {}
     if tiles ~= nil then
-        for i = 1, N do result[i] = tiles[i] end
+        for i = 1, N do
+            result[i] = tiles[i]
+        end
     else
-        for i = 1, N do result[i] = "meadow" end
+        for i = 1, N do
+            result[i] = "meadow"
+        end
     end
 
     -- Decide how many roads
@@ -131,15 +141,27 @@ local function generate_chunk(rng, x, y, tiles)
 
             -- Check exit condition
             local done = false
-            if end_edge == 0 and cy <= 0 then done = true end
-            if end_edge == 2 and cy >= CHUNK_SIZE - 1 then done = true end
-            if end_edge == 1 and cx >= CHUNK_SIZE - 1 then done = true end
-            if end_edge == 3 and cx <= 0 then done = true end
-            if done then break end
+            if end_edge == 0 and cy <= 0 then
+                done = true
+            end
+            if end_edge == 2 and cy >= CHUNK_SIZE - 1 then
+                done = true
+            end
+            if end_edge == 1 and cx >= CHUNK_SIZE - 1 then
+                done = true
+            end
+            if end_edge == 3 and cx <= 0 then
+                done = true
+            end
+            if done then
+                break
+            end
 
             local dx = ex - cx
             local dy = ey - cy
-            if math.abs(dx) + math.abs(dy) == 0 then break end
+            if math.abs(dx) + math.abs(dy) == 0 then
+                break
+            end
 
             -- Try moves in priority order until one is unblocked
             local moves = candidate_moves(cx, cy, ex, ey, rng)

@@ -15,7 +15,7 @@ path = "src/bin/pack_tiles.rs"
 [dependencies]
 engine = { path = "../engine" }
 mapgen = { path = "../mapgen" }
-tiled  = { path = "../tiled" }
+tiled = { path = "../tiled" }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 image = "0.25"

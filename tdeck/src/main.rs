@@ -31,10 +31,10 @@ use esp_hal::i2c::master::{BusTimeout, Config as I2cConfig, I2c};
 use esp_hal::main;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::{Duration, Instant, Rate};
-use mipidsi::Builder;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
+use mipidsi::Builder;
 use render::RenderCache;
 
 // This creates the ESP-IDF app descriptor required by the T-Deck bootloader.
@@ -85,12 +85,12 @@ fn main() -> ! {
             SpiConfig::default().with_frequency(Rate::from_mhz(40)),
         ),
     )
-    .with_sck(peripherals.GPIO40)
-    .with_miso(Input::new(
-        peripherals.GPIO38,
-        InputConfig::default().with_pull(Pull::Up),
-    ))
-    .with_mosi(peripherals.GPIO41);
+        .with_sck(peripherals.GPIO40)
+        .with_miso(Input::new(
+            peripherals.GPIO38,
+            InputConfig::default().with_pull(Pull::Up),
+        ))
+        .with_mosi(peripherals.GPIO41);
 
     let spi_bus: RefCell<_> = RefCell::new(spi);
 
@@ -119,8 +119,8 @@ fn main() -> ! {
                 .with_timeout(BusTimeout::Disabled),
         ),
     )
-    .with_sda(peripherals.GPIO18)
-    .with_scl(peripherals.GPIO8);
+        .with_sda(peripherals.GPIO18)
+        .with_scl(peripherals.GPIO8);
 
     let trackball_click: Input<'_> = Input::new(
         peripherals.GPIO0,

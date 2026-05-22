@@ -39,4 +39,7 @@ pub struct Args {
     /// Path to the Lua evaluator script.
     #[arg(long)]
     pub evaluator: Option<PathBuf>,
+    /// Start in windowed mode instead of fullscreen.
+    #[arg(long = "windowed")]
+    pub window_mode: bool,
 }

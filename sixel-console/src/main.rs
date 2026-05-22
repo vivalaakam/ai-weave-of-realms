@@ -499,6 +499,7 @@ fn app_theme() -> AppTheme<Rgb888> {
             tile_color,
             tile_sprite_color,
             team_color,
+            cursor: Rgb888::new(255, 255, 0),
         },
         save_overlay: SaveOverlayTheme {
             panel_fill: Rgb888::new(24, 26, 34),

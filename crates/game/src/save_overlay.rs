@@ -126,7 +126,21 @@ impl SaveOverlay {
                             SaveOverlayOutcome::RequestSave(trimmed.to_string())
                         }
                     }
-                    _ => SaveOverlayOutcome::NoChange,
+                    InputEvent::None
+                    | InputEvent::PanUp
+                    | InputEvent::PanDown
+                    | InputEvent::PanLeft
+                    | InputEvent::PanRight
+                    | InputEvent::CursorUp
+                    | InputEvent::CursorDown
+                    | InputEvent::CursorLeft
+                    | InputEvent::CursorRight
+                    | InputEvent::Up
+                    | InputEvent::Down
+                    | InputEvent::Left
+                    | InputEvent::Right
+                    | InputEvent::NextHero
+                    | InputEvent::NextTurn => SaveOverlayOutcome::NoChange,
                 }
             }
             SaveOverlay::LoadList { list } => match list.handle_input(event, visible_rows) {
