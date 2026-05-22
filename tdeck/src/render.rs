@@ -78,6 +78,7 @@ fn app_theme() -> AppTheme<Rgb565> {
             tile_color,
             tile_sprite_color,
             team_color,
+            city_marker: Rgb565::WHITE,
         },
         save_overlay: SaveOverlayTheme {
             panel_fill: Rgb565::new(3, 3, 6),

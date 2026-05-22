@@ -5,6 +5,7 @@ use crate::info_overlay::{InfoOverlay, InfoOverlayOutcome};
 use crate::input::InputEvent;
 use crate::list::{ListOutcome, ListScreen};
 use crate::map_view::{MapViewApp, MapViewOutcome};
+use crate::random_map::{RandomMapOutcome, RandomMapScreen};
 use crate::save_overlay::{SaveOverlay, SaveOverlayOutcome};
 use crate::session::GameSession;
 use crate::splash::{SplashOutcome, SplashScreen};
@@ -24,10 +25,18 @@ pub const APP_TITLE: &str = "weave of realms";
 pub const SPLASH_OPTIONS: [&str; 2] = ["New Game", "Load Game"];
 /// Shared splash footer hint.
 pub const SPLASH_FOOTER: &str = "Enter: select  W/S: move";
+/// Shared random map footer hint.
+pub const RANDOM_MAP_FOOTER: &str = "Up/Down: select  Enter: action  Back: map list";
 /// Shared map list title.
 pub const MAP_LIST_TITLE: &str = "Maps";
 /// Shared map list footer hint.
 pub const MAP_LIST_FOOTER: &str = "Up/Down: select  Enter: load  Back: splash";
+/// Shared random map screen title.
+pub const RANDOM_MAP_TITLE: &str = "Random Map";
+/// Shared status for random map before seed is generated.
+pub const RANDOM_MAP_STATUS_NEW: &str = "Press Random to generate a seed";
+/// Shared status for random map after seed is generated.
+pub const RANDOM_MAP_STATUS_READY: &str = "Press Play to generate the map";
 /// Shared save list title.
 pub const SAVE_LIST_TITLE: &str = "Saves";
 /// Shared save list footer hint.
@@ -90,6 +99,8 @@ pub enum AppScreen {
     MapSelect(ListScreen),
     /// Shared save selection list.
     SaveSelect(ListScreen),
+    /// Random map seed generator screen.
+    RandomMap(RandomMapScreen),
     /// Shared gameplay map view with overlays.
     MapView(Box<MapViewScreen>),
 }
@@ -166,6 +177,13 @@ impl EmbeddedApp {
                 }
                 outcome.changed
             }
+            AppScreen::RandomMap(random_map) => {
+                let outcome = handle_random_map(host, random_map, event, layout);
+                if let Some(next) = outcome.next_screen {
+                    self.screen = next;
+                }
+                outcome.changed
+            }
             AppScreen::MapView(map_view) => {
                 let outcome = handle_map_view(host, map_view.as_mut(), event, layout);
                 if let Some(next) = outcome.next_screen {
@@ -227,10 +245,20 @@ where
         SplashOutcome::Selected(selected) => {
             let next_screen = match selected {
                 0 => match host.discover_maps() {
-                    Ok(maps) => AppScreen::MapSelect(ListScreen::new(
-                        maps,
-                        Some(MAP_SELECT_STATUS.to_string()),
-                    )),
+                    Ok(mut maps) => {
+                        maps.insert(
+                            0,
+                            ListEntry {
+                                id: "__random_map".to_string(),
+                                label: "Random Map".to_string(),
+                                meta: 0,
+                            },
+                        );
+                        AppScreen::MapSelect(ListScreen::new(
+                            maps,
+                            Some(MAP_SELECT_STATUS.to_string()),
+                        ))
+                    }
                     Err(error) => AppScreen::Splash(SplashScreen::new(
                         splash.selected,
                         Some(host.error_message(error)),
@@ -287,6 +315,12 @@ where
         },
         ListOutcome::Selected(selected) => match map_select.entries.get(selected) {
             Some(entry) => {
+                if entry.id == "__random_map" {
+                    return ScreenOutcome {
+                        changed: true,
+                        next_screen: Some(AppScreen::RandomMap(RandomMapScreen::new())),
+                    };
+                }
                 match build_map_view(host, entry, launch, Some(MAP_LOADED_STATUS.to_string())) {
                     Ok(map_view) => ScreenOutcome {
                         changed: true,
@@ -302,6 +336,76 @@ where
             }
             None => ScreenOutcome { changed: false, next_screen: None },
         },
+    }
+}
+
+fn handle_random_map<H>(
+    host: &mut H,
+    random_map: &mut RandomMapScreen,
+    event: InputEvent,
+    layout: AppLayout,
+) -> ScreenOutcome
+where
+    H: AppHost,
+{
+    match random_map.handle_input(event) {
+        RandomMapOutcome::NoChange => ScreenOutcome { changed: false, next_screen: None },
+        RandomMapOutcome::Changed => ScreenOutcome { changed: true, next_screen: None },
+        RandomMapOutcome::BackRequested => {
+            let entries = match host.discover_maps() {
+                Ok(mut maps) => {
+                    maps.insert(
+                        0,
+                        ListEntry {
+                            id: "__random_map".to_string(),
+                            label: "Random Map".to_string(),
+                            meta: 0,
+                        },
+                    );
+                    maps
+                }
+                Err(_) => vec![ListEntry {
+                    id: "__random_map".to_string(),
+                    label: "Random Map".to_string(),
+                    meta: 0,
+                }],
+            };
+            ScreenOutcome {
+                changed: true,
+                next_screen: Some(AppScreen::MapSelect(ListScreen::new(
+                    entries,
+                    Some(MAP_SELECT_STATUS.to_string()),
+                ))),
+            }
+        }
+        RandomMapOutcome::PlayRequested { seed } => {
+            let entry_result = host.generate_and_save_map(&seed);
+            match entry_result {
+                Ok(entry) => {
+                    match build_map_view(
+                        host,
+                        &entry,
+                        &LaunchConfig { start_map: None, start_x: 0, start_y: 0 },
+                        Some(MAP_LOADED_STATUS.to_string()),
+                    ) {
+                        Ok(map_view) => ScreenOutcome {
+                            changed: true,
+                            next_screen: Some(AppScreen::MapView(Box::new(clamped_map_view(
+                                map_view, layout,
+                            )))),
+                        },
+                        Err(message) => {
+                            random_map.status = Some(message);
+                            ScreenOutcome { changed: true, next_screen: None }
+                        }
+                    }
+                }
+                Err(error) => {
+                    random_map.status = Some(host.error_message(error));
+                    ScreenOutcome { changed: true, next_screen: None }
+                }
+            }
+        }
     }
 }
 

@@ -15,12 +15,14 @@ use engine::map::game_map::MapCoord;
 use engine::map::tile::Tiles;
 
 use crate::app::{
-    AppScreen, MapViewScreen, APP_TITLE, MAP_LIST_FOOTER, MAP_LIST_TITLE, SAVE_LIST_FOOTER,
+    AppScreen, MapViewScreen, APP_TITLE, MAP_LIST_FOOTER, MAP_LIST_TITLE, RANDOM_MAP_FOOTER,
+    RANDOM_MAP_STATUS_NEW, RANDOM_MAP_STATUS_READY, RANDOM_MAP_TITLE, SAVE_LIST_FOOTER,
     SAVE_LIST_TITLE, SPLASH_FOOTER, SPLASH_OPTIONS,
 };
 use crate::info_overlay::InfoOverlay;
 use crate::list::ListScreen;
 use crate::map_view::MapViewApp;
+use crate::random_map::RandomMapScreen;
 use crate::save_overlay::SaveOverlay;
 use crate::splash::SplashScreen;
 use crate::turn_overlay::EndTurnOverlay;
@@ -325,6 +327,8 @@ where
     pub tile_sprite_color: fn(Tiles) -> C,
     /// Converts team id into a device color.
     pub team_color: fn(usize) -> C,
+    /// Neutral city marker dot color.
+    pub city_marker: C,
     /// Cursor highlight border color.
     pub cursor: C,
 }
@@ -558,6 +562,18 @@ pub fn draw_app_screen<D, C>(
                 theme.list,
             );
         }
+        AppScreen::RandomMap(random_map) => {
+            reset_cache(&mut render_cache.map_view);
+            render_cache.overlay_visible = false;
+            draw_random_map_screen(
+                display,
+                screen_size,
+                random_map,
+                RANDOM_MAP_TITLE,
+                RANDOM_MAP_FOOTER,
+                theme.splash,
+            );
+        }
         AppScreen::MapView(map_view) => {
             draw_app_map_view(
                 display,
@@ -686,6 +702,124 @@ pub fn draw_splash_screen<D, C>(
         halt_on_error(
             embedded_graphics::text::Text::with_alignment(
                 status_text,
+                Point::new(center_x, screen_size.height as i32 - 14),
+                body_style,
+                embedded_graphics::text::Alignment::Center,
+            )
+            .draw(display),
+        );
+    }
+}
+
+/// Draws the random-map seed generator screen.
+///
+/// Shows the generated seed phrase (if any), three selectable options
+/// (Random, Play, Back), and a status line.
+pub fn draw_random_map_screen<D, C>(
+    display: &mut D,
+    screen_size: Size,
+    random_map: &RandomMapScreen,
+    title: &str,
+    footer: &str,
+    theme: SplashTheme<C>,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    halt_on_error(display.clear(theme.background));
+
+    let title_style =
+        MonoTextStyle::new(&embedded_graphics::mono_font::ascii::FONT_10X20, theme.text);
+    let body_style = MonoTextStyle::new(&FONT_6X10, theme.text);
+
+    let center_x = (screen_size.width / 2) as i32;
+    let center_y = (screen_size.height / 2) as i32;
+
+    // Title
+    halt_on_error(
+        embedded_graphics::text::Text::with_alignment(
+            title,
+            Point::new(center_x, center_y - 42),
+            title_style,
+            embedded_graphics::text::Alignment::Center,
+        )
+        .draw(display),
+    );
+
+    // Seed phrase or prompt
+    let seed_text = match &random_map.seed_phrase {
+        Some(seed) => seed.as_str(),
+        None => {
+            let prompt = RANDOM_MAP_STATUS_NEW;
+            halt_on_error(
+                embedded_graphics::text::Text::with_alignment(
+                    prompt,
+                    Point::new(center_x, center_y - 10),
+                    body_style,
+                    embedded_graphics::text::Alignment::Center,
+                )
+                .draw(display),
+            );
+            ""
+        }
+    };
+    if !seed_text.is_empty() {
+        let seed_y = center_y - 10;
+        // Draw seed in a slightly brighter color by reusing text color
+        halt_on_error(
+            embedded_graphics::text::Text::with_alignment(
+                seed_text,
+                Point::new(center_x, seed_y),
+                body_style,
+                embedded_graphics::text::Alignment::Center,
+            )
+            .draw(display),
+        );
+        // And the ready status below
+        halt_on_error(
+            embedded_graphics::text::Text::with_alignment(
+                RANDOM_MAP_STATUS_READY,
+                Point::new(center_x, seed_y + 14),
+                body_style,
+                embedded_graphics::text::Alignment::Center,
+            )
+            .draw(display),
+        );
+    }
+
+    // Menu options (Random, Play, Back)
+    let options = [&RandomMapScreen::OPTIONS[0], &RandomMapScreen::OPTIONS[1], &RandomMapScreen::OPTIONS[2]];
+    let menu_top = center_y + 24;
+    for (idx, label) in options.iter().enumerate() {
+        let prefix = if idx == random_map.selected { ">" } else { " " };
+        let line = format!("{prefix} {label}");
+        halt_on_error(
+            embedded_graphics::text::Text::with_alignment(
+                &line,
+                Point::new(center_x, menu_top + (idx as i32 * 14)),
+                body_style,
+                embedded_graphics::text::Alignment::Center,
+            )
+            .draw(display),
+        );
+    }
+
+    // Footer
+    halt_on_error(
+        embedded_graphics::text::Text::with_alignment(
+            footer,
+            Point::new(center_x, menu_top + (options.len() as i32 * 14) + 18),
+            body_style,
+            embedded_graphics::text::Alignment::Center,
+        )
+        .draw(display),
+    );
+
+    // Status / error line
+    if let Some(status) = random_map.status.as_deref() {
+        halt_on_error(
+            embedded_graphics::text::Text::with_alignment(
+                status,
                 Point::new(center_x, screen_size.height as i32 - 14),
                 body_style,
                 embedded_graphics::text::Alignment::Center,
@@ -1182,6 +1316,26 @@ fn draw_cell<D, C>(
 
     if matches!(tile.kind, Tiles::Mountain) {
         draw_mountain_cell(display, map, coord, top_left, mountain_masks, theme);
+    }
+
+    if matches!(tile.kind, Tiles::City) && map_view.session().state().city_owner(coord).is_none() {
+        let cx = top_left.x + TILE_WIDTH as i32 / 2 - 1;
+        let cy = top_left.y + TILE_HEIGHT as i32 / 2 - 1;
+        halt_on_error(
+            Rectangle::new(Point::new(cx, cy), Size::new(3, 3))
+                .into_styled(PrimitiveStyle::with_fill(theme.city_marker))
+                .draw(display),
+        );
+    }
+
+    if matches!(tile.kind, Tiles::CityEntrance) {
+        let cx = top_left.x + TILE_WIDTH as i32 / 2 - 1;
+        let cy = top_left.y + TILE_HEIGHT as i32 / 2 - 1;
+        halt_on_error(
+            Rectangle::new(Point::new(cx, cy), Size::new(3, 3))
+                .into_styled(PrimitiveStyle::with_fill(theme.city_marker))
+                .draw(display),
+        );
     }
 
     if let Some(team_id) = map_view.session().state().city_owner(coord) {

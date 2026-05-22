@@ -68,6 +68,7 @@ fn app_theme() -> AppTheme<Rgb888> {
             tile_color,
             tile_sprite_color,
             team_color,
+            city_marker: Rgb888::new(255, 255, 255),
             cursor: Rgb888::new(255, 255, 0),
         },
         save_overlay: SaveOverlayTheme {

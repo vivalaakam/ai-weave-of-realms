@@ -49,7 +49,7 @@ sdl2-run:
 
 # Generate a map PNG + TMX (default seed).
 mapgen:
-    cargo run -p rpg-tools --bin mapgen -- --generator scripts/generators/terrain.lua
+    cargo run -p rpg-tools --bin mapgen -- --seed "$(DATE)"
 
 # Remove build artefacts.
 clean:

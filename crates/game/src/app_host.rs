@@ -1,3 +1,4 @@
+use alloc::string::String;
 use crate::app::LoadedGame;
 use crate::info_overlay::InfoOverlay;
 use crate::io::{discover_rpgs_dir, load_state, sanitize_save_filename, IoError, ListEntry};
@@ -154,5 +155,49 @@ pub trait AppHost {
     /// Converts a host-specific error into a user-visible message.
     fn error_message(&self, error: AppHostError) -> String {
         error.to_string()
+    }
+    /// Generates a map from `seed`, saves it to the maps directory, and
+    /// returns a [`ListEntry`] pointing at the newly-created `.rpgs` file.
+    ///
+    /// # Errors
+    /// Returns the same error variants as [`save_game`] and [`load_map`] when
+    /// generation or writing fails.
+    fn generate_and_save_map(&mut self, seed: &str,
+    ) -> Result<ListEntry, AppHostError> {
+        let map = crate::io::generate_map(
+            seed.to_string(),
+            self.get_width(),
+            self.get_height(),
+            self.get_generator(),
+            self.get_validator_dir(),
+            self.get_validator(),
+            self.get_evaluator(),
+        )
+        .map_err(AppHostError::LoadMapGeneratedState)?;
+        let state = crate::io::build_default_state(map, seed)
+            .map_err(AppHostError::LoadMapGeneratedState)?;
+
+        fs::create_dir_all(self.get_maps_dir()).map_err(|err| {
+            AppHostError::SaveGameCreateDirFailed(
+                self.get_maps_dir().to_string_lossy().to_string(),
+                err,
+            )
+        })?;
+
+        let file_name = sanitize_save_filename(seed);
+        let path = self.get_maps_dir().join(&file_name);
+
+        let bytes = state
+            .to_save_bytes_with_name(seed)
+            .map_err(AppHostError::SaveGameEngineError)?;
+        fs::write(&path, bytes).map_err(|err| {
+            AppHostError::SaveGameWriteFailed(path.to_string_lossy().to_string(), err)
+        })?;
+
+        Ok(ListEntry {
+            id: format!("map:{}", path.display()),
+            label: seed.to_string(),
+            meta: self.get_width().saturating_mul(self.get_height()),
+        })
     }
 }
