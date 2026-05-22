@@ -8,15 +8,19 @@
 extern crate alloc;
 
 pub mod app;
+#[cfg(feature = "std")]
+pub mod app_host;
 pub mod info_overlay;
 pub mod input;
 pub mod list;
 pub mod map_view;
 pub mod prelude;
+pub mod random_map;
 pub mod render;
 pub mod save_overlay;
 pub mod session;
 pub mod splash;
+pub mod team_setup;
 pub mod turn_overlay;
 pub mod types;
 

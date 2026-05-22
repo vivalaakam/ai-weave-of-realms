@@ -74,6 +74,10 @@ impl Hero {
         self.id
     }
 
+    pub fn get_team_id(&self) -> TeamId {
+        self.team_id
+    }
+
     /// Computes the total movement points for a hero with the given speed.
     ///
     /// Formula: `20 + spd`

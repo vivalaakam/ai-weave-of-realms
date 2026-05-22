@@ -1,23 +1,25 @@
 //! Shared top-level application state machine for embedded frontends.
 
+use crate::app_host::AppHost;
+use crate::info_overlay::{InfoOverlay, InfoOverlayOutcome};
+use crate::input::InputEvent;
+use crate::list::{ListOutcome, ListScreen};
+use crate::map_view::{MapViewApp, MapViewOutcome};
+use crate::random_map::{RandomMapOutcome, RandomMapScreen};
+use crate::save_overlay::{SaveOverlay, SaveOverlayOutcome};
+use crate::session::GameSession;
+use crate::splash::{SplashOutcome, SplashScreen};
+use crate::team_setup::{TeamSetupOutcome, TeamSetupScreen};
+use crate::turn_overlay::{EndTurnOverlay, EndTurnOverlayOutcome};
 use crate::types::ListEntry;
 use alloc::{
     boxed::Box,
     format,
     string::{String, ToString},
     vec,
-    vec::Vec,
 };
 use engine::game_state::GameState;
-
-use crate::info_overlay::{InfoOverlay, InfoOverlayOutcome};
-use crate::input::InputEvent;
-use crate::list::{ListOutcome, ListScreen};
-use crate::map_view::{MapViewApp, MapViewOutcome};
-use crate::save_overlay::{SaveOverlay, SaveOverlayOutcome};
-use crate::session::GameSession;
-use crate::splash::{SplashOutcome, SplashScreen};
-use crate::turn_overlay::{EndTurnOverlay, EndTurnOverlayOutcome};
+use engine::map::game_map::GameMap;
 
 /// Shared app title rendered on the splash screen.
 pub const APP_TITLE: &str = "weave of realms";
@@ -25,14 +27,26 @@ pub const APP_TITLE: &str = "weave of realms";
 pub const SPLASH_OPTIONS: [&str; 2] = ["New Game", "Load Game"];
 /// Shared splash footer hint.
 pub const SPLASH_FOOTER: &str = "Enter: select  W/S: move";
+/// Shared random map footer hint.
+pub const RANDOM_MAP_FOOTER: &str = "Up/Down: select  Enter: action  Back: map list";
 /// Shared map list title.
 pub const MAP_LIST_TITLE: &str = "Maps";
 /// Shared map list footer hint.
 pub const MAP_LIST_FOOTER: &str = "Up/Down: select  Enter: load  Back: splash";
+/// Shared random map screen title.
+pub const RANDOM_MAP_TITLE: &str = "Random Map";
+/// Shared status for random map before seed is generated.
+pub const RANDOM_MAP_STATUS_NEW: &str = "Press Random to generate a seed";
+/// Shared status for random map after seed is generated.
+pub const RANDOM_MAP_STATUS_READY: &str = "Press Play to generate the map";
 /// Shared save list title.
 pub const SAVE_LIST_TITLE: &str = "Saves";
 /// Shared save list footer hint.
 pub const SAVE_LIST_FOOTER: &str = "Up/Down: select  Enter: load  Back: menu";
+/// Shared team setup screen title.
+pub const TEAM_SETUP_TITLE: &str = "Team Setup";
+/// Shared team setup footer hint.
+pub const TEAM_SETUP_FOOTER: &str = "Up/Down: move  Left/Right: adjust  Enter: confirm  Back: back";
 const MAP_SELECT_STATUS: &str = "Select a map and press Enter";
 const SAVE_SELECT_STATUS: &str = "Select a save and press Enter";
 const MAP_LOADED_STATUS: &str = "Map loaded. Press Enter to switch between pan and hero mode";
@@ -69,6 +83,13 @@ pub struct LoadedGame {
     pub state: GameState,
 }
 
+/// Data stored between selecting a map and finishing team setup.
+pub struct PendingMapData {
+    pub map_name: String,
+    pub state: Option<GameState>,
+    pub map: Option<GameMap>,
+}
+
 /// Shared gameplay screen state with optional overlays.
 pub struct MapViewScreen {
     /// Shared gameplay map-view application model.
@@ -91,35 +112,19 @@ pub enum AppScreen {
     MapSelect(ListScreen),
     /// Shared save selection list.
     SaveSelect(ListScreen),
+    /// Random map seed generator screen.
+    RandomMap(RandomMapScreen),
+    /// Team configuration screen before starting a game.
+    TeamSetup(TeamSetupScreen),
     /// Shared gameplay map view with overlays.
     MapView(Box<MapViewScreen>),
-}
-
-/// Host-side storage and platform hooks required by the shared controller.
-pub trait AppHost {
-    /// Host-specific error type for map/save access.
-    type Error;
-
-    /// Returns all loadable maps shown under "New Game".
-    fn discover_maps(&mut self) -> Result<Vec<ListEntry>, Self::Error>;
-    /// Returns all loadable saves shown under "Load Game".
-    fn discover_saves(&mut self) -> Result<Vec<ListEntry>, Self::Error>;
-    /// Loads a map entry into a full engine state.
-    fn load_map(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error>;
-    /// Loads a save entry into a full engine state.
-    fn load_save(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error>;
-    /// Persists the current engine state as a save file.
-    fn save_game(&mut self, name: &str, state: &GameState) -> Result<(), Self::Error>;
-    /// Builds an optional platform information overlay.
-    fn info_overlay(&mut self) -> Option<InfoOverlay>;
-    /// Converts a host-specific error into a user-visible message.
-    fn error_message(&self, error: Self::Error) -> String;
 }
 
 /// Shared top-level app controller reused by all embedded frontends.
 pub struct EmbeddedApp {
     screen: AppScreen,
     launch: LaunchConfig,
+    pending_map: Option<PendingMapData>,
 }
 
 impl EmbeddedApp {
@@ -133,7 +138,7 @@ impl EmbeddedApp {
         H: AppHost,
     {
         let screen = initial_screen(host, &launch);
-        Self { screen, launch }
+        Self { screen, launch, pending_map: None }
     }
 
     /// Returns the current top-level screen.
@@ -175,7 +180,7 @@ impl EmbeddedApp {
                 outcome.changed
             }
             AppScreen::MapSelect(map_select) => {
-                let outcome = handle_map_select(host, map_select, event, &self.launch, layout);
+                let outcome = handle_map_select(host, map_select, event, &self.launch, layout, &mut self.pending_map);
                 if let Some(next) = outcome.next_screen {
                     self.screen = next;
                 }
@@ -183,6 +188,20 @@ impl EmbeddedApp {
             }
             AppScreen::SaveSelect(save_select) => {
                 let outcome = handle_save_select(host, save_select, event, layout);
+                if let Some(next) = outcome.next_screen {
+                    self.screen = next;
+                }
+                outcome.changed
+            }
+            AppScreen::RandomMap(random_map) => {
+                let outcome = handle_random_map(host, random_map, event, layout, &mut self.pending_map);
+                if let Some(next) = outcome.next_screen {
+                    self.screen = next;
+                }
+                outcome.changed
+            }
+            AppScreen::TeamSetup(team_setup) => {
+                let outcome = handle_team_setup(host, team_setup, event, layout, &mut self.pending_map);
                 if let Some(next) = outcome.next_screen {
                     self.screen = next;
                 }
@@ -249,10 +268,20 @@ where
         SplashOutcome::Selected(selected) => {
             let next_screen = match selected {
                 0 => match host.discover_maps() {
-                    Ok(maps) => AppScreen::MapSelect(ListScreen::new(
-                        maps,
-                        Some(MAP_SELECT_STATUS.to_string()),
-                    )),
+                    Ok(mut maps) => {
+                        maps.insert(
+                            0,
+                            ListEntry {
+                                id: "__random_map".to_string(),
+                                label: "Random Map".to_string(),
+                                meta: 0,
+                            },
+                        );
+                        AppScreen::MapSelect(ListScreen::new(
+                            maps,
+                            Some(MAP_SELECT_STATUS.to_string()),
+                        ))
+                    }
                     Err(error) => AppScreen::Splash(SplashScreen::new(
                         splash.selected,
                         Some(host.error_message(error)),
@@ -281,8 +310,9 @@ fn handle_map_select<H>(
     host: &mut H,
     map_select: &mut ListScreen,
     event: InputEvent,
-    launch: &LaunchConfig,
+    _launch: &LaunchConfig,
     layout: AppLayout,
+    pending_map: &mut Option<PendingMapData>,
 ) -> ScreenOutcome
 where
     H: AppHost,
@@ -309,21 +339,112 @@ where
         },
         ListOutcome::Selected(selected) => match map_select.entries.get(selected) {
             Some(entry) => {
-                match build_map_view(host, entry, launch, Some(MAP_LOADED_STATUS.to_string())) {
-                    Ok(map_view) => ScreenOutcome {
+                if entry.id == "__random_map" {
+                    return ScreenOutcome {
                         changed: true,
-                        next_screen: Some(AppScreen::MapView(Box::new(clamped_map_view(
-                            map_view, layout,
-                        )))),
-                    },
-                    Err(message) => {
-                        map_select.status = Some(message);
-                        ScreenOutcome { changed: true, next_screen: None }
+                        next_screen: Some(AppScreen::RandomMap(RandomMapScreen::new())),
+                    };
+                }
+                // Load map without building full state; defer state building until TeamSetup.
+                let map = match host.load_map_only(entry) {
+                    Ok(map) => map,
+                    Err(error) => {
+                        map_select.status = Some(host.error_message(error));
+                        return ScreenOutcome { changed: true, next_screen: None };
                     }
+                };
+                *pending_map = Some(PendingMapData {
+                    map_name: entry.label.clone(),
+                    state: None,
+                    map: Some(map),
+                });
+                ScreenOutcome {
+                    changed: true,
+                    next_screen: Some(AppScreen::TeamSetup(TeamSetupScreen::new(2))),
                 }
             }
             None => ScreenOutcome { changed: false, next_screen: None },
         },
+    }
+}
+
+fn handle_random_map<H>(
+    host: &mut H,
+    random_map: &mut RandomMapScreen,
+    event: InputEvent,
+    _layout: AppLayout,
+    pending_map: &mut Option<PendingMapData>,
+) -> ScreenOutcome
+where
+    H: AppHost,
+{
+    match random_map.handle_input(event) {
+        RandomMapOutcome::NoChange => ScreenOutcome { changed: false, next_screen: None },
+        RandomMapOutcome::Changed => ScreenOutcome { changed: true, next_screen: None },
+        RandomMapOutcome::BackRequested => {
+            let entries = match host.discover_maps() {
+                Ok(mut maps) => {
+                    maps.insert(
+                        0,
+                        ListEntry {
+                            id: "__random_map".to_string(),
+                            label: "Random Map".to_string(),
+                            meta: 0,
+                        },
+                    );
+                    maps
+                }
+                Err(_) => vec![ListEntry {
+                    id: "__random_map".to_string(),
+                    label: "Random Map".to_string(),
+                    meta: 0,
+                }],
+            };
+            ScreenOutcome {
+                changed: true,
+                next_screen: Some(AppScreen::MapSelect(ListScreen::new(
+                    entries,
+                    Some(MAP_SELECT_STATUS.to_string()),
+                ))),
+            }
+        }
+        RandomMapOutcome::PlayRequested { seed } => {
+            let entry_result = host.generate_and_save_map(&seed);
+            match entry_result {
+                Ok(entry) => {
+                    match crate::io::load_map_only(
+                        &seed,
+                        host.get_width(),
+                        host.get_height(),
+                        host.get_generator(),
+                        host.get_validator_dir(),
+                        host.get_validator(),
+                        host.get_evaluator(),
+                        None,
+                    ) {
+                        Ok(map) => {
+                            *pending_map = Some(PendingMapData {
+                                map_name: entry.label.clone(),
+                                state: None,
+                                map: Some(map),
+                            });
+                            ScreenOutcome {
+                                changed: true,
+                                next_screen: Some(AppScreen::TeamSetup(TeamSetupScreen::new(2))),
+                            }
+                        }
+                        Err(error) => {
+                            random_map.status = Some(error.to_string());
+                            ScreenOutcome { changed: true, next_screen: None }
+                        }
+                    }
+                }
+                Err(error) => {
+                    random_map.status = Some(host.error_message(error));
+                    ScreenOutcome { changed: true, next_screen: None }
+                }
+            }
+        }
     }
 }
 
@@ -379,6 +500,84 @@ where
             },
             None => ScreenOutcome { changed: false, next_screen: None },
         },
+    }
+}
+
+fn handle_team_setup<H>(
+    _host: &mut H,
+    team_setup: &mut TeamSetupScreen,
+    event: InputEvent,
+    layout: AppLayout,
+    pending_map: &mut Option<PendingMapData>,
+) -> ScreenOutcome
+where
+    H: AppHost,
+{
+    match team_setup.handle_input(event) {
+        TeamSetupOutcome::NoChange => ScreenOutcome { changed: false, next_screen: None },
+        TeamSetupOutcome::Changed => ScreenOutcome { changed: true, next_screen: None },
+        TeamSetupOutcome::BackRequested => {
+            *pending_map = None;
+            ScreenOutcome {
+                changed: true,
+                next_screen: Some(AppScreen::MapSelect(ListScreen::new(
+                    vec![],
+                    Some("Returned to map list".to_string()),
+                ))),
+            }
+        }
+        TeamSetupOutcome::PlayRequested => {
+            let Some(pending) = pending_map.take() else {
+                team_setup.status = Some("Internal error: no pending map".to_string());
+                return ScreenOutcome { changed: true, next_screen: None };
+            };
+
+            let team_cfgs: Vec<crate::io::TeamConfig> = team_setup
+                .teams
+                .iter()
+                .map(|t| crate::io::TeamConfig {
+                    name: t.name.clone(),
+                    color: t.color,
+                    player_controlled: t.player_controlled,
+                })
+                .collect();
+
+            let state_result = if let Some(state) = pending.state {
+                Ok(state)
+            } else if let Some(map) = pending.map {
+                crate::io::build_state_with_teams(map, &pending.map_name, &team_cfgs)
+                    .map_err(|e| e.to_string())
+            } else {
+                Err("Internal error: no map or state loaded".to_string())
+            };
+
+            match state_result {
+                Ok(state) => match map_view_from_loaded(
+                    LoadedGame {
+                        map_name: pending.map_name,
+                        state,
+                    },
+                    0,
+                    0,
+                    Some(MAP_LOADED_STATUS.to_string()),
+                ) {
+                    Ok(map_view) => ScreenOutcome {
+                        changed: true,
+                        next_screen: Some(AppScreen::MapView(Box::new(clamped_map_view(
+                            map_view, layout,
+                        )))),
+                    },
+                    Err(message) => {
+                        team_setup.status = Some(message);
+                        ScreenOutcome { changed: true, next_screen: None }
+                    }
+                },
+                Err(message) => {
+                    team_setup.status = Some(message);
+                    ScreenOutcome { changed: true, next_screen: None }
+                }
+            }
+        }
     }
 }
 

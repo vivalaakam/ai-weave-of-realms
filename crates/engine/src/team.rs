@@ -61,22 +61,37 @@ impl Team {
         self.player_controlled
     }
 
-    pub(crate) fn increment_turn(&mut self) {
+    pub fn increment_turn(&mut self) {
         self.turn += 1;
     }
 
-    /// Creates a default Red player team (id=0, first slot).
+    /// Convenience constructor for a player-controlled red team.
     pub fn red() -> Self {
         Self::new(0, "Red", (220, 50, 50), true)
     }
 
-    /// Creates a default Blue player team (id=1, second slot).
+    /// Convenience constructor for a computer-controlled blue enemy team.
     pub fn blue() -> Self {
-        Self::new(1, "Blue", (50, 100, 220), true)
+        Self::new(1, "Blue", (50, 50, 220), false)
     }
 
-    /// Creates a default AI-controlled enemy team (id=2, third slot).
+    /// Convenience constructor for a computer-controlled green neutral team.
+    pub fn green() -> Self {
+        Self::new(2, "Green", (50, 220, 50), false)
+    }
+
+    /// Convenience constructor for a computer-controlled yellow team.
+    pub fn yellow() -> Self {
+        Self::new(3, "Yellow", (220, 220, 50), false)
+    }
+
+    /// Convenience constructor for a player team (alias for red).
+    pub fn player() -> Self {
+        Self::red()
+    }
+
+    /// Convenience constructor for a non-player-controlled enemy team (alias for green).
     pub fn enemy() -> Self {
-        Self::new(2, "Enemy", (150, 80, 200), false)
+        Self::green()
     }
 }

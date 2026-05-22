@@ -52,7 +52,7 @@ pub fn app_layout(screen_size: Size) -> AppLayout {
 /// Build the complete color/theme descriptor for the renderer.
 fn app_theme() -> AppTheme<Rgb888> {
     AppTheme {
-        splash: SplashTheme { background: SPLASH_BACKGROUND, text: TEXT },
+        splash: SplashTheme { background: SPLASH_BACKGROUND, text: TEXT, selected: Rgb888::new(255, 255, 120) },
         list: ListTheme {
             background: BACKGROUND,
             text: TEXT,
@@ -68,6 +68,7 @@ fn app_theme() -> AppTheme<Rgb888> {
             tile_color,
             tile_sprite_color,
             team_color,
+            city_marker: Rgb888::new(255, 255, 255),
             cursor: Rgb888::new(255, 255, 0),
         },
         save_overlay: SaveOverlayTheme {

@@ -21,7 +21,7 @@ use crate::tile_highlight::TileHighlight;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const GENERATOR_PATH: &str = "res://scripts/generators/terrain.lua";
+const GENERATOR_PATH: &str = "res://scripts/generators/default.lua";
 const DEFAULT_SEED: &str = "default-seed";
 const MAP_WIDTH: i32 = 96;
 const MAP_HEIGHT: i32 = 96;

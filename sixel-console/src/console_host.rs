@@ -3,27 +3,18 @@ use game::app_host::AppHost;
 use game::prelude::render::Size;
 use std::path::Path;
 
-pub struct SdlHost {
-    pub(crate) args: Args,
-    pub(crate) screen_size: Size,
-    pub(crate) left_x_right: bool,
-    pub(crate) left_x_left: bool,
-    pub(crate) left_y_down: bool,
-    pub(crate) left_y_up: bool,
-    pub(crate) right_x_right: bool,
-    pub(crate) right_x_left: bool,
-    pub(crate) right_y_down: bool,
-    pub(crate) right_y_up: bool,
-    pub(crate) trigger_r_active: bool,
+pub struct ConsoleHost {
+    pub args: Args,
+    pub screen_size: Size,
 }
 
-impl AppHost for SdlHost {
+impl AppHost for ConsoleHost {
     fn get_maps_dir(&self) -> &Path {
-        Path::new("maps")
+        &Path::new("maps")
     }
 
     fn get_saves_dir(&self) -> &Path {
-        Path::new("savegame")
+        &Path::new("savegame")
     }
 
     fn get_seed(&self) -> &str {
@@ -47,7 +38,7 @@ impl AppHost for SdlHost {
     }
 
     fn get_generator(&self) -> Option<&Path> {
-        self.args.generator.as_deref()
+        self.args.generators.as_deref()
     }
 
     fn get_validator_dir(&self) -> Option<&Path> {

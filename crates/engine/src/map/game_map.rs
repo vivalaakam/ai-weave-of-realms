@@ -128,8 +128,8 @@ impl GameMap {
         let spawns = spawn::find_spawn_positions(self)?;
         let map_width = self.tile_width();
         let mut state = GameState::new(self.clone(), seed);
-        let player_team_id = state.add_team(Team::red());
-        let enemy_team_id = state.add_team(Team::enemy());
+        let player_team_id = state.add_team(Team::new(0, "Red", (220, 50, 50), true));
+        let enemy_team_id = state.add_team(Team::new(2, "Enemy", (150, 80, 200), false));
 
         let offset =
             MapCoord::new(spawns.player.x.saturating_add(1).min(map_width - 1), spawns.player.y);
