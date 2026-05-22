@@ -8,7 +8,7 @@ members = [
     "crates/helpers",
     "sixel-console",
     "sdl2-console"
-]
+, "bevy-console"]
 exclude = ["tdeck", ]
 resolver = "2"
 
