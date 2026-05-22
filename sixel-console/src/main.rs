@@ -1,36 +1,29 @@
 //! Standalone console launcher that renders AI RPG maps as sixel graphics.
 
 use std::collections::HashMap;
-use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use args::Args;
 use clap::Parser;
+use console_host::ConsoleHost;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::OriginDimensions;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
-use engine::game_state::GameState;
-use engine::hero::Hero;
-use engine::map::game_map::GameMap;
-use engine::spawn;
-use engine::team::Team;
-use game::app::{AppHost, AppLayout, EmbeddedApp, LaunchConfig, LoadedGame};
-use game::info_overlay::InfoOverlay;
+use game::app::{AppLayout, EmbeddedApp, LaunchConfig};
 use game::input::InputEvent;
 use game::render::{
     draw_app_screen, visible_tiles, AppRenderCache, AppTheme, InfoOverlayTheme, ListTheme,
     MapViewTheme, RenderConfig, SaveOverlayTheme, SplashTheme,
 };
-use game::types::ListEntry;
-use mapgen::error::MapgenError;
-use mapgen::map_assembler::{MapAssembler, MapConfig};
 use terminal_size::{terminal_size, Height, Width};
-use tiled::read_tmx;
-use tracing::{error, info};
+use tracing::error;
+
+mod args;
+mod console_host;
 
 const MAP_RENDER_CONFIG: RenderConfig = RenderConfig { header_height: 28, footer_height: 16 };
 
@@ -41,58 +34,7 @@ const OUTPUT_SCALE: usize = 2;
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-#[derive(Clone, Debug, Parser)]
-#[command(name = "weave-of-realms-sixel", author, version, about)]
-struct Args {
-    /// Load a saved game state from an .rpgs file.
-    #[arg(long)]
-    save: Option<PathBuf>,
-
-    /// Load a TMX map instead of generating one.
-    #[arg(long)]
-    tmx: Option<PathBuf>,
-
-    /// Seed phrase for deterministic generation.
-    #[arg(long, default_value = "default-seed")]
-    seed: String,
-
-    /// Map width in tiles when generating.
-    #[arg(long, default_value_t = 96)]
-    width: u32,
-
-    /// Map height in tiles when generating.
-    #[arg(long, default_value_t = 96)]
-    height: u32,
-
-    /// Generator script path (repeatable pipeline).
-    #[arg(long = "generator", value_name = "SCRIPT")]
-    generators: Vec<PathBuf>,
-
-    /// Directory with validation rule scripts.
-    #[arg(long)]
-    validator_dir: Option<PathBuf>,
-
-    /// Path to a single Lua validator script.
-    #[arg(long)]
-    validator: Option<PathBuf>,
-
-    /// Path to the Lua evaluator script.
-    #[arg(long)]
-    evaluator: Option<PathBuf>,
-}
-
 struct RawModeGuard;
-
-struct ConsoleHost {
-    args: Args,
-}
-
-#[derive(Debug)]
-enum ConsoleHostError {
-    Message(String),
-    Io(io::Error),
-    Engine(String),
-}
 
 impl RawModeGuard {
     fn new() -> AppResult<Self> {
@@ -123,7 +65,7 @@ fn main() {
 }
 
 fn run() -> AppResult<()> {
-    let mut host = ConsoleHost { args: Args::parse() };
+    let mut host = ConsoleHost { args: Args::parse(), screen_size: detect_screen_size() };
     let _raw_mode = RawModeGuard::new()?;
     let stdout = io::stdout();
     let mut handle = stdout.lock();
@@ -177,237 +119,6 @@ fn run() -> AppResult<()> {
     }
 
     Ok(())
-}
-
-fn load_state(args: &Args, map_path: Option<&Path>) -> AppResult<GameState> {
-    if let Some(path) = &args.save {
-        let bytes = fs::read(path)?;
-        let state = GameState::from_save_bytes(&bytes)?;
-        info!(path = %path.display(), "loaded saved game state");
-        return Ok(state);
-    }
-
-    if let Some(path) = map_path.or(args.tmx.as_deref()) {
-        let map = read_tmx(path)?;
-        info!(path = %path.display(), "loaded TMX map");
-        return build_default_state(map, &args.seed);
-    }
-
-    let map = generate_map(args)?;
-    build_default_state(map, &args.seed)
-}
-
-impl AppHost for ConsoleHost {
-    type Error = ConsoleHostError;
-
-    fn discover_maps(&mut self) -> Result<Vec<ListEntry>, Self::Error> {
-        let mut entries = discover_rpgs_dir(Path::new("maps"), "map:")?;
-        if let Some(path) = &self.args.tmx {
-            entries.push(file_entry("tmx:", path)?);
-        }
-        if entries.is_empty() {
-            entries.push(ListEntry {
-                id: format!("generated:{}", self.args.seed),
-                label: format!("Generated map ({})", self.args.seed),
-                meta: self.args.width.saturating_mul(self.args.height),
-            });
-        }
-        entries.sort_by(|left, right| left.label.cmp(&right.label));
-        Ok(entries)
-    }
-
-    fn discover_saves(&mut self) -> Result<Vec<ListEntry>, Self::Error> {
-        let mut entries = discover_rpgs_dir(Path::new("savegame"), "save:")?;
-        if let Some(path) = &self.args.save {
-            entries.push(file_entry("save:", path)?);
-        }
-        entries.sort_by(|left, right| left.label.cmp(&right.label));
-        Ok(entries)
-    }
-
-    fn load_map(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error> {
-        if let Some(path) = entry.id.strip_prefix("tmx:") {
-            let state = load_state(&self.args, Some(Path::new(path)))
-                .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame { map_name: entry.label.clone(), state });
-        }
-        if entry.id.starts_with("generated:") {
-            let state = load_state(&self.args, None)
-                .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame { map_name: entry.label.clone(), state });
-        }
-        if let Some(path) = entry.id.strip_prefix("map:") {
-            let bytes = fs::read(path).map_err(ConsoleHostError::Io)?;
-            let state = GameState::from_save_bytes(&bytes)
-                .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-            return Ok(LoadedGame { map_name: entry.label.clone(), state });
-        }
-        Err(ConsoleHostError::Message("Unknown map entry".to_string()))
-    }
-
-    fn load_save(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error> {
-        let path = entry
-            .id
-            .strip_prefix("save:")
-            .ok_or_else(|| ConsoleHostError::Message("Unknown save entry".to_string()))?;
-        let bytes = fs::read(path).map_err(ConsoleHostError::Io)?;
-        let state = GameState::from_save_bytes(&bytes)
-            .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-        Ok(LoadedGame { map_name: entry.label.clone(), state })
-    }
-
-    fn save_game(&mut self, name: &str, state: &GameState) -> Result<(), Self::Error> {
-        let dir = Path::new("savegame");
-        fs::create_dir_all(dir).map_err(ConsoleHostError::Io)?;
-        let file_name = sanitize_save_filename(name);
-        let path = dir.join(file_name);
-        let bytes = state
-            .to_save_bytes_with_name(name)
-            .map_err(|error| ConsoleHostError::Engine(error.to_string()))?;
-        fs::write(path, bytes).map_err(ConsoleHostError::Io)
-    }
-
-    fn info_overlay(&mut self) -> Option<InfoOverlay> {
-        let screen_size = detect_screen_size();
-        Some(InfoOverlay::new(
-            "System Info".to_string(),
-            vec![
-                format!("Viewport: {}x{}", screen_size.width, screen_size.height),
-                format!("Seed: {}", self.args.seed),
-            ],
-            "Enter or q: close".to_string(),
-        ))
-    }
-
-    fn error_message(&self, error: Self::Error) -> String {
-        match error {
-            ConsoleHostError::Message(message) => message,
-            ConsoleHostError::Io(error) => format!("I/O error: {error}"),
-            ConsoleHostError::Engine(message) => format!("Engine error: {message}"),
-        }
-    }
-}
-
-fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>, ConsoleHostError> {
-    let mut entries: Vec<ListEntry> = Vec::new();
-    if !dir.is_dir() {
-        return Ok(entries);
-    }
-
-    let read_dir = fs::read_dir(dir).map_err(ConsoleHostError::Io)?;
-    for entry in read_dir {
-        let entry = entry.map_err(ConsoleHostError::Io)?;
-        let path = entry.path();
-        if !is_rpgs_path(&path) {
-            continue;
-        }
-        let metadata = entry.metadata().map_err(ConsoleHostError::Io)?;
-        let label = read_save_name(&path).unwrap_or_else(|| file_label(&path));
-        entries.push(ListEntry {
-            id: format!("{prefix}{}", path.display()),
-            label,
-            meta: u32::try_from(metadata.len()).unwrap_or(u32::MAX),
-        });
-    }
-    Ok(entries)
-}
-
-fn file_entry(prefix: &str, path: &Path) -> Result<ListEntry, ConsoleHostError> {
-    let metadata = fs::metadata(path).map_err(ConsoleHostError::Io)?;
-    Ok(ListEntry {
-        id: format!("{prefix}{}", path.display()),
-        label: file_label(path),
-        meta: u32::try_from(metadata.len()).unwrap_or(u32::MAX),
-    })
-}
-
-fn read_save_name(path: &Path) -> Option<String> {
-    let bytes = fs::read(path).ok()?;
-    GameState::read_save_name(&bytes).ok()
-}
-
-fn file_label(path: &Path) -> String {
-    path.file_stem().and_then(|value| value.to_str()).unwrap_or("unnamed").to_string()
-}
-
-fn is_rpgs_path(path: &Path) -> bool {
-    path.extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.eq_ignore_ascii_case("rpgs"))
-        .unwrap_or(false)
-}
-
-fn sanitize_save_filename(name: &str) -> String {
-    let mut cleaned = String::new();
-    for ch in name.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-            cleaned.push(ch.to_ascii_uppercase());
-        }
-    }
-    if cleaned.is_empty() {
-        cleaned.push_str("SAVE");
-    }
-    cleaned.truncate(7);
-    format!("{cleaned}.RPGS")
-}
-
-fn generate_map(args: &Args) -> AppResult<GameMap> {
-    let mut generators = args.generators.clone();
-    if generators.is_empty() {
-        generators.push(PathBuf::from("scripts/generators/default.lua"));
-    }
-
-    let first = generators.remove(0);
-    let mut config = MapConfig::default_3x3(args.seed.clone(), first);
-    config.width = args.width;
-    config.height = args.height;
-
-    for generator in generators {
-        config = config.with_generator(generator);
-    }
-
-    if let Some(path) = &args.validator_dir {
-        config = config.with_validator_dir(path.clone());
-    } else if let Some(path) = &args.validator {
-        config = config.with_validator(path.clone());
-    } else {
-        let default = PathBuf::from("scripts/rules");
-        if default.is_dir() {
-            config = config.with_validator_dir(default);
-        }
-    }
-
-    if let Some(path) = &args.evaluator {
-        config = config.with_evaluator(path.clone());
-    } else {
-        let default = PathBuf::from("scripts/evaluators/evaluate.lua");
-        if default.exists() {
-            config = config.with_evaluator(default);
-        }
-    }
-
-    let assembler = MapAssembler::new(config)?;
-    match assembler.generate_validated() {
-        Ok(map) => Ok(map),
-        Err(MapgenError::ValidationFailed(reason)) => {
-            info!(%reason, "map failed validation, falling back to raw generation");
-            Ok(assembler.generate()?)
-        }
-        Err(error) => Err(Box::new(error)),
-    }
-}
-
-fn build_default_state(map: GameMap, seed: &str) -> AppResult<GameState> {
-    let spawns = spawn::find_spawn_positions(&map)?;
-    let mut state = GameState::new(map, seed);
-    let player_team_id = state.add_team(Team::red());
-    let enemy_team_id = state.add_team(Team::enemy());
-
-    state.add_hero(Hero::new(0, "Hero", 100, 20, 10, 15, spawns.player, player_team_id));
-    state.add_hero(Hero::new(1, "Enemy", 85, 16, 8, 12, spawns.enemy, enemy_team_id));
-    let _ = state.set_city_owner(spawns.player, Some(player_team_id));
-    let _ = state.on_turn();
-    Ok(state)
 }
 
 fn detect_screen_size() -> Size {

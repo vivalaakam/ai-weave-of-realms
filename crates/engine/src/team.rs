@@ -64,19 +64,4 @@ impl Team {
     pub(crate) fn increment_turn(&mut self) {
         self.turn += 1;
     }
-
-    /// Creates a default Red player team (id=0, first slot).
-    pub fn red() -> Self {
-        Self::new(0, "Red", (220, 50, 50), true)
-    }
-
-    /// Creates a default Blue player team (id=1, second slot).
-    pub fn blue() -> Self {
-        Self::new(1, "Blue", (50, 100, 220), true)
-    }
-
-    /// Creates a default AI-controlled enemy team (id=2, third slot).
-    pub fn enemy() -> Self {
-        Self::new(2, "Enemy", (150, 80, 200), false)
-    }
 }

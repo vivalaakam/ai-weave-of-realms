@@ -24,5 +24,6 @@ pub mod types;
 pub use engine::game_state::GameState;
 pub use engine::map::tile::Tiles;
 
+pub mod app_host;
 #[cfg(feature = "std")]
 pub mod io;

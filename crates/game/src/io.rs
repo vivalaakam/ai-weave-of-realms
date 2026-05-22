@@ -12,8 +12,7 @@ use mapgen::error::MapgenError;
 use mapgen::map_assembler::{MapAssembler, MapConfig};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tiled::error::TiledError;
-use tiled::read_tmx;
+use tracing::{info, instrument};
 
 pub use crate::types::ListEntry;
 
@@ -26,45 +25,33 @@ pub enum IoError {
     Engine(#[from] EngineError),
     #[error("Mapgen error: {0}")]
     Mapgen(#[from] MapgenError),
-    #[error("Tiled error: {0}")]
-    Tiled(#[from] TiledError),
     #[error("Spawn error: {0}")]
     Spawn(#[from] SpawnError),
     #[error("{0}")]
     Message(String),
 }
 
-/// Result alias for host I/O operations.
-pub type Result<T> = std::result::Result<T, IoError>;
-
 /// Generates a map using the provided CLI arguments.
+#[instrument(level = "info")]
 pub fn generate_map(
     seed: String,
     width: u32,
     height: u32,
-    generators: Vec<PathBuf>,
-    validator_dir: Option<PathBuf>,
-    validator: Option<PathBuf>,
-    evaluator: Option<PathBuf>,
-) -> Result<GameMap> {
-    let mut generators = generators;
-    if generators.is_empty() {
-        generators.push(PathBuf::from("scripts/generators/default.lua"));
-    }
+    generators: Option<&Path>,
+    validator_dir: Option<&Path>,
+    validator: Option<&Path>,
+    evaluator: Option<&Path>,
+) -> Result<GameMap, IoError> {
+    let generator = generators.unwrap_or_else(|| Path::new("scripts/generators/default.lua"));
 
-    let first = generators.remove(0);
-    let mut config = MapConfig::default_3x3(seed.clone(), first);
+    let mut config = MapConfig::default_3x3(seed.clone(), generator);
     config.width = width;
     config.height = height;
 
-    for g in generators {
-        config = config.with_generator(g);
-    }
-
     if let Some(path) = &validator_dir {
-        config = config.with_validator_dir(path.clone());
+        config = config.with_validator_dir(path);
     } else if let Some(path) = &validator {
-        config = config.with_validator(path.clone());
+        config = config.with_validator(path);
     } else {
         let default = PathBuf::from("scripts/rules");
         if default.is_dir() {
@@ -73,7 +60,7 @@ pub fn generate_map(
     }
 
     if let Some(path) = &evaluator {
-        config = config.with_evaluator(path.clone());
+        config = config.with_evaluator(path);
     } else {
         let default = PathBuf::from("scripts/evaluators/evaluate.lua");
         if default.exists() {
@@ -85,7 +72,7 @@ pub fn generate_map(
     match assembler.generate_validated() {
         Ok(map) => Ok(map),
         Err(MapgenError::ValidationFailed(reason)) => {
-            tracing::info!(%reason, "map failed validation, falling back to raw generation");
+            info!(%reason, "map failed validation, falling back to raw generation");
             Ok(assembler.generate()?)
         }
         Err(e) => Err(e.into()),
@@ -93,28 +80,22 @@ pub fn generate_map(
 }
 
 /// Loads a `GameState` from a save file, TMX map, or generated map.
+#[instrument(level = "info")]
 pub fn load_state(
     seed: &str,
     width: u32,
     height: u32,
-    generators: Vec<PathBuf>,
-    validator_dir: Option<PathBuf>,
-    validator: Option<PathBuf>,
-    evaluator: Option<PathBuf>,
+    generators: Option<&Path>,
+    validator_dir: Option<&Path>,
+    validator: Option<&Path>,
+    evaluator: Option<&Path>,
     save_path: Option<&Path>,
-    tmx_path: Option<&Path>,
-) -> Result<GameState> {
+) -> Result<GameState, IoError> {
     if let Some(path) = save_path {
         let bytes = fs::read(path)?;
         let state = GameState::from_save_bytes(&bytes)?;
-        tracing::info!(path = %path.display(), "loaded saved game state");
+        info!(path = %path.display(), "loaded saved game state");
         return Ok(state);
-    }
-
-    if let Some(path) = tmx_path {
-        let map = read_tmx(path)?;
-        tracing::info!(path = %path.display(), "loaded TMX map");
-        return build_default_state(map, seed);
     }
 
     let map = generate_map(
@@ -126,15 +107,16 @@ pub fn load_state(
         validator,
         evaluator,
     )?;
+
     build_default_state(map, seed)
 }
 
 /// Builds a default `GameState` with standard heroes and teams.
-pub fn build_default_state(map: GameMap, seed: &str) -> Result<GameState> {
+pub fn build_default_state(map: GameMap, seed: &str) -> Result<GameState, IoError> {
     let spawns = spawn::find_spawn_positions(&map)?;
     let mut state = GameState::new(map, seed);
-    let player_team_id = state.add_team(Team::red());
-    let enemy_team_id = state.add_team(Team::enemy());
+    let player_team_id = state.add_team(Team::new(0, "Red", (220, 50, 50), true));
+    let enemy_team_id = state.add_team(Team::new(2, "Enemy", (150, 80, 200), false));
 
     state.add_hero(Hero::new(0, "Hero", 100, 20, 10, 15, spawns.player, player_team_id));
     state.add_hero(Hero::new(1, "Enemy", 85, 16, 8, 12, spawns.enemy, enemy_team_id));
@@ -143,8 +125,9 @@ pub fn build_default_state(map: GameMap, seed: &str) -> Result<GameState> {
     Ok(state)
 }
 
-/// Discovers `.rpgs` files in a directory.
-pub fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>> {
+/// Discovers `.rpgs` files in a directory
+#[instrument(level = "info")]
+pub fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>, IoError> {
     let mut entries: Vec<ListEntry> = Vec::new();
     if !dir.is_dir() {
         return Ok(entries);
@@ -169,7 +152,7 @@ pub fn discover_rpgs_dir(dir: &Path, prefix: &str) -> Result<Vec<ListEntry>> {
 }
 
 /// Creates a `ListEntry` from a file path.
-pub fn file_entry(prefix: &str, path: &Path) -> Result<ListEntry> {
+pub fn file_entry(prefix: &str, path: &Path) -> Result<ListEntry, IoError> {
     let metadata = fs::metadata(path)?;
     Ok(ListEntry {
         id: format!("{prefix}{}", path.display()),

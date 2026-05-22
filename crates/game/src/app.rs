@@ -1,15 +1,6 @@
 //! Shared top-level application state machine for embedded frontends.
 
-use crate::types::ListEntry;
-use alloc::{
-    boxed::Box,
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
-use engine::game_state::GameState;
-
+use crate::app_host::AppHost;
 use crate::info_overlay::{InfoOverlay, InfoOverlayOutcome};
 use crate::input::InputEvent;
 use crate::list::{ListOutcome, ListScreen};
@@ -18,6 +9,14 @@ use crate::save_overlay::{SaveOverlay, SaveOverlayOutcome};
 use crate::session::GameSession;
 use crate::splash::{SplashOutcome, SplashScreen};
 use crate::turn_overlay::{EndTurnOverlay, EndTurnOverlayOutcome};
+use crate::types::ListEntry;
+use alloc::{
+    boxed::Box,
+    format,
+    string::{String, ToString},
+    vec,
+};
+use engine::game_state::GameState;
 
 /// Shared app title rendered on the splash screen.
 pub const APP_TITLE: &str = "weave of realms";
@@ -93,27 +92,6 @@ pub enum AppScreen {
     SaveSelect(ListScreen),
     /// Shared gameplay map view with overlays.
     MapView(Box<MapViewScreen>),
-}
-
-/// Host-side storage and platform hooks required by the shared controller.
-pub trait AppHost {
-    /// Host-specific error type for map/save access.
-    type Error;
-
-    /// Returns all loadable maps shown under "New Game".
-    fn discover_maps(&mut self) -> Result<Vec<ListEntry>, Self::Error>;
-    /// Returns all loadable saves shown under "Load Game".
-    fn discover_saves(&mut self) -> Result<Vec<ListEntry>, Self::Error>;
-    /// Loads a map entry into a full engine state.
-    fn load_map(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error>;
-    /// Loads a save entry into a full engine state.
-    fn load_save(&mut self, entry: &ListEntry) -> Result<LoadedGame, Self::Error>;
-    /// Persists the current engine state as a save file.
-    fn save_game(&mut self, name: &str, state: &GameState) -> Result<(), Self::Error>;
-    /// Builds an optional platform information overlay.
-    fn info_overlay(&mut self) -> Option<InfoOverlay>;
-    /// Converts a host-specific error into a user-visible message.
-    fn error_message(&self, error: Self::Error) -> String;
 }
 
 /// Shared top-level app controller reused by all embedded frontends.

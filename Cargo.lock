@@ -459,6 +459,7 @@ dependencies = [
  "serde",
  "sha3",
  "thiserror",
+ "tracing",
  "tracing-subscriber",
 ]
 

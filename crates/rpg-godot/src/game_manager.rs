@@ -130,9 +130,9 @@ impl GameManager {
         };
 
         let mut state = GameState::new(map, &seed_str);
-        state.add_team(Team::red());
-        state.add_team(Team::blue());
-        state.add_team(Team::enemy());
+        state.add_team(Team::new(0, "Red", (220, 50, 50), true));
+        state.add_team(Team::new(1, "Blue", (220, 50, 50), true));
+        state.add_team(Team::new(2, "Enemy", (150, 80, 200), false));
         let team_ids: Vec<TeamId> = state.player_teams().map(|t| t.get_id()).collect();
         self.win_conditions = BTreeMap::new();
         for team_id in team_ids {

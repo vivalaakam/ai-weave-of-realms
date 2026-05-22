@@ -20,6 +20,7 @@ use alloc::{
     vec::Vec,
 };
 use serde::{Deserialize, Serialize};
+use tracing::{info, instrument};
 
 use crate::combat::{self, CombatResult};
 use crate::error::EngineError;
@@ -78,7 +79,7 @@ pub struct GameState {
     /// The assembled game map.
     pub map: GameMap,
     /// All heroes currently on the map (player and enemy, living and dead).
-    pub(crate) heroes: BTreeMap<HeroId, Hero>,
+    heroes: BTreeMap<HeroId, Hero>,
     /// Accumulated score.
     pub score: ScoreBoard,
     /// City tile ownership: maps each occupied city [`MapCoord`] to the owning
@@ -116,12 +117,22 @@ impl GameState {
     /// Adds a hero to the session, auto-assigning `id = heroes.len()`.
     ///
     /// Returns the assigned [`HeroId`].
+    #[instrument(level = "info", skip(self))]
     pub fn add_hero(&mut self, mut hero: Hero) -> HeroId {
         let next_hero_id = self.hero_pointer;
         hero.reset(next_hero_id, &self.rng);
         self.heroes.insert(next_hero_id, hero);
         self.hero_pointer += 1;
+        info!(hero_id = next_hero_id, "Added hero");
         next_hero_id
+    }
+
+    pub fn get_hero(&self, id: HeroId) -> Option<&Hero> {
+        self.heroes.get(&id)
+    }
+
+    pub fn get_team_heroes(&self, team_id: TeamId) -> Vec<HeroId> {
+        self.heroes.values().filter(|h| h.get_team_id() == team_id).map(|h| h.get_id()).collect()
     }
 
     pub fn get_total_heroes(&self) -> usize {
@@ -601,6 +612,7 @@ impl GameState {
     }
 
     /// Constructs a [`GameState`] from raw parts (used by save deserialization).
+    #[instrument(level = "info", skip_all)]
     pub(crate) fn from_parts(
         map: GameMap,
         heroes: BTreeMap<HeroId, Hero>,
@@ -613,6 +625,7 @@ impl GameState {
         rng_position: u8,
         hero_pointer: HeroId,
     ) -> Self {
+        info!("load data from save");
         Self {
             map,
             heroes,
