@@ -52,7 +52,7 @@ pub fn app_layout(screen_size: Size) -> AppLayout {
 /// Build the complete color/theme descriptor for the renderer.
 fn app_theme() -> AppTheme<Rgb888> {
     AppTheme {
-        splash: SplashTheme { background: SPLASH_BACKGROUND, text: TEXT },
+        splash: SplashTheme { background: SPLASH_BACKGROUND, text: TEXT, selected: Rgb888::new(255, 255, 120) },
         list: ListTheme {
             background: BACKGROUND,
             text: TEXT,

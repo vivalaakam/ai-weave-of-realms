@@ -4,7 +4,7 @@
 use engine::error::EngineError;
 use engine::game_state::GameState;
 use engine::hero::Hero;
-use engine::map::game_map::GameMap;
+use engine::map::game_map::{GameMap, MapCoord};
 use engine::spawn;
 use engine::spawn::SpawnError;
 use engine::team::Team;
@@ -113,16 +113,118 @@ pub fn load_state(
 
 /// Builds a default `GameState` with standard heroes and teams.
 pub fn build_default_state(map: GameMap, seed: &str) -> Result<GameState, IoError> {
-    let spawns = spawn::find_spawn_positions(&map)?;
-    let mut state = GameState::new(map, seed);
-    let player_team_id = state.add_team(Team::new(0, "Red", (220, 50, 50), true));
-    let enemy_team_id = state.add_team(Team::new(2, "Enemy", (150, 80, 200), false));
+    let team_cfgs = [
+        TeamConfig { name: "Red".to_string(), color: (220, 50, 50), player_controlled: true },
+        TeamConfig { name: "Enemy".to_string(), color: (150, 80, 200), player_controlled: false },
+    ];
+    build_state_with_teams(map, seed, &team_cfgs).map_err(IoError::Engine)
+}
 
-    state.add_hero(Hero::new(0, "Hero", 100, 20, 10, 15, spawns.player, player_team_id));
-    state.add_hero(Hero::new(1, "Enemy", 85, 16, 8, 12, spawns.enemy, enemy_team_id));
-    let _ = state.set_city_owner(spawns.player, Some(player_team_id));
+/// Configuration for a single team when building a game state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TeamConfig {
+    pub name: String,
+    pub color: (u8, u8, u8),
+    pub player_controlled: bool,
+}
+
+/// Build a `GameState` from a map with configurable teams.
+pub fn build_state_with_teams(
+    map: GameMap,
+    seed: &str,
+    teams: &[TeamConfig],
+) -> Result<GameState, EngineError> {
+    let entrance_spawns = spawn::find_city_entrance_spawns(&map, teams.len());
+    let mut state = GameState::new(map, seed);
+
+    for (i, cfg) in teams.iter().enumerate() {
+        let team_id = state.add_team(Team::new(i as u8, &cfg.name, cfg.color, cfg.player_controlled));
+        let hero_pos = entrance_spawns.get(i).copied().unwrap_or_else(|| MapCoord::new(0, 0));
+        let hero_name = format!("{}", cfg.name);
+        state.add_hero(Hero::new(
+            i as u8,
+            &hero_name,
+            100,
+            20,
+            10,
+            15,
+            hero_pos,
+            team_id,
+        ));
+        state.set_city_owner(hero_pos, Some(team_id));
+    }
+
     let _ = state.on_turn();
     Ok(state)
+}
+
+/// Loads a `GameState` from an entry, with configurable teams.
+#[instrument(level = "info")]
+pub fn load_state_with_teams(
+    seed: &str,
+    width: u32,
+    height: u32,
+    generators: Option<&Path>,
+    validator_dir: Option<&Path>,
+    validator: Option<&Path>,
+    evaluator: Option<&Path>,
+    save_path: Option<&Path>,
+    team_cfgs: &[TeamConfig],
+) -> Result<GameState, IoError> {
+    if let Some(path) = save_path {
+        let bytes = fs::read(path)?;
+        let state = GameState::from_save_bytes(&bytes)?;
+        info!(path = %path.display(), "loaded saved game state");
+        return Ok(state);
+    }
+
+    let map = generate_map(
+        seed.to_string(),
+        width,
+        height,
+        generators,
+        validator_dir,
+        validator,
+        evaluator,
+    )?;
+
+    build_state_with_teams(map, seed, team_cfgs).map_err(IoError::Engine)
+}
+
+/// Load a `GameMap` from a `ListEntry` without creating a `GameState`.
+#[instrument(level = "info")]
+pub fn load_map_only(
+    seed: &str,
+    width: u32,
+    height: u32,
+    generators: Option<&Path>,
+    validator_dir: Option<&Path>,
+    validator: Option<&Path>,
+    evaluator: Option<&Path>,
+    save_path: Option<&Path>,
+) -> Result<GameMap, IoError> {
+    if let Some(path) = save_path {
+        let bytes = fs::read(path)?;
+        let state = GameState::from_save_bytes(&bytes)?;
+        info!(path = %path.display(), "loaded map from save");
+        return Ok(state.map);
+    }
+
+    generate_map(
+        seed.to_string(),
+        width,
+        height,
+        generators,
+        validator_dir,
+        validator,
+        evaluator,
+    )
+}
+
+/// Configurable spawn finder for team placements.
+/// Finds up to `count` city entrance or city tiles spread across the map.
+pub fn find_city_entrance_spawns(map: &GameMap, count: usize) -> Vec<MapCoord> {
+    spawn::find_city_entrance_spawns(map, count)
 }
 
 /// Discovers `.rpgs` files in a directory

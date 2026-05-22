@@ -62,6 +62,7 @@ fn app_theme() -> AppTheme<Rgb565> {
         splash: SplashTheme {
             background: Rgb565::MAGENTA,
             text: Rgb565::WHITE,
+            selected: Rgb565::new(255, 255, 0),
         },
         list: ListTheme {
             background: Rgb565::BLACK,

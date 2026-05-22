@@ -20,6 +20,7 @@ pub mod render;
 pub mod save_overlay;
 pub mod session;
 pub mod splash;
+pub mod team_setup;
 pub mod turn_overlay;
 pub mod types;
 

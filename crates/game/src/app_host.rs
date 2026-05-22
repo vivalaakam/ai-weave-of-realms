@@ -4,6 +4,7 @@ use crate::info_overlay::InfoOverlay;
 use crate::io::{discover_rpgs_dir, load_state, sanitize_save_filename, IoError, ListEntry};
 use engine::error::EngineError;
 use engine::game_state::GameState;
+use engine::map::game_map::GameMap;
 use std::path::Path;
 use std::{fs, io};
 
@@ -106,6 +107,35 @@ pub trait AppHost {
 
         Err(AppHostError::LoadMapFailed())
     }
+
+    /// Loads only the GameMap from an entry, without building the full GameState.
+    fn load_map_only(&mut self, entry: &ListEntry) -> Result<GameMap, AppHostError> {
+        if entry.id.starts_with("generated:") {
+            let map = crate::io::load_map_only(
+                &self.get_seed(),
+                self.get_width(),
+                self.get_height(),
+                self.get_generator(),
+                self.get_validator_dir(),
+                self.get_validator(),
+                self.get_evaluator(),
+                None,
+            )
+            .map_err(AppHostError::LoadMapGeneratedState)?;
+            return Ok(map);
+        }
+        if let Some(path) = entry.id.strip_prefix("map:") {
+            let bytes = fs::read(path)
+                .map_err(|err| AppHostError::LoadMapReadFailed(entry.id.clone(), err))?;
+
+            let state = GameState::from_save_bytes(&bytes)
+                .map_err(|error| AppHostError::LoadMapEngineError(path.to_string(), error))?;
+            return Ok(state.map);
+        }
+
+        Err(AppHostError::LoadMapFailed())
+    }
+
     /// Loads a save entry into a full engine state.
     fn load_save(&mut self, entry: &ListEntry) -> Result<LoadedGame, AppHostError> {
         let path = entry

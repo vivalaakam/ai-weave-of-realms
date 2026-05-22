@@ -17,7 +17,7 @@ use engine::map::tile::Tiles;
 use crate::app::{
     AppScreen, MapViewScreen, APP_TITLE, MAP_LIST_FOOTER, MAP_LIST_TITLE, RANDOM_MAP_FOOTER,
     RANDOM_MAP_STATUS_NEW, RANDOM_MAP_STATUS_READY, RANDOM_MAP_TITLE, SAVE_LIST_FOOTER,
-    SAVE_LIST_TITLE, SPLASH_FOOTER, SPLASH_OPTIONS,
+    SAVE_LIST_TITLE, SPLASH_FOOTER, SPLASH_OPTIONS, TEAM_SETUP_FOOTER, TEAM_SETUP_TITLE,
 };
 use crate::info_overlay::InfoOverlay;
 use crate::list::ListScreen;
@@ -25,6 +25,7 @@ use crate::map_view::MapViewApp;
 use crate::random_map::RandomMapScreen;
 use crate::save_overlay::SaveOverlay;
 use crate::splash::SplashScreen;
+use crate::team_setup::TeamSetupScreen;
 use crate::turn_overlay::EndTurnOverlay;
 
 const EMPTY_TILE: u32 = u32::MAX;
@@ -343,6 +344,8 @@ where
     pub background: C,
     /// Main title/body text color.
     pub text: C,
+    /// Highlight/selection color.
+    pub selected: C,
 }
 
 /// Shared theme colors for list-screen rendering.
@@ -571,6 +574,18 @@ pub fn draw_app_screen<D, C>(
                 random_map,
                 RANDOM_MAP_TITLE,
                 RANDOM_MAP_FOOTER,
+                theme.splash,
+            );
+        }
+        AppScreen::TeamSetup(team_setup) => {
+            reset_cache(&mut render_cache.map_view);
+            render_cache.overlay_visible = false;
+            draw_team_setup_screen(
+                display,
+                screen_size,
+                team_setup,
+                TEAM_SETUP_TITLE,
+                TEAM_SETUP_FOOTER,
                 theme.splash,
             );
         }
@@ -821,6 +836,76 @@ pub fn draw_random_map_screen<D, C>(
             embedded_graphics::text::Text::with_alignment(
                 status,
                 Point::new(center_x, screen_size.height as i32 - 14),
+                body_style,
+                embedded_graphics::text::Alignment::Center,
+            )
+            .draw(display),
+        );
+    }
+}
+
+/// Draws the team setup screen.
+pub fn draw_team_setup_screen<D, C>(
+    display: &mut D,
+    screen_size: Size,
+    team_setup: &TeamSetupScreen,
+    _title: &str,
+    footer: &str,
+    theme: SplashTheme<C>,
+) where
+    D: DrawTarget<Color = C>,
+    C: PixelColor + Copy,
+{
+    halt_on_error(display.clear(theme.background));
+
+    let title_style =
+        MonoTextStyle::new(&embedded_graphics::mono_font::ascii::FONT_10X20, theme.text);
+    let body_style = MonoTextStyle::new(&FONT_6X10, theme.text);
+    let selected_style = MonoTextStyle::new(&FONT_6X10, theme.selected);
+
+    let center_x = (screen_size.width / 2) as i32;
+    let margin = 4i32;
+    let line_height = 14i32;
+    let start_y = 24i32;
+
+    // Title
+    halt_on_error(
+        embedded_graphics::text::Text::with_alignment(
+            TEAM_SETUP_TITLE,
+            Point::new(center_x, 16),
+            title_style,
+            embedded_graphics::text::Alignment::Center,
+        )
+        .draw(display),
+    );
+
+    let total_rows = team_setup.total_rows();
+    for row in 0..total_rows {
+        let y = start_y + row as i32 * line_height;
+        let label = team_setup.row_label(row);
+        let style = if row == team_setup.selected_row { selected_style } else { body_style };
+        halt_on_error(
+            Text::new(&label, Point::new(margin, y), style).draw(display),
+        );
+    }
+
+    // Footer
+    halt_on_error(
+        embedded_graphics::text::Text::with_alignment(
+            footer,
+            Point::new(center_x, screen_size.height as i32 - 10),
+            body_style,
+            embedded_graphics::text::Alignment::Center,
+        )
+        .draw(display),
+    );
+
+    // Status
+    if let Some(status) = team_setup.status.as_deref() {
+        halt_on_error(
+            embedded_graphics::text::Text::with_alignment(
+                status,
+                Point::new(center_x, screen_size.height as i32 - 24),
                 body_style,
                 embedded_graphics::text::Alignment::Center,
             )

@@ -9,6 +9,7 @@ use crate::random_map::{RandomMapOutcome, RandomMapScreen};
 use crate::save_overlay::{SaveOverlay, SaveOverlayOutcome};
 use crate::session::GameSession;
 use crate::splash::{SplashOutcome, SplashScreen};
+use crate::team_setup::{TeamSetupOutcome, TeamSetupScreen};
 use crate::turn_overlay::{EndTurnOverlay, EndTurnOverlayOutcome};
 use crate::types::ListEntry;
 use alloc::{
@@ -18,6 +19,7 @@ use alloc::{
     vec,
 };
 use engine::game_state::GameState;
+use engine::map::game_map::GameMap;
 
 /// Shared app title rendered on the splash screen.
 pub const APP_TITLE: &str = "weave of realms";
@@ -41,6 +43,10 @@ pub const RANDOM_MAP_STATUS_READY: &str = "Press Play to generate the map";
 pub const SAVE_LIST_TITLE: &str = "Saves";
 /// Shared save list footer hint.
 pub const SAVE_LIST_FOOTER: &str = "Up/Down: select  Enter: load  Back: menu";
+/// Shared team setup screen title.
+pub const TEAM_SETUP_TITLE: &str = "Team Setup";
+/// Shared team setup footer hint.
+pub const TEAM_SETUP_FOOTER: &str = "Up/Down: move  Left/Right: adjust  Enter: confirm  Back: back";
 const MAP_SELECT_STATUS: &str = "Select a map and press Enter";
 const SAVE_SELECT_STATUS: &str = "Select a save and press Enter";
 const MAP_LOADED_STATUS: &str = "Map loaded. Press Enter to switch between pan and hero mode";
@@ -77,6 +83,13 @@ pub struct LoadedGame {
     pub state: GameState,
 }
 
+/// Data stored between selecting a map and finishing team setup.
+pub struct PendingMapData {
+    pub map_name: String,
+    pub state: Option<GameState>,
+    pub map: Option<GameMap>,
+}
+
 /// Shared gameplay screen state with optional overlays.
 pub struct MapViewScreen {
     /// Shared gameplay map-view application model.
@@ -101,6 +114,8 @@ pub enum AppScreen {
     SaveSelect(ListScreen),
     /// Random map seed generator screen.
     RandomMap(RandomMapScreen),
+    /// Team configuration screen before starting a game.
+    TeamSetup(TeamSetupScreen),
     /// Shared gameplay map view with overlays.
     MapView(Box<MapViewScreen>),
 }
@@ -109,6 +124,7 @@ pub enum AppScreen {
 pub struct EmbeddedApp {
     screen: AppScreen,
     launch: LaunchConfig,
+    pending_map: Option<PendingMapData>,
 }
 
 impl EmbeddedApp {
@@ -122,7 +138,7 @@ impl EmbeddedApp {
         H: AppHost,
     {
         let screen = initial_screen(host, &launch);
-        Self { screen, launch }
+        Self { screen, launch, pending_map: None }
     }
 
     /// Returns the current top-level screen.
@@ -164,7 +180,7 @@ impl EmbeddedApp {
                 outcome.changed
             }
             AppScreen::MapSelect(map_select) => {
-                let outcome = handle_map_select(host, map_select, event, &self.launch, layout);
+                let outcome = handle_map_select(host, map_select, event, &self.launch, layout, &mut self.pending_map);
                 if let Some(next) = outcome.next_screen {
                     self.screen = next;
                 }
@@ -178,7 +194,14 @@ impl EmbeddedApp {
                 outcome.changed
             }
             AppScreen::RandomMap(random_map) => {
-                let outcome = handle_random_map(host, random_map, event, layout);
+                let outcome = handle_random_map(host, random_map, event, layout, &mut self.pending_map);
+                if let Some(next) = outcome.next_screen {
+                    self.screen = next;
+                }
+                outcome.changed
+            }
+            AppScreen::TeamSetup(team_setup) => {
+                let outcome = handle_team_setup(host, team_setup, event, layout, &mut self.pending_map);
                 if let Some(next) = outcome.next_screen {
                     self.screen = next;
                 }
@@ -287,8 +310,9 @@ fn handle_map_select<H>(
     host: &mut H,
     map_select: &mut ListScreen,
     event: InputEvent,
-    launch: &LaunchConfig,
+    _launch: &LaunchConfig,
     layout: AppLayout,
+    pending_map: &mut Option<PendingMapData>,
 ) -> ScreenOutcome
 where
     H: AppHost,
@@ -321,17 +345,22 @@ where
                         next_screen: Some(AppScreen::RandomMap(RandomMapScreen::new())),
                     };
                 }
-                match build_map_view(host, entry, launch, Some(MAP_LOADED_STATUS.to_string())) {
-                    Ok(map_view) => ScreenOutcome {
-                        changed: true,
-                        next_screen: Some(AppScreen::MapView(Box::new(clamped_map_view(
-                            map_view, layout,
-                        )))),
-                    },
-                    Err(message) => {
-                        map_select.status = Some(message);
-                        ScreenOutcome { changed: true, next_screen: None }
+                // Load map without building full state; defer state building until TeamSetup.
+                let map = match host.load_map_only(entry) {
+                    Ok(map) => map,
+                    Err(error) => {
+                        map_select.status = Some(host.error_message(error));
+                        return ScreenOutcome { changed: true, next_screen: None };
                     }
+                };
+                *pending_map = Some(PendingMapData {
+                    map_name: entry.label.clone(),
+                    state: None,
+                    map: Some(map),
+                });
+                ScreenOutcome {
+                    changed: true,
+                    next_screen: Some(AppScreen::TeamSetup(TeamSetupScreen::new(2))),
                 }
             }
             None => ScreenOutcome { changed: false, next_screen: None },
@@ -343,7 +372,8 @@ fn handle_random_map<H>(
     host: &mut H,
     random_map: &mut RandomMapScreen,
     event: InputEvent,
-    layout: AppLayout,
+    _layout: AppLayout,
+    pending_map: &mut Option<PendingMapData>,
 ) -> ScreenOutcome
 where
     H: AppHost,
@@ -382,20 +412,29 @@ where
             let entry_result = host.generate_and_save_map(&seed);
             match entry_result {
                 Ok(entry) => {
-                    match build_map_view(
-                        host,
-                        &entry,
-                        &LaunchConfig { start_map: None, start_x: 0, start_y: 0 },
-                        Some(MAP_LOADED_STATUS.to_string()),
+                    match crate::io::load_map_only(
+                        &seed,
+                        host.get_width(),
+                        host.get_height(),
+                        host.get_generator(),
+                        host.get_validator_dir(),
+                        host.get_validator(),
+                        host.get_evaluator(),
+                        None,
                     ) {
-                        Ok(map_view) => ScreenOutcome {
-                            changed: true,
-                            next_screen: Some(AppScreen::MapView(Box::new(clamped_map_view(
-                                map_view, layout,
-                            )))),
-                        },
-                        Err(message) => {
-                            random_map.status = Some(message);
+                        Ok(map) => {
+                            *pending_map = Some(PendingMapData {
+                                map_name: entry.label.clone(),
+                                state: None,
+                                map: Some(map),
+                            });
+                            ScreenOutcome {
+                                changed: true,
+                                next_screen: Some(AppScreen::TeamSetup(TeamSetupScreen::new(2))),
+                            }
+                        }
+                        Err(error) => {
+                            random_map.status = Some(error.to_string());
                             ScreenOutcome { changed: true, next_screen: None }
                         }
                     }
@@ -461,6 +500,84 @@ where
             },
             None => ScreenOutcome { changed: false, next_screen: None },
         },
+    }
+}
+
+fn handle_team_setup<H>(
+    _host: &mut H,
+    team_setup: &mut TeamSetupScreen,
+    event: InputEvent,
+    layout: AppLayout,
+    pending_map: &mut Option<PendingMapData>,
+) -> ScreenOutcome
+where
+    H: AppHost,
+{
+    match team_setup.handle_input(event) {
+        TeamSetupOutcome::NoChange => ScreenOutcome { changed: false, next_screen: None },
+        TeamSetupOutcome::Changed => ScreenOutcome { changed: true, next_screen: None },
+        TeamSetupOutcome::BackRequested => {
+            *pending_map = None;
+            ScreenOutcome {
+                changed: true,
+                next_screen: Some(AppScreen::MapSelect(ListScreen::new(
+                    vec![],
+                    Some("Returned to map list".to_string()),
+                ))),
+            }
+        }
+        TeamSetupOutcome::PlayRequested => {
+            let Some(pending) = pending_map.take() else {
+                team_setup.status = Some("Internal error: no pending map".to_string());
+                return ScreenOutcome { changed: true, next_screen: None };
+            };
+
+            let team_cfgs: Vec<crate::io::TeamConfig> = team_setup
+                .teams
+                .iter()
+                .map(|t| crate::io::TeamConfig {
+                    name: t.name.clone(),
+                    color: t.color,
+                    player_controlled: t.player_controlled,
+                })
+                .collect();
+
+            let state_result = if let Some(state) = pending.state {
+                Ok(state)
+            } else if let Some(map) = pending.map {
+                crate::io::build_state_with_teams(map, &pending.map_name, &team_cfgs)
+                    .map_err(|e| e.to_string())
+            } else {
+                Err("Internal error: no map or state loaded".to_string())
+            };
+
+            match state_result {
+                Ok(state) => match map_view_from_loaded(
+                    LoadedGame {
+                        map_name: pending.map_name,
+                        state,
+                    },
+                    0,
+                    0,
+                    Some(MAP_LOADED_STATUS.to_string()),
+                ) {
+                    Ok(map_view) => ScreenOutcome {
+                        changed: true,
+                        next_screen: Some(AppScreen::MapView(Box::new(clamped_map_view(
+                            map_view, layout,
+                        )))),
+                    },
+                    Err(message) => {
+                        team_setup.status = Some(message);
+                        ScreenOutcome { changed: true, next_screen: None }
+                    }
+                },
+                Err(message) => {
+                    team_setup.status = Some(message);
+                    ScreenOutcome { changed: true, next_screen: None }
+                }
+            }
+        }
     }
 }
 
