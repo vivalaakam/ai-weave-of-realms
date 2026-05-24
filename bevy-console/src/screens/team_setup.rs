@@ -10,9 +10,9 @@ pub struct TeamSetupRoot;
 pub struct TeamSetupState {
     pub count: usize,
     pub selected: usize,
-    pub confirm_focus: bool,
     pub teams: Vec<TeamRow>,
     pub status: Option<String>,
+    pub needs_rebuild: bool,
 }
 
 impl Default for TeamSetupState {
@@ -27,7 +27,6 @@ impl TeamSetupState {
         Self {
             count,
             selected: 0,
-            confirm_focus: false,
             teams: (0..count)
                 .map(|i| TeamRow {
                     name: generate_team_name(i),
@@ -36,6 +35,7 @@ impl TeamSetupState {
                 })
                 .collect(),
             status: None,
+            needs_rebuild: true,
         }
     }
 
@@ -54,13 +54,16 @@ impl TeamSetupState {
                 });
             }
         }
-        // Ensure exactly one player team
+        // Ensure at least one player-controlled team
         let has_player = new.iter().any(|t| t.player_controlled);
         if !has_player && !new.is_empty() {
             new[0].player_controlled = true;
         }
         self.teams = new;
         self.count = new_count;
+        if self.selected > self.count {
+            self.selected = self.count;
+        }
     }
 }
 
@@ -72,7 +75,7 @@ pub struct TeamRow {
 }
 
 const TITLE: &str = "Team Setup";
-const FOOTER: &str = "Up/Down: move  Left/Right: adjust  Enter: confirm  Back: back";
+const FOOTER: &str = "Up/Down: move | Left/Right: adjust | Enter: confirm | Esc: back";
 
 const ADJECTIVES: [&str; 30] = [
     "Ember", "Crimson", "Azure", "Golden", "Shadow", "Iron", "Silver",
@@ -89,6 +92,23 @@ const NOUNS: [&str; 30] = [
     "Circle", "Syndicate", "Cult", "Squad", "Brigade", "Regiment",
     "Battalion", "Phalanx", "Guard", "Watch", "Sentinels",
 ];
+
+// Theme
+const BG_COLOR: Color = Color::srgb(0.08, 0.08, 0.12);
+const TEXT_COLOR: Color = Color::srgb(0.85, 0.85, 0.88);
+const TITLE_COLOR: Color = Color::srgb(0.95, 0.95, 0.98);
+const FOOTER_COLOR: Color = Color::srgb(0.5, 0.5, 0.55);
+const ROW_BG: Color = Color::srgb(0.12, 0.12, 0.16);
+const ROW_BG_SELECTED: Color = Color::srgb(0.24, 0.24, 0.32);
+const ROW_BORDER: Color = Color::srgb(0.35, 0.35, 0.42);
+const ROW_BORDER_SELECTED: Color = Color::srgb(0.6, 0.6, 0.68);
+const CTRL_HUMAN: Color = Color::srgb(0.6, 0.85, 0.6);
+const CTRL_CPU: Color = Color::srgb(0.55, 0.55, 0.6);
+const STATUS_ERROR: Color = Color::srgb(0.9, 0.5, 0.5);
+const PLAY_BG: Color = Color::srgb(0.14, 0.14, 0.18);
+const PLAY_BORDER: Color = Color::srgb(0.4, 0.4, 0.48);
+const PLAY_BG_SELECTED: Color = Color::srgb(0.3, 0.3, 0.38);
+const PLAY_BORDER_SELECTED: Color = Color::srgb(0.7, 0.7, 0.78);
 
 fn generate_team_name(index: usize) -> String {
     let adj = ADJECTIVES[index % ADJECTIVES.len()];
@@ -130,11 +150,37 @@ impl Plugin for TeamSetupPlugin {
         app.init_resource::<TeamSetupState>()
             .add_systems(OnEnter(AppState::TeamSetup), enter_team_setup)
             .add_systems(OnExit(AppState::TeamSetup), exit_team_setup)
-            .add_systems(Update, update_team_setup.run_if(in_state(AppState::TeamSetup)));
+            .add_systems(
+                Update,
+                (update_team_setup, rebuild_team_setup_ui)
+                    .run_if(in_state(AppState::TeamSetup)),
+            );
     }
 }
 
-fn enter_team_setup(mut commands: Commands, state: Res<TeamSetupState>) {
+fn enter_team_setup(mut state: ResMut<TeamSetupState>) {
+    state.needs_rebuild = true;
+}
+
+fn rebuild_team_setup_ui(
+    mut commands: Commands,
+    mut state: ResMut<TeamSetupState>,
+    root_q: Query<Entity, With<TeamSetupRoot>>,
+) {
+    if !state.needs_rebuild {
+        return;
+    }
+    state.needs_rebuild = false;
+
+    // Despawn existing root (and its children via hierarchy)
+    if let Some(root) = root_q.iter().next() {
+        commands.entity(root).despawn();
+    }
+
+    let sel = state.selected;
+    let row_count = state.count + 1; // +1 for team count selector
+    let play_selected = sel == row_count;
+
     commands
         .spawn((
             Node {
@@ -146,46 +192,77 @@ fn enter_team_setup(mut commands: Commands, state: Res<TeamSetupState>) {
                 row_gap: Val::Px(10.0),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.08, 0.08, 0.12)),
+            BackgroundColor(BG_COLOR),
             TeamSetupRoot,
         ))
         .with_children(|parent| {
             parent.spawn((
                 Text::new(TITLE),
                 TextFont { font_size: FontSize::Px(36.0), ..default() },
-                TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                TextColor(TITLE_COLOR),
             ));
 
             parent.spawn((Node::default(), BackgroundColor(Color::NONE)));
 
-            // Team count selector
-            parent.spawn((
-                Text::new(format!("Teams: {}", state.count)),
-                TextFont { font_size: FontSize::Px(20.0), ..default() },
-                TextColor(Color::srgb(0.7, 0.7, 0.75)),
-            ));
+            // Team count selector (row 0)
+            let count_bg = if sel == 0 { ROW_BG_SELECTED } else { ROW_BG };
+            let count_border = if sel == 0 { ROW_BORDER_SELECTED } else { ROW_BORDER };
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(480.0),
+                        height: Val::Px(40.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(12.0),
+                        border: UiRect::all(Val::Px(2.0)),
+                        ..default()
+                    },
+                    BackgroundColor(count_bg),
+                    BorderColor::all(count_border),
+                ))
+                .with_children(|row| {
+                    let label = if sel == 0 {
+                        format!("Teams: {}", state.count)
+                    } else {
+                        format!("  Teams: {}", state.count)
+                    };
+                    row.spawn((
+                        Text::new(label),
+                        TextFont { font_size: FontSize::Px(18.0), ..default() },
+                        TextColor(TEXT_COLOR),
+                    ));
+                });
 
             // Team rows
-            for team in state.teams.iter() {
+            for (i, team) in state.teams.iter().enumerate() {
+                let row_idx = i + 1;
                 let color = Color::srgb(
                     team.color.0 as f32 / 255.0,
                     team.color.1 as f32 / 255.0,
                     team.color.2 as f32 / 255.0,
                 );
-                let ctrl = if team.player_controlled { "Human" } else { "CPU" };
+                let is_sel = row_idx == sel;
+                let bg = if is_sel { ROW_BG_SELECTED } else { ROW_BG };
+                let border = if is_sel { ROW_BORDER_SELECTED } else { ROW_BORDER };
+                let ctrl_label = if team.player_controlled { "Human" } else { "CPU" };
+                let ctrl_color = if team.player_controlled { CTRL_HUMAN } else { CTRL_CPU };
 
                 parent
                     .spawn((
                         Node {
                             width: Val::Px(480.0),
-                            height: Val::Px(36.0),
+                            height: Val::Px(40.0),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             flex_direction: FlexDirection::Row,
                             column_gap: Val::Px(12.0),
+                            border: UiRect::all(Val::Px(2.0)),
                             ..default()
                         },
-                        BackgroundColor(Color::srgb(0.12, 0.12, 0.16)),
+                        BackgroundColor(bg),
+                        BorderColor::all(border),
                     ))
                     .with_children(|row| {
                         row.spawn((
@@ -199,18 +276,21 @@ fn enter_team_setup(mut commands: Commands, state: Res<TeamSetupState>) {
                         row.spawn((
                             Text::new(team.name.clone()),
                             TextFont { font_size: FontSize::Px(16.0), ..default() },
-                            TextColor(Color::srgb(0.85, 0.85, 0.85)),
+                            TextColor(TEXT_COLOR),
                         ));
                         row.spawn((
-                            Text::new(ctrl.to_string()),
+                            Text::new(ctrl_label.to_string()),
                             TextFont { font_size: FontSize::Px(14.0), ..default() },
-                            TextColor(Color::srgb(0.6, 0.6, 0.65)),
+                            TextColor(ctrl_color),
                         ));
                     });
             }
 
             parent.spawn((Node::default(), BackgroundColor(Color::NONE)));
 
+            // Play button
+            let play_bg = if play_selected { PLAY_BG_SELECTED } else { PLAY_BG };
+            let play_border = if play_selected { PLAY_BORDER_SELECTED } else { PLAY_BORDER };
             parent.spawn((
                 Button,
                 Node {
@@ -218,23 +298,45 @@ fn enter_team_setup(mut commands: Commands, state: Res<TeamSetupState>) {
                     height: Val::Px(44.0),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
+                    border: UiRect::all(Val::Px(2.0)),
                     ..default()
                 },
-                BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-                BorderColor::all(Color::srgb(0.4, 0.4, 0.5)),
-                children![(
+                BackgroundColor(play_bg),
+                BorderColor::all(play_border),
+            ))
+            .with_children(|parent| {
+                parent.spawn((
                     Text::new("Play"),
                     TextFont { font_size: FontSize::Px(20.0), ..default() },
-                    TextColor(Color::srgb(0.9, 0.9, 0.9)),
-                )],
-            ));
+                    TextColor(TEXT_COLOR),
+                ));
+            });
+
+            // Status message
+            let status_text = state.status.clone().unwrap_or_default();
+            parent.spawn((
+                Node {
+                    width: Val::Px(480.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Text::new(status_text),
+                    TextFont { font_size: FontSize::Px(14.0), ..default() },
+                    TextColor(if state.status.is_some() { STATUS_ERROR } else { FOOTER_COLOR }),
+                ));
+            });
 
             parent.spawn((Node::default(), BackgroundColor(Color::NONE)));
 
             parent.spawn((
                 Text::new(FOOTER),
                 TextFont { font_size: FontSize::Px(14.0), ..default() },
-                TextColor(Color::srgb(0.5, 0.5, 0.55)),
+                TextColor(FOOTER_COLOR),
             ));
         });
 }
@@ -247,48 +349,63 @@ fn update_team_setup(
     buttons: Query<&Interaction, With<Button>>,
     pending: Option<Res<PendingMapData>>,
 ) {
+    let row_count = state.count + 1; // +1 for count selector
+    let max_sel = row_count; // last row is play button
+
+    let mut changed = false;
+
     if keys.just_pressed(KeyCode::Escape) || keys.just_pressed(KeyCode::Backspace) {
         commands.remove_resource::<PendingMapData>();
         next_state.set(AppState::MapSelect);
         return;
     }
 
-    let sel = state.selected;
     if keys.just_pressed(KeyCode::ArrowUp) {
-        state.selected = sel.saturating_sub(1);
+        state.selected = state.selected.saturating_sub(1);
+        changed = true;
     }
     if keys.just_pressed(KeyCode::ArrowDown) {
-        state.selected = (sel + 1).min(state.teams.len().saturating_sub(1));
+        state.selected = (state.selected + 1).min(max_sel);
+        changed = true;
     }
+
     if keys.just_pressed(KeyCode::ArrowLeft) {
-        if sel == 0 {
+        if state.selected == 0 {
             let new_count = state.count.saturating_sub(1).max(1);
             if new_count != state.count {
                 state.rebuild(new_count);
+                changed = true;
             }
-        } else if sel > 0 {
-            let idx = sel - 1;
+        } else if state.selected > 0 && state.selected <= state.count {
+            let idx = state.selected - 1;
             if let Some(team) = state.teams.get_mut(idx) {
                 team.player_controlled = !team.player_controlled;
+                changed = true;
             }
         }
     }
+
     if keys.just_pressed(KeyCode::ArrowRight) {
-        if sel == 0 {
+        if state.selected == 0 {
             let new_count = (state.count + 1).min(8);
             if new_count != state.count {
                 state.rebuild(new_count);
+                changed = true;
             }
-        } else if sel > 0 {
-            let idx = sel - 1;
+        } else if state.selected > 0 && state.selected <= state.count {
+            let idx = state.selected - 1;
             if let Some(team) = state.teams.get_mut(idx) {
                 team.player_controlled = !team.player_controlled;
+                changed = true;
             }
         }
     }
-    if keys.just_pressed(KeyCode::Enter)
-        || buttons.iter().any(|i| matches!(i, Interaction::Pressed))
-    {
+
+    let confirm = keys.just_pressed(KeyCode::Enter)
+        || keys.just_pressed(KeyCode::Space)
+        || buttons.iter().any(|i| matches!(i, Interaction::Pressed));
+
+    if confirm {
         if let Some(pending) = pending {
             let team_cfgs: Vec<TeamConfig> = state
                 .teams
@@ -305,28 +422,36 @@ fn update_team_setup(
                     Ok(game_state) => {
                         commands.insert_resource(LoadedSession {
                             map_name: pending.map_name.clone(),
-                            state: game_state,
+                            state: Some(game_state),
                         });
                         commands.remove_resource::<PendingMapData>();
                         next_state.set(AppState::MapView);
+                        return;
                     }
                     Err(e) => {
                         state.status = Some(e.to_string());
+                        changed = true;
                     }
                 }
             } else {
                 state.status = Some("No map loaded".to_string());
+                changed = true;
             }
         } else {
             state.status = Some("No pending map".to_string());
+            changed = true;
         }
+    }
+
+    if changed {
+        state.needs_rebuild = true;
     }
 }
 
 #[derive(Resource)]
 pub struct LoadedSession {
     pub map_name: String,
-    pub state: GameState,
+    pub state: Option<GameState>,
 }
 
 fn exit_team_setup(

@@ -1560,8 +1560,8 @@ fn draw_cursor_rect<D, C>(
 
         let clamped_start_x = start_x.max(0);
         let clamped_start_y = start_y.max(0);
-        let clamped_end_x = (end_x as i32).min(visible_cols);
-        let clamped_end_y = (end_y as i32).min(visible_rows);
+        let clamped_end_x = end_x.min(visible_cols);
+        let clamped_end_y = end_y.min(visible_rows);
 
         let width = ((clamped_end_x - clamped_start_x).max(0) as u32) * TILE_WIDTH;
         let height = ((clamped_end_y - clamped_start_y).max(0) as u32) * TILE_HEIGHT;

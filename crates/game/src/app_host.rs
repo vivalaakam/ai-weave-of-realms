@@ -83,7 +83,7 @@ pub trait AppHost {
     fn load_map(&mut self, entry: &ListEntry) -> Result<LoadedGame, AppHostError> {
         if entry.id.starts_with("generated:") {
             let state = load_state(
-                &self.get_seed(),
+                self.get_seed(),
                 self.get_width(),
                 self.get_height(),
                 self.get_generator(),
@@ -112,7 +112,7 @@ pub trait AppHost {
     fn load_map_only(&mut self, entry: &ListEntry) -> Result<GameMap, AppHostError> {
         if entry.id.starts_with("generated:") {
             let map = crate::io::load_map_only(
-                &self.get_seed(),
+                self.get_seed(),
                 self.get_width(),
                 self.get_height(),
                 self.get_generator(),

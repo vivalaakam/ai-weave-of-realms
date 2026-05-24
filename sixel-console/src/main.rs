@@ -100,15 +100,14 @@ fn run() -> AppResult<()> {
                     handle.flush()?;
                     break;
                 }
-                Event::Key(key) => {
+                Event::Key(key)
                     if app_state.handle_input(
                         &mut host,
                         map_key_event(key),
                         app_layout(render_size),
-                    ) {
+                    ) => {
                         needs_redraw = true;
                     }
-                }
                 Event::Resize(_, _) => {
                     last_output_size = None;
                     needs_redraw = true;

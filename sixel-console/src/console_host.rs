@@ -10,11 +10,11 @@ pub struct ConsoleHost {
 
 impl AppHost for ConsoleHost {
     fn get_maps_dir(&self) -> &Path {
-        &Path::new("maps")
+        Path::new("maps")
     }
 
     fn get_saves_dir(&self) -> &Path {
-        &Path::new("savegame")
+        Path::new("savegame")
     }
 
     fn get_seed(&self) -> &str {

@@ -100,7 +100,7 @@ impl AppHost {
                 self.validator.as_deref(),
                 self.evaluator.as_deref(),
             )
-            .map_err(|e| AppHostError::LoadMapGeneratedState(e))?;
+            .map_err(AppHostError::LoadMapGeneratedState)?;
             return Ok(map);
         }
         if let Some(path) = entry.id.strip_prefix("map:") {
@@ -160,9 +160,9 @@ impl AppHost {
             self.validator.as_deref(),
             self.evaluator.as_deref(),
         )
-        .map_err(|e| AppHostError::LoadMapGeneratedState(e))?;
+        .map_err(AppHostError::LoadMapGeneratedState)?;
         let state = build_default_state(map, seed)
-            .map_err(|e| AppHostError::LoadMapGeneratedState(e))?;
+            .map_err(AppHostError::LoadMapGeneratedState)?;
         fs::create_dir_all(&self.maps_dir).map_err(|e| {
             AppHostError::SaveGameCreateDirFailed(
                 self.maps_dir.to_string_lossy().to_string(),
@@ -191,7 +191,7 @@ fn discover_rpgs_dir(dir: &Path, prefix: &str) -> io::Result<Vec<ListEntry>> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "rpgs") {
+            if path.extension().is_some_and(|ext| ext == "rpgs") {
                 let id = format!("{}{}", prefix, path.display());
                 let label = path
                     .file_stem()
@@ -295,7 +295,7 @@ pub fn build_state_with_teams(
             .get(i)
             .copied()
             .unwrap_or_else(|| MapCoord::new(0, 0));
-        let hero_name = format!("{}", cfg.name);
+        let hero_name = cfg.name.to_string();
         state.add_hero(Hero::new(
             i as u8,
             &hero_name,

@@ -140,7 +140,7 @@ pub fn build_state_with_teams(
     for (i, cfg) in teams.iter().enumerate() {
         let team_id = state.add_team(Team::new(i as u8, &cfg.name, cfg.color, cfg.player_controlled));
         let hero_pos = entrance_spawns.get(i).copied().unwrap_or_else(|| MapCoord::new(0, 0));
-        let hero_name = format!("{}", cfg.name);
+        let hero_name = cfg.name.to_string();
         state.add_hero(Hero::new(
             i as u8,
             &hero_name,

@@ -5,31 +5,66 @@
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, WindowMode};
 use clap::Parser;
+use std::path::PathBuf;
 
 mod app_host;
 mod screens;
+
+use app_host::AppHost;
 
 /// Command-line arguments for the Bevy console frontend.
 #[derive(Parser, Resource, Debug)]
 #[command(about = "Bevy console frontend for ai-rpg-v2")]
 struct Args {
-    /// Run in windowed mode instead of fullscreen.
+    /// Load a saved game state from an .rpgs file.
     #[arg(long)]
-    windowed: bool,
+    save: Option<PathBuf>,
+
+    /// Load a TMX map instead of generating one.
+    #[arg(long)]
+    tmx: Option<PathBuf>,
+
+    /// Seed phrase for deterministic generation.
+    #[arg(long, default_value = "default-seed")]
+    seed: String,
+
+    /// Map width in tiles when generating.
+    #[arg(long, default_value_t = 96)]
+    width: u32,
+
+    /// Map height in tiles when generating.
+    #[arg(long, default_value_t = 96)]
+    height: u32,
+
+    /// Generator script path (repeatable pipeline).
+    #[arg(long = "generator", value_name = "SCRIPT")]
+    generator: Option<PathBuf>,
+
+    /// Directory with validation rule scripts.
+    #[arg(long)]
+    validator_dir: Option<PathBuf>,
+
+    /// Path to a single Lua validator script.
+    #[arg(long)]
+    validator: Option<PathBuf>,
+
+    /// Path to the Lua evaluator script.
+    #[arg(long)]
+    evaluator: Option<PathBuf>,
+
+    /// Run in windowed mode instead of fullscreen.
+    #[arg(long = "windowed")]
+    window_mode: bool,
 }
 
 fn main() {
     let args = Args::parse();
 
-    tracing_subscriber::fmt::init();
-
-    let window_mode = if args.windowed {
+    let window_mode = if args.window_mode {
         WindowMode::Windowed
     } else {
         WindowMode::BorderlessFullscreen(MonitorSelection::Current)
     };
-
-    tracing::info!("Starting bevy-console, windowed={}", args.windowed);
 
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -40,6 +75,17 @@ fn main() {
             }),
             ..default()
         }))
+        .insert_resource(AppHost {
+            maps_dir: PathBuf::from("maps"),
+            saves_dir: PathBuf::from("savegame"),
+            seed: args.seed,
+            width: args.width,
+            height: args.height,
+            generator: args.generator,
+            validator_dir: args.validator_dir,
+            validator: args.validator,
+            evaluator: args.evaluator,
+        })
         .init_state::<screens::AppState>()
         .add_plugins(screens::splash::SplashPlugin)
         .add_plugins(screens::map_select::MapSelectPlugin)

@@ -1,6 +1,20 @@
 use bevy::prelude::*;
 use crate::screens::AppState;
 
+// ===== Theme constants (embedded-style flat UI) =====
+const BG_COLOR: Color = Color::srgb(0.08, 0.08, 0.12);
+const TEXT_COLOR: Color = Color::srgb(0.85, 0.85, 0.88);
+const TITLE_COLOR: Color = Color::srgb(0.95, 0.95, 0.98);
+const FOOTER_COLOR: Color = Color::srgb(0.5, 0.5, 0.55);
+const BTN_BG: Color = Color::srgb(0.14, 0.14, 0.18);
+const BTN_BG_HOVER: Color = Color::srgb(0.22, 0.22, 0.28);
+const BTN_BG_SELECTED: Color = Color::srgb(0.28, 0.28, 0.35);
+const BTN_BG_PRESSED: Color = Color::srgb(0.35, 0.35, 0.42);
+const BTN_BORDER: Color = Color::srgb(0.4, 0.4, 0.48);
+const BTN_BORDER_HOVER: Color = Color::srgb(0.55, 0.55, 0.62);
+const BTN_BORDER_SELECTED: Color = Color::srgb(0.7, 0.7, 0.78);
+const BTN_BORDER_PRESSED: Color = Color::srgb(0.65, 0.65, 0.72);
+
 #[derive(Component)]
 pub struct SplashRoot;
 
@@ -29,6 +43,18 @@ impl Plugin for SplashPlugin {
     }
 }
 
+// Common button node style
+fn button_node(w: f32, h: f32) -> Node {
+    Node {
+        width: Val::Px(w),
+        height: Val::Px(h),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        border: UiRect::all(Val::Px(2.0)),
+        ..default()
+    }
+}
+
 fn enter_splash(mut commands: Commands) {
     commands.insert_resource(SplashState::default());
 
@@ -43,14 +69,14 @@ fn enter_splash(mut commands: Commands) {
                 row_gap: Val::Px(16.0),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.08, 0.08, 0.12)),
+            BackgroundColor(BG_COLOR),
             SplashRoot,
         ))
         .with_children(|parent| {
             parent.spawn((
                 Text::new("Weave of Realms"),
                 TextFont { font_size: FontSize::Px(52.0), ..default() },
-                TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                TextColor(TITLE_COLOR),
             ));
 
             parent.spawn((
@@ -58,41 +84,31 @@ fn enter_splash(mut commands: Commands) {
                 BackgroundColor(Color::NONE),
             ));
 
+            // New Game — framed flat button
             parent.spawn((
                 Button,
                 NewGameButton,
-                Node {
-                    width: Val::Px(200.0),
-                    height: Val::Px(50.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-                BorderColor::all(Color::srgb(0.4, 0.4, 0.5)),
+                button_node(200.0, 50.0),
+                BackgroundColor(BTN_BG),
+                BorderColor::all(BTN_BORDER),
                 children![(
                     Text::new("New Game"),
                     TextFont { font_size: FontSize::Px(22.0), ..default() },
-                    TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                    TextColor(TEXT_COLOR),
                 )],
             ));
 
+            // Load Game — framed flat button
             parent.spawn((
                 Button,
                 LoadGameButton,
-                Node {
-                    width: Val::Px(200.0),
-                    height: Val::Px(50.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-                BorderColor::all(Color::srgb(0.4, 0.4, 0.5)),
+                button_node(200.0, 50.0),
+                BackgroundColor(BTN_BG),
+                BorderColor::all(BTN_BORDER),
                 children![(
                     Text::new("Load Game"),
                     TextFont { font_size: FontSize::Px(22.0), ..default() },
-                    TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                    TextColor(TEXT_COLOR),
                 )],
             ));
 
@@ -104,7 +120,7 @@ fn enter_splash(mut commands: Commands) {
             parent.spawn((
                 Text::new(SPLASH_FOOTER),
                 TextFont { font_size: FontSize::Px(14.0), ..default() },
-                TextColor(Color::srgb(0.5, 0.5, 0.55)),
+                TextColor(FOOTER_COLOR),
             ));
         });
 }
@@ -148,18 +164,18 @@ fn update_splash(
         let hovered = matches!(interaction, Interaction::Hovered);
         let pressed = matches!(interaction, Interaction::Pressed);
 
-        if is_selected {
-            *bg = BackgroundColor(Color::srgb(0.35, 0.35, 0.45));
-            *border = BorderColor::all(Color::srgb(0.7, 0.7, 0.8));
-        } else if pressed {
-            *bg = BackgroundColor(Color::srgb(0.3, 0.3, 0.35));
-            *border = BorderColor::all(Color::srgb(0.5, 0.5, 0.6));
+        if pressed {
+            *bg = BackgroundColor(BTN_BG_PRESSED);
+            *border = BorderColor::all(BTN_BORDER_PRESSED);
+        } else if is_selected {
+            *bg = BackgroundColor(BTN_BG_SELECTED);
+            *border = BorderColor::all(BTN_BORDER_SELECTED);
         } else if hovered {
-            *bg = BackgroundColor(Color::srgb(0.25, 0.25, 0.3));
-            *border = BorderColor::all(Color::srgb(0.5, 0.5, 0.6));
+            *bg = BackgroundColor(BTN_BG_HOVER);
+            *border = BorderColor::all(BTN_BORDER_HOVER);
         } else {
-            *bg = BackgroundColor(Color::srgb(0.2, 0.2, 0.25));
-            *border = BorderColor::all(Color::srgb(0.4, 0.4, 0.5));
+            *bg = BackgroundColor(BTN_BG);
+            *border = BorderColor::all(BTN_BORDER);
         }
 
         if (is_selected && keys.just_pressed(KeyCode::Enter)) || pressed {

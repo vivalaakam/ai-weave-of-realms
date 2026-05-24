@@ -5,7 +5,6 @@ use crate::input::InputEvent;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use core::time::Duration;
 
 // ─── Vocabulary for team name generation ────────────────────────────────────────
 

@@ -6,7 +6,7 @@ description = "Standalone SDL2 launcher for AI RPG using embedded-graphics."
 
 [dependencies]
 clap = { workspace = true }
-game = { path = "../crates/game", features = ["std"] }
+game = { path = "../crates/game", features = ["std", "render"] }
 helpers = { path = "../crates/helpers" }
 engine = { path = "../crates/engine" }
 tiled = { path = "../crates/tiled" }
