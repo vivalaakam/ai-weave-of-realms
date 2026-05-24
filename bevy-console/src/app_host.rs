@@ -191,7 +191,9 @@ fn discover_rpgs_dir(dir: &Path, prefix: &str) -> io::Result<Vec<ListEntry>> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "rpgs") {
+            if path.extension().is_some_and(|ext| {
+                ext.eq_ignore_ascii_case("rpgs")
+            }) {
                 let id = format!("{}{}", prefix, path.display());
                 let label = path
                     .file_stem()

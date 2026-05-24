@@ -39,6 +39,11 @@ fn main() {
         )
         .init();
 
+    if let Err(error) = engine::config::init_tile_config(include_str!("../../assets/tiles.yaml")) {
+        error!(%error, "failed to load tile config");
+        std::process::exit(1);
+    }
+
     if let Err(error) = run() {
         error!(%error, "sdl2 launcher failed");
         std::process::exit(1);

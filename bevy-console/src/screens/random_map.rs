@@ -1,6 +1,7 @@
 use crate::app_host::{AppHost, PendingMapData};
 use crate::screens::AppState;
 use bevy::prelude::*;
+use tracing::error;
 
 #[derive(Component)]
 pub struct RandomMapRoot;
@@ -178,6 +179,7 @@ fn update_random_map(
                         next_state.set(AppState::TeamSetup);
                     }
                     Err(e) => {
+                        error!(%e, "failed load to generated map");
                         for entity in status_texts.iter() {
                             if let Ok(mut txt) = text_query.get_mut(entity) {
                                 txt.0 = e.to_string();
@@ -186,6 +188,7 @@ fn update_random_map(
                     }
                 },
                 Err(e) => {
+                    error!(%e, "failed to generate map");
                     for entity in status_texts.iter() {
                         if let Ok(mut txt) = text_query.get_mut(entity) {
                             txt.0 = e.to_string();

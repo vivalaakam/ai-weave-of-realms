@@ -1,0 +1,206 @@
+tiles:
+  meadow:
+    tile_id: 0
+    atlas_indexes:
+      - index: 5
+        variant: "summer"
+      - index: 6
+        variant: "summer_bright"
+      - index: 7
+        variant: "summer_dark"
+    variants:
+      - summer
+      - summer_bright
+      - summer_dark
+    color: "#7cb342"
+    ascii: "."
+    passable: true
+    buildable: true
+    movement_cost: 0
+  forest:
+    tile_id: 1
+    atlas_indexes:
+      - index: 1
+        variant: "evergreen"
+      - index: 15
+        variant: "evergreen_sparse"
+    variants:
+      - evergreen
+      - evergreen_sparse
+    color: "#2e7d32"
+    ascii: "♣"
+    passable: true
+    buildable: false
+    movement_cost: 1
+  mountain:
+    tile_id: 2
+    atlas_indexes:
+      - index: 2
+        variant: "rocky"
+    variants:
+      - rocky
+    color: "#8d8d8d"
+    ascii: "▲"
+    passable: false
+    buildable: false
+    movement_cost: 3
+  water:
+    tile_id: 3
+    atlas_indexes:
+      - index: 3
+        variant: "calm"
+    variants:
+      - calm
+    color: "#0d47a1"
+    ascii: "~"
+    passable: true
+    buildable: false
+    movement_cost: 3
+  city:
+    tile_id: 4
+    atlas_indexes:
+      - index: 416
+        variant: "castle"
+    variants:
+      - castle
+      - fortress
+      - citadel
+    color: "#ff7043"
+    ascii: "⌂"
+    passable: false
+    buildable: false
+    movement_cost: 0
+  city_entrance:
+    tile_id: 5
+    atlas_indexes:
+      - index: 420
+        variant: "gate"
+    variants:
+      - gate
+      - portcullis
+    color: "#FBC02D"
+    ascii: "⌂"
+    passable: true
+    buildable: false
+    movement_cost: 0
+  road:
+    tile_id: 6
+    atlas_indexes:
+      - index: 6
+        variant: "dirt"
+    variants:
+      - dirt
+      - cobble
+      - paved
+    color: "#d7b899"
+    ascii: "#"
+    passable: true
+    buildable: false
+    movement_cost: -1
+  river:
+    tile_id: 7
+    atlas_indexes:
+      - index: 7
+        variant: "shallow"
+      - index: 21
+        variant: "shallow_rocky"
+      - index: 22
+        variant: "deep"
+    variants:
+      - shallow
+      - shallow_rocky
+      - deep
+    color: "#1e88e5"
+    ascii: "≈"
+    passable: true
+    buildable: false
+    movement_cost: 3
+  bridge:
+    tile_id: 8
+    atlas_indexes:
+      - index: 8
+        variant: "wood"
+    variants:
+      - wood
+      - stone
+      - rope
+    color: "#9fb7c6"
+    ascii: "="
+    passable: true
+    buildable: false
+    movement_cost: 0
+  village:
+    tile_id: 9
+    atlas_indexes:
+      - index: 9
+        variant: "hamlet"
+    variants:
+      - hamlet
+      - town
+      - trading_post
+    color: "#FF2D55"
+    ascii: "⌘"
+    passable: true
+    buildable: false
+    movement_cost: 0
+    poi: true
+  merchant:
+    tile_id: 10
+    atlas_indexes:
+      - index: 10
+        variant: "tent"
+    variants:
+      - tent
+      - stall
+      - caravan
+    color: "#CB30e0"
+    ascii: "$"
+    passable: true
+    buildable: false
+    movement_cost: 0
+    poi: true
+  ruins:
+    tile_id: 11
+    atlas_indexes:
+      - index: 11
+        variant: "ancient"
+    variants:
+      - ancient
+      - crumbling
+      - buried
+    color: "#BF6A02"
+    ascii: "⍟"
+    passable: true
+    buildable: false
+    movement_cost: 0
+    poi: true
+  gold:
+    tile_id: 12
+    atlas_indexes:
+      - index: 12
+        variant: "vein"
+    variants:
+      - vein
+      - nugget
+      - dust
+    color: "#00c8b3"
+    ascii: "*"
+    passable: true
+    buildable: false
+    movement_cost: 0
+    poi: true
+  resource:
+    tile_id: 13
+    atlas_indexes:
+      - index: 13
+        variant: "ore"
+    variants:
+      - ore
+      - lumber
+      - gem
+    color: "#00c3d0"
+    ascii: "◆"
+    passable: true
+    buildable: false
+    movement_cost: 0
+    poi: true

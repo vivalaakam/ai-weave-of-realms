@@ -60,6 +60,11 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
+    if let Err(error) = engine::config::init_tile_config(include_str!("../../assets/tiles.yaml")) {
+        eprintln!("failed to load tile config: {error}");
+        std::process::exit(1);
+    }
+
     let window_mode = if args.window_mode {
         WindowMode::Windowed
     } else {

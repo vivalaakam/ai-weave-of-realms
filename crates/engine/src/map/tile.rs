@@ -1,109 +1,83 @@
 //! Tile primitives: [`Tiles`] enum and [`Tile`] struct.
 //!
 //! [`Tiles`] is the canonical tile type for the whole project.
-//! It maps 1-to-1 to the `world_tileset` (see `tileset/tileset.tsx`).
+//! Static properties (colour, passability, movement cost, sprite variants) are
+//! read from the runtime [`TileConfig`](crate::config::TileConfig) rather than
+//! hard-coded.
 
-use alloc::{format, string::ToString};
+use alloc::format;
+use alloc::string::ToString;
 use core::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
+use crate::config::get_tile_config;
 use crate::error::EngineError;
 
 // ─── Tiles ────────────────────────────────────────────────────────────────────
 
 /// All terrain and object types available in the world tileset.
 ///
-/// The numeric IDs (`tile_id()`) correspond directly to the tile indices in
-/// `tileset/tileset.tsx` and must never be reordered.
+/// The enum variants themselves are a compile-time identity.  Numeric tile IDs,
+/// colours, passability rules and other static data live in the global
+/// [`TileConfig`](crate::config::TileConfig) so that games with custom tilesets
+/// can override them from YAML without touching Rust code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Tiles {
-    /// Open grassland. Passable, normal movement cost, buildable.
     Meadow,
-    /// Dense forest. Passable, +1 movement cost.
     Forest,
-    /// Mountain terrain. Impassable.
     Mountain,
-    /// Deep water. Impassable (unless crossing a bridge).
     Water,
-    /// City tile. Impassable (must use CityEntrance to enter).
     City,
-    /// City entrance tile. Passable; marks city entry point (cost 1).
     CityEntrance,
-    /// Paved road. Passable, −1 movement cost (minimum 1).
     Road,
-    /// River. Impassable without a bridge.
     River,
-    /// Bridge over a river. Passable.
     Bridge,
-    /// Village. Passable; minor settlement.
     Village,
-    /// Merchant camp. Passable; trade point of interest.
     Merchant,
-    /// Ancient ruins. Passable; adventure point of interest.
     Ruins,
-    /// Gold deposit. Passable; resource node.
     Gold,
-    /// Generic resource node. Passable.
     Resource,
 }
 
 impl Tiles {
-    /// Returns the zero-based tile index in the `world_tileset`.
+    /// Returns the canonical zero-based tile index of this tile type.
     ///
-    /// Matches the `id` attribute in `tileset/tileset.tsx`.
-    pub fn tile_id(self) -> u32 {
-        match self {
-            Tiles::Meadow => 0,
-            Tiles::Forest => 1,
-            Tiles::Mountain => 2,
-            Tiles::Water => 3,
-            Tiles::City => 4,
-            Tiles::CityEntrance => 5,
-            Tiles::Road => 6,
-            Tiles::River => 7,
-            Tiles::Bridge => 8,
-            Tiles::Village => 9,
-            Tiles::Merchant => 10,
-            Tiles::Ruins => 11,
-            Tiles::Gold => 12,
-            Tiles::Resource => 13,
-        }
+    /// This is the `tile_id` of the **first** variant declared in the YAML
+    /// config.  It is used for save/load serialization and TMX export.
+    pub fn base_tile_id(self) -> u32 {
+        let cfg = get_tile_config();
+        cfg.base_tile_id(self.as_str()).unwrap_or(0)
+    }
+
+    /// Returns the atlas index (sprite atlas position) of the first variant.
+    /// For renderers that need the real tile graphic, not the canonical ID.
+    pub fn atlas_index(self) -> u32 {
+        let cfg = get_tile_config();
+        cfg.atlas_index(self.as_str()).unwrap_or(0)
     }
 
     /// Returns the representative RGB colour for minimap and debug rendering.
     pub fn as_color(self) -> (u8, u8, u8) {
-        match self {
-            Tiles::Meadow => (124, 179, 66),
-            Tiles::Forest => (46, 125, 50),
-            Tiles::Mountain => (141, 141, 141),
-            Tiles::Water => (13, 71, 161),
-            Tiles::City => (255, 112, 67),
-            Tiles::CityEntrance => (251, 192, 45),
-            Tiles::Road => (215, 184, 153),
-            Tiles::River => (30, 136, 229),
-            Tiles::Bridge => (159, 183, 198),
-            Tiles::Village => (255, 45, 85),
-            Tiles::Merchant => (203, 48, 224),
-            Tiles::Ruins => (191, 106, 2),
-            Tiles::Gold => (0, 200, 179),
-            Tiles::Resource => (0, 195, 208),
-        }
+        let cfg = get_tile_config();
+        cfg.color(self.as_str()).unwrap_or((255, 0, 255))
     }
 
     /// Returns `true` if a unit can enter this tile without special equipment.
     pub fn is_passable(self) -> bool {
-        !matches!(self, Tiles::Mountain | Tiles::City)
+        let cfg = get_tile_config();
+        cfg.is_passable(self.as_str()).unwrap_or(false)
     }
 
     /// Returns `true` if a building can be constructed on this tile.
     pub fn is_buildable(self) -> bool {
-        matches!(self, Tiles::Meadow)
+        let cfg = get_tile_config();
+        cfg.is_buildable(self.as_str()).unwrap_or(false)
     }
 
     /// Returns `true` if a city entrance can be placed adjacent to this tile.
     pub fn allows_city_entrance(self) -> bool {
-        matches!(self, Tiles::Meadow)
+        self.is_buildable()
     }
 
     /// Returns the extra movement point cost to enter this tile.
@@ -112,40 +86,20 @@ impl Tiles {
     /// Effective cost is always `max(1, 1 + modifier)`.
     /// Impassable tiles should be checked via [`is_passable`](Self::is_passable) first.
     pub fn movement_cost_modifier(self) -> i32 {
-        match self {
-            Tiles::Road => -1,
-            Tiles::Forest => 1,
-            Tiles::Water | Tiles::River => 3,
-            _ => 0,
-        }
+        let cfg = get_tile_config();
+        cfg.movement_cost(self.as_str()).unwrap_or(0)
     }
 
     /// Returns `true` if this tile is a point of interest that may trigger events.
     pub fn is_point_of_interest(self) -> bool {
-        matches!(
-            self,
-            Tiles::Ruins | Tiles::Gold | Tiles::Resource | Tiles::Merchant | Tiles::Village
-        )
+        let cfg = get_tile_config();
+        cfg.is_poi(self.as_str()).unwrap_or(false)
     }
 
     /// Returns the single-character symbol used in ASCII / terminal display.
     pub fn as_char(self) -> char {
-        match self {
-            Tiles::Meadow => '.',
-            Tiles::Forest => '♣',
-            Tiles::Mountain => '▲',
-            Tiles::Water => '~',
-            Tiles::City => '⌂',
-            Tiles::CityEntrance => '⌂',
-            Tiles::Road => '#',
-            Tiles::River => '≈',
-            Tiles::Bridge => '=',
-            Tiles::Village => '⌘',
-            Tiles::Merchant => '$',
-            Tiles::Ruins => '⍟',
-            Tiles::Gold => '*',
-            Tiles::Resource => '◆',
-        }
+        let cfg = get_tile_config();
+        cfg.ascii_char(self.as_str()).unwrap_or('?')
     }
 
     /// Returns the Lua-facing string identifier for this tile.
@@ -172,7 +126,7 @@ impl Tiles {
     ///
     /// Assumes a single tileset whose first GID is 1.
     pub fn to_gid(self) -> u32 {
-        self.tile_id() + 1
+        self.base_tile_id() + 1
     }
 
     /// Constructs a [`Tiles`] from a TMX GID (1-based).
@@ -191,26 +145,14 @@ impl Tiles {
     /// # Errors
     /// Returns [`EngineError::InvalidTileKind`] if the ID is out of range.
     pub fn from_id(id: u32) -> Result<Self, EngineError> {
-        match id {
-            0 => Ok(Tiles::Meadow),
-            1 => Ok(Tiles::Forest),
-            2 => Ok(Tiles::Mountain),
-            3 => Ok(Tiles::Water),
-            4 => Ok(Tiles::City),
-            5 => Ok(Tiles::CityEntrance),
-            6 => Ok(Tiles::Road),
-            7 => Ok(Tiles::River),
-            8 => Ok(Tiles::Bridge),
-            9 => Ok(Tiles::Village),
-            10 => Ok(Tiles::Merchant),
-            11 => Ok(Tiles::Ruins),
-            12 => Ok(Tiles::Gold),
-            13 => Ok(Tiles::Resource),
-            other => Err(EngineError::InvalidTileKind(format!("unknown tile ID {other}"))),
-        }
+        let cfg = get_tile_config();
+        let name = cfg
+            .find_by_base_id(id)
+            .ok_or_else(|| EngineError::InvalidTileKind(format!("unknown tile ID {id}")))?;
+        Tiles::from_str(name)
     }
 
-    /// Returns all tile variants in tile-ID order.
+    /// Returns all tile variants in definition order.
     pub fn all() -> &'static [Tiles] {
         &[
             Tiles::Meadow,
@@ -291,14 +233,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_tiles_have_unique_ids() {
-        let mut ids: Vec<u32> = Tiles::all().iter().map(|t| t.tile_id()).collect();
-        ids.sort_unstable();
-        ids.dedup();
-        assert_eq!(ids.len(), Tiles::all().len());
-    }
-
-    #[test]
     fn str_round_trip() {
         for &tile in Tiles::all() {
             let s = tile.as_str();
@@ -338,8 +272,24 @@ mod tests {
     }
 
     #[test]
-    fn tile_count_matches_tileset() {
-        // tileset.tsx has 14 tiles (id 0..13)
-        assert_eq!(Tiles::all().len(), 14);
+    fn tile_count_matches_config() {
+        let cfg = get_tile_config();
+        assert_eq!(Tiles::all().len(), cfg.tiles.len());
+    }
+
+    #[test]
+    fn all_tiles_have_unique_base_ids() {
+        let mut ids: Vec<u32> = Tiles::all().iter().map(|t| t.base_tile_id()).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), Tiles::all().len());
+    }
+
+    #[test]
+    fn all_tiles_defined_in_config() {
+        let cfg = get_tile_config();
+        for &tile in Tiles::all() {
+            assert!(cfg.tiles.contains_key(tile.as_str()), "tile {:?} missing from config", tile);
+        }
     }
 }

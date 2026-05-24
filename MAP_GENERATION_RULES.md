@@ -128,7 +128,7 @@ different heuristics or stage ordering as long as they:
 - The city block is 3 tiles wide × 3 tiles tall.
 - Required layout (`bx`, `by` = top-left corner):
     - Rows `by`, `by+1` — all 3 columns: `city` (6 tiles).
-    - Row `by+2` — `city_entrance` at `bx`, then `city` at `bx+1` and `bx+2`.
+    - Row `by+2` — `city` at `bx`, `city_entrance` at `bx+1`, `city` at `bx+2`.
 - The top-left corner is restricted to `bx ∈ [1, 28]`, `by ∈ [1, 26]` (1-tile margin on all sides).
 - **Placement check**: the 3×3 block plus a 1-tile margin (5×5 scan) must be completely free of `water`, `river`, and
   `mountain`. Up to 20 candidate positions are tried; if none pass, the city is skipped for this chunk.
@@ -143,9 +143,9 @@ Alternative generators should keep this layout unless
 
 The following tiles must not be `water`, `river`, or `mountain`:
 
-- `(bx-1, by+2)` — left of entrance
-- `(bx+3, by+2)` — right of entrance
-- `(bx, by+3)`, `(bx+1, by+3)`, `(bx+2, by+3)` — below entrance
+- `(bx, by+3)`   — below-left of entrance
+- `(bx+2, by+3)` — below-right of entrance
+- `(bx+1, by+3)` — directly below entrance
 
 ---
 

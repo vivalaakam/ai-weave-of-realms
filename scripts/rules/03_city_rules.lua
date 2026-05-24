@@ -2,8 +2,8 @@
 --
 -- For each city block on the map:
 --   - A city occupies a 3×3 tile block at some (bx, by).
---   - The CityEntrance tile must be placed at (bx, by+2) — the bottom-left corner
---     of the 3×3 block, which is the south-facing tip of the isometric diamond.
+--   - The CityEntrance tile must be placed at (bx+1, by+2) — the bottom-centre
+--     of the 3×3 block.
 --   - The 4 orthogonal neighbours of the CityEntrance that lie outside the 3×3 block
 --     must be either "meadow" or "road" (no river, mountain, water, forest, resource, gold).
 --
@@ -12,21 +12,18 @@
 local ALLOWED_NEAR_ENTRANCE = { meadow = true, road = true }
 
 local function check_city(map, entrance_x, entrance_y)
-    -- The CityEntrance is at (bx, by+2), so the 3×3 block top-left is (bx, by) = (entrance_x, entrance_y - 2)
-    local bx = entrance_x
+    -- The CityEntrance is at (bx+1, by+2), so the 3×3 block top-left is (bx, by) = (entrance_x - 1, entrance_y - 2)
+    local bx = entrance_x - 1
     local by = entrance_y - 2
 
-    -- Neighbours of entrance outside the 3×3 block:
-    -- Left  (bx-1, by+2), Right (bx+3, by+2) are outside the block horizontally.
-    -- Below (bx,   by+3) is below the block.
-    -- Above (bx,   by+1) is inside the block, so we skip it.
-    -- Also check (bx-1, by+2) and (bx+3, by+2) for left/right of entrance row.
+    -- Neighbours around the bottom of the 3×3 block (outside the block):
+    -- These tiles all need to be meadow or road so the city is accessible.
     local neighbours = {
-        { bx - 1, by + 2 }, -- left of entrance
-        { bx + 3, by + 2 }, -- right of entrance (3 wide block ends at bx+2)
-        { bx, by + 3 }, -- below entrance
-        { bx + 1, by + 3 }, -- below middle of block bottom row
-        { bx + 2, by + 3 }, -- below right of block bottom row
+        { bx - 1, by + 2 }, -- left of block (same row as entrance)
+        { bx + 3, by + 2 }, -- right of block (same row as entrance)
+        { bx,     by + 3 }, -- below-left of entrance
+        { bx + 1, by + 3 }, -- directly below entrance
+        { bx + 2, by + 3 }, -- below-right of entrance
     }
 
     for _, nb in ipairs(neighbours) do

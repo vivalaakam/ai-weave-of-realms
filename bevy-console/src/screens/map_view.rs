@@ -63,23 +63,7 @@ fn tile_color_for(kind: Tiles) -> Color {
 }
 
 fn tile_atlas_index(kind: Tiles) -> usize {
-    // Map 1_main.png tile order → Tiles enum value
-    match kind {
-        Tiles::Meadow => 0,
-        Tiles::Forest => 1,
-        Tiles::Mountain => 2,
-        Tiles::Water => 3,
-        Tiles::City => 4,
-        Tiles::CityEntrance => 5,
-        Tiles::Road => 6,
-        Tiles::River => 7,
-        Tiles::Bridge => 8,
-        Tiles::Village => 9,
-        Tiles::Merchant => 10,
-        Tiles::Ruins => 11,
-        Tiles::Gold => 12,
-        Tiles::Resource => 13,
-    }
+    kind.atlas_index() as usize
 }
 
 #[derive(Component)]
