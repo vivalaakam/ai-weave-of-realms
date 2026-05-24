@@ -59,7 +59,9 @@ tiles:
   city:
     tile_id: 4
     atlas_indexes:
-      - index: 416
+      - index: 643
+        variant: "castle"
+      - index: 642
         variant: "castle"
     variants:
       - castle
@@ -73,7 +75,7 @@ tiles:
   city_entrance:
     tile_id: 5
     atlas_indexes:
-      - index: 420
+      - index: 641
         variant: "gate"
     variants:
       - gate
