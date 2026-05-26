@@ -104,8 +104,8 @@ impl AppHost {
             return Ok(map);
         }
         if let Some(path) = entry.id.strip_prefix("map:") {
-            let bytes = fs::read(path)
-                .map_err(|e| AppHostError::LoadMapReadFailed(path.to_string(), e))?;
+            let bytes =
+                fs::read(path).map_err(|e| AppHostError::LoadMapReadFailed(path.to_string(), e))?;
             let state = GameState::from_save_bytes(&bytes)
                 .map_err(|e| AppHostError::LoadMapEngineError(path.to_string(), e))?;
             return Ok(state.map);
@@ -118,28 +118,21 @@ impl AppHost {
             .id
             .strip_prefix("save:")
             .ok_or_else(|| AppHostError::LoadSaveEntryUnknown(entry.id.clone()))?;
-        let bytes = fs::read(path)
-            .map_err(|e| AppHostError::LoadSaveLoadFailed(entry.id.clone(), e))?;
+        let bytes =
+            fs::read(path).map_err(|e| AppHostError::LoadSaveLoadFailed(entry.id.clone(), e))?;
         let state = GameState::from_save_bytes(&bytes)
             .map_err(|e| AppHostError::LoadSaveEngineError(entry.id.clone(), e))?;
-        Ok(LoadedGame {
-            map_name: entry.label.clone(),
-            state,
-        })
+        Ok(LoadedGame { map_name: entry.label.clone(), state })
     }
 
     pub fn save_game(&mut self, name: &str, state: &GameState) -> Result<(), AppHostError> {
         fs::create_dir_all(&self.saves_dir).map_err(|e| {
-            AppHostError::SaveGameCreateDirFailed(
-                self.saves_dir.to_string_lossy().to_string(),
-                e,
-            )
+            AppHostError::SaveGameCreateDirFailed(self.saves_dir.to_string_lossy().to_string(), e)
         })?;
         let file_name = sanitize_save_filename(name);
         let path = self.saves_dir.join(file_name);
-        let bytes = state
-            .to_save_bytes_with_name(name)
-            .map_err(AppHostError::SaveGameEngineError)?;
+        let bytes =
+            state.to_save_bytes_with_name(name).map_err(AppHostError::SaveGameEngineError)?;
         fs::write(&path, bytes).map_err(|e| {
             AppHostError::SaveGameWriteFailed(path.to_string_lossy().to_string(), e)
         })?;
@@ -161,19 +154,14 @@ impl AppHost {
             self.evaluator.as_deref(),
         )
         .map_err(AppHostError::LoadMapGeneratedState)?;
-        let state = build_default_state(map, seed)
-            .map_err(AppHostError::LoadMapGeneratedState)?;
+        let state = build_default_state(map, seed).map_err(AppHostError::LoadMapGeneratedState)?;
         fs::create_dir_all(&self.maps_dir).map_err(|e| {
-            AppHostError::SaveGameCreateDirFailed(
-                self.maps_dir.to_string_lossy().to_string(),
-                e,
-            )
+            AppHostError::SaveGameCreateDirFailed(self.maps_dir.to_string_lossy().to_string(), e)
         })?;
         let file_name = sanitize_save_filename(seed);
         let path = self.maps_dir.join(&file_name);
-        let bytes = state
-            .to_save_bytes_with_name(seed)
-            .map_err(AppHostError::SaveGameEngineError)?;
+        let bytes =
+            state.to_save_bytes_with_name(seed).map_err(AppHostError::SaveGameEngineError)?;
         fs::write(&path, bytes).map_err(|e| {
             AppHostError::SaveGameWriteFailed(path.to_string_lossy().to_string(), e)
         })?;
@@ -191,20 +179,10 @@ fn discover_rpgs_dir(dir: &Path, prefix: &str) -> io::Result<Vec<ListEntry>> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().is_some_and(|ext| {
-                ext.eq_ignore_ascii_case("rpgs")
-            }) {
+            if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("rpgs")) {
                 let id = format!("{}{}", prefix, path.display());
-                let label = path
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned();
-                entries.push(ListEntry {
-                    id,
-                    label,
-                    meta: entry.metadata()?.len() as u32,
-                });
+                let label = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+                entries.push(ListEntry { id, label, meta: entry.metadata()?.len() as u32 });
             }
         }
     }
@@ -257,16 +235,8 @@ fn generate_map(
 
 fn build_default_state(map: GameMap, seed: &str) -> Result<GameState, String> {
     let team_cfgs = vec![
-        TeamConfig {
-            name: "Red".to_string(),
-            color: (220, 50, 50),
-            player_controlled: true,
-        },
-        TeamConfig {
-            name: "Enemy".to_string(),
-            color: (150, 80, 200),
-            player_controlled: false,
-        },
+        TeamConfig { name: "Red".to_string(), color: (220, 50, 50), player_controlled: true },
+        TeamConfig { name: "Enemy".to_string(), color: (150, 80, 200), player_controlled: false },
     ];
     build_state_with_teams(map, seed, &team_cfgs).map_err(|e| e.to_string())
 }
@@ -287,27 +257,11 @@ pub fn build_state_with_teams(
     let entrance_spawns = engine::spawn::find_city_entrance_spawns(&map, teams.len());
     let mut state = GameState::new(map, seed);
     for (i, cfg) in teams.iter().enumerate() {
-        let team_id = state.add_team(Team::new(
-            i as u8,
-            &cfg.name,
-            cfg.color,
-            cfg.player_controlled,
-        ));
-        let hero_pos = entrance_spawns
-            .get(i)
-            .copied()
-            .unwrap_or_else(|| MapCoord::new(0, 0));
+        let team_id =
+            state.add_team(Team::new(i as u8, &cfg.name, cfg.color, cfg.player_controlled));
+        let hero_pos = entrance_spawns.get(i).copied().unwrap_or_else(|| MapCoord::new(0, 0));
         let hero_name = cfg.name.to_string();
-        state.add_hero(Hero::new(
-            i as u8,
-            &hero_name,
-            100,
-            20,
-            10,
-            15,
-            hero_pos,
-            team_id,
-        ));
+        state.add_hero(Hero::new(i as u8, &hero_name, 100, 20, 10, 15, hero_pos, team_id));
         state.set_city_owner(hero_pos, Some(team_id));
     }
     let _ = state.on_turn();

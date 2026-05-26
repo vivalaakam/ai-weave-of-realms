@@ -11,10 +11,10 @@ pub enum AppState {
     MapView,
 }
 
-pub mod splash;
 pub mod map_select;
-pub mod save_select;
-pub mod random_map;
-pub mod team_setup;
 pub mod map_view;
 pub mod overlays;
+pub mod random_map;
+pub mod save_select;
+pub mod splash;
+pub mod team_setup;

@@ -1,6 +1,6 @@
-use bevy::prelude::*;
-use crate::app_host::{build_state_with_teams, PendingMapData, TeamConfig};
+use crate::app_host::{PendingMapData, TeamConfig, build_state_with_teams};
 use crate::screens::AppState;
+use bevy::prelude::*;
 use engine::game_state::GameState;
 
 #[derive(Component)]
@@ -78,19 +78,43 @@ const TITLE: &str = "Team Setup";
 const FOOTER: &str = "Up/Down: move | Left/Right: adjust | Enter: confirm | Esc: back";
 
 const ADJECTIVES: [&str; 30] = [
-    "Ember", "Crimson", "Azure", "Golden", "Shadow", "Iron", "Silver",
-    "Storm", "Frost", "Blood", "Dragon", "Phoenix", "Thunder", "Night",
-    "Dawn", "Eternal", "Sacred", "Ancient", "Noble", "Savage",
-    "Wild", "Dark", "Bright", "Royal", "Venom", "Crystal", "Flame",
-    "Phantom", "Solar", "Void",
+    "Ember", "Crimson", "Azure", "Golden", "Shadow", "Iron", "Silver", "Storm", "Frost", "Blood",
+    "Dragon", "Phoenix", "Thunder", "Night", "Dawn", "Eternal", "Sacred", "Ancient", "Noble",
+    "Savage", "Wild", "Dark", "Bright", "Royal", "Venom", "Crystal", "Flame", "Phantom", "Solar",
+    "Void",
 ];
 
 const NOUNS: [&str; 30] = [
-    "Legion", "Vanguard", "Order", "Clan", "Guild", "Empire", "Kingdom",
-    "Horde", "Tribe", "Covenant", "Alliance", "Fellowship", "Brotherhood",
-    "Dominion", "Republic", "Dynasty", "Host", "Swarm", "Collective",
-    "Circle", "Syndicate", "Cult", "Squad", "Brigade", "Regiment",
-    "Battalion", "Phalanx", "Guard", "Watch", "Sentinels",
+    "Legion",
+    "Vanguard",
+    "Order",
+    "Clan",
+    "Guild",
+    "Empire",
+    "Kingdom",
+    "Horde",
+    "Tribe",
+    "Covenant",
+    "Alliance",
+    "Fellowship",
+    "Brotherhood",
+    "Dominion",
+    "Republic",
+    "Dynasty",
+    "Host",
+    "Swarm",
+    "Collective",
+    "Circle",
+    "Syndicate",
+    "Cult",
+    "Squad",
+    "Brigade",
+    "Regiment",
+    "Battalion",
+    "Phalanx",
+    "Guard",
+    "Watch",
+    "Sentinels",
 ];
 
 // Theme
@@ -152,8 +176,7 @@ impl Plugin for TeamSetupPlugin {
             .add_systems(OnExit(AppState::TeamSetup), exit_team_setup)
             .add_systems(
                 Update,
-                (update_team_setup, rebuild_team_setup_ui)
-                    .run_if(in_state(AppState::TeamSetup)),
+                (update_team_setup, rebuild_team_setup_ui).run_if(in_state(AppState::TeamSetup)),
             );
     }
 }
@@ -266,11 +289,7 @@ fn rebuild_team_setup_ui(
                     ))
                     .with_children(|row| {
                         row.spawn((
-                            Node {
-                                width: Val::Px(20.0),
-                                height: Val::Px(20.0),
-                                ..default()
-                            },
+                            Node { width: Val::Px(20.0), height: Val::Px(20.0), ..default() },
                             BackgroundColor(color),
                         ));
                         row.spawn((
@@ -291,45 +310,47 @@ fn rebuild_team_setup_ui(
             // Play button
             let play_bg = if play_selected { PLAY_BG_SELECTED } else { PLAY_BG };
             let play_border = if play_selected { PLAY_BORDER_SELECTED } else { PLAY_BORDER };
-            parent.spawn((
-                Button,
-                Node {
-                    width: Val::Px(160.0),
-                    height: Val::Px(44.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    border: UiRect::all(Val::Px(2.0)),
-                    ..default()
-                },
-                BackgroundColor(play_bg),
-                BorderColor::all(play_border),
-            ))
-            .with_children(|parent| {
-                parent.spawn((
-                    Text::new("Play"),
-                    TextFont { font_size: FontSize::Px(20.0), ..default() },
-                    TextColor(TEXT_COLOR),
-                ));
-            });
+            parent
+                .spawn((
+                    Button,
+                    Node {
+                        width: Val::Px(160.0),
+                        height: Val::Px(44.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        border: UiRect::all(Val::Px(2.0)),
+                        ..default()
+                    },
+                    BackgroundColor(play_bg),
+                    BorderColor::all(play_border),
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new("Play"),
+                        TextFont { font_size: FontSize::Px(20.0), ..default() },
+                        TextColor(TEXT_COLOR),
+                    ));
+                });
 
             // Status message
             let status_text = state.status.clone().unwrap_or_default();
-            parent.spawn((
-                Node {
-                    width: Val::Px(480.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(Color::NONE),
-            ))
-            .with_children(|parent| {
-                parent.spawn((
-                    Text::new(status_text),
-                    TextFont { font_size: FontSize::Px(14.0), ..default() },
-                    TextColor(if state.status.is_some() { STATUS_ERROR } else { FOOTER_COLOR }),
-                ));
-            });
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(480.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                ))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Text::new(status_text),
+                        TextFont { font_size: FontSize::Px(14.0), ..default() },
+                        TextColor(if state.status.is_some() { STATUS_ERROR } else { FOOTER_COLOR }),
+                    ));
+                });
 
             parent.spawn((Node::default(), BackgroundColor(Color::NONE)));
 
@@ -454,10 +475,7 @@ pub struct LoadedSession {
     pub state: Option<GameState>,
 }
 
-fn exit_team_setup(
-    mut commands: Commands,
-    query: Query<Entity, With<TeamSetupRoot>>,
-) {
+fn exit_team_setup(mut commands: Commands, query: Query<Entity, With<TeamSetupRoot>>) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }

@@ -1,6 +1,6 @@
-use bevy::prelude::*;
 use crate::app_host::{AppHost, PendingMapData};
 use crate::screens::AppState;
+use bevy::prelude::*;
 use helpers::ListEntry;
 
 #[derive(Component)]
@@ -112,7 +112,11 @@ fn enter_map_select(
                     BackgroundColor(bg),
                     BorderColor::all(border),
                     children![(
-                        Text::new(if is_rand { format!("> {}", entry.label) } else { entry.label.clone() }),
+                        Text::new(if is_rand {
+                            format!("> {}", entry.label)
+                        } else {
+                            entry.label.clone()
+                        }),
                         TextFont { font_size: FontSize::Px(18.0), ..default() },
                         TextColor(TEXT_COLOR),
                     )],
@@ -144,12 +148,7 @@ fn update_map_select(
     mut host: ResMut<AppHost>,
     mut state: ResMut<MapSelectState>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut buttons: Query<(
-        &ListEntryIndex,
-        &mut BackgroundColor,
-        &mut BorderColor,
-        &Interaction,
-    )>,
+    mut buttons: Query<(&ListEntryIndex, &mut BackgroundColor, &mut BorderColor, &Interaction)>,
 ) {
     let old = state.selected;
     if keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) {
@@ -185,24 +184,25 @@ fn update_map_select(
         }
 
         if ((is_sel && keys.just_pressed(KeyCode::Enter)) || pressed)
-            && let Some(entry) = state.entries.get(idx.0) {
-                if entry.id == "__random_map" {
-                    next_state.set(AppState::RandomMap);
-                } else {
-                    match host.load_map_only(entry) {
-                        Ok(map) => {
-                            commands.insert_resource(PendingMapData {
-                                map_name: entry.label.clone(),
-                                map: Some(map),
-                            });
-                            next_state.set(AppState::TeamSetup);
-                        }
-                        Err(e) => {
-                            state.status = Some(e.to_string());
-                        }
+            && let Some(entry) = state.entries.get(idx.0)
+        {
+            if entry.id == "__random_map" {
+                next_state.set(AppState::RandomMap);
+            } else {
+                match host.load_map_only(entry) {
+                    Ok(map) => {
+                        commands.insert_resource(PendingMapData {
+                            map_name: entry.label.clone(),
+                            map: Some(map),
+                        });
+                        next_state.set(AppState::TeamSetup);
+                    }
+                    Err(e) => {
+                        state.status = Some(e.to_string());
                     }
                 }
             }
+        }
     }
 
     if old != selected && state.status.is_some() {
@@ -210,10 +210,7 @@ fn update_map_select(
     }
 }
 
-fn exit_map_select(
-    mut commands: Commands,
-    query: Query<Entity, With<MapSelectRoot>>,
-) {
+fn exit_map_select(mut commands: Commands, query: Query<Entity, With<MapSelectRoot>>) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }

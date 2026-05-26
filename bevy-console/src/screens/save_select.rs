@@ -1,6 +1,6 @@
-use bevy::prelude::*;
 use crate::app_host::AppHost;
 use crate::screens::AppState;
+use bevy::prelude::*;
 use helpers::ListEntry;
 
 #[derive(Component)]
@@ -126,12 +126,7 @@ fn update_save_select(
     mut host: ResMut<AppHost>,
     mut state: ResMut<SaveSelectState>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut buttons: Query<(
-        &ListEntryIndex,
-        &mut BackgroundColor,
-        &mut BorderColor,
-        &Interaction,
-    )>,
+    mut buttons: Query<(&ListEntryIndex, &mut BackgroundColor, &mut BorderColor, &Interaction)>,
 ) {
     if keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) {
         state.selected = state.selected.saturating_sub(1);
@@ -165,24 +160,22 @@ fn update_save_select(
         }
 
         if ((is_sel && keys.just_pressed(KeyCode::Enter)) || pressed)
-            && let Some(entry) = state.entries.get(idx.0) {
-                match host.load_save(entry) {
-                    Ok(_loaded) => {
-                        // Insert LoadedGame resource so MapView can pick it up
-                        // TODO: proper handling in MapView
-                    }
-                    Err(e) => {
-                        state.status = Some(e.to_string());
-                    }
+            && let Some(entry) = state.entries.get(idx.0)
+        {
+            match host.load_save(entry) {
+                Ok(_loaded) => {
+                    // Insert LoadedGame resource so MapView can pick it up
+                    // TODO: proper handling in MapView
+                }
+                Err(e) => {
+                    state.status = Some(e.to_string());
                 }
             }
+        }
     }
 }
 
-fn exit_save_select(
-    mut commands: Commands,
-    query: Query<Entity, With<SaveSelectRoot>>,
-) {
+fn exit_save_select(mut commands: Commands, query: Query<Entity, With<SaveSelectRoot>>) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }

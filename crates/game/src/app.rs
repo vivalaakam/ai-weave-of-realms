@@ -180,7 +180,14 @@ impl EmbeddedApp {
                 outcome.changed
             }
             AppScreen::MapSelect(map_select) => {
-                let outcome = handle_map_select(host, map_select, event, &self.launch, layout, &mut self.pending_map);
+                let outcome = handle_map_select(
+                    host,
+                    map_select,
+                    event,
+                    &self.launch,
+                    layout,
+                    &mut self.pending_map,
+                );
                 if let Some(next) = outcome.next_screen {
                     self.screen = next;
                 }
@@ -194,14 +201,16 @@ impl EmbeddedApp {
                 outcome.changed
             }
             AppScreen::RandomMap(random_map) => {
-                let outcome = handle_random_map(host, random_map, event, layout, &mut self.pending_map);
+                let outcome =
+                    handle_random_map(host, random_map, event, layout, &mut self.pending_map);
                 if let Some(next) = outcome.next_screen {
                     self.screen = next;
                 }
                 outcome.changed
             }
             AppScreen::TeamSetup(team_setup) => {
-                let outcome = handle_team_setup(host, team_setup, event, layout, &mut self.pending_map);
+                let outcome =
+                    handle_team_setup(host, team_setup, event, layout, &mut self.pending_map);
                 if let Some(next) = outcome.next_screen {
                     self.screen = next;
                 }
@@ -553,10 +562,7 @@ where
 
             match state_result {
                 Ok(state) => match map_view_from_loaded(
-                    LoadedGame {
-                        map_name: pending.map_name,
-                        state,
-                    },
+                    LoadedGame { map_name: pending.map_name, state },
                     0,
                     0,
                     Some(MAP_LOADED_STATUS.to_string()),

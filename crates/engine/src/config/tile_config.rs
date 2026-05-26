@@ -177,18 +177,9 @@ pub fn default_tile_config() -> TileConfig {
         TileEntry {
             tile_id: 0,
             atlas_indexes: vec![
-                AtlasIndex {
-                    index: 5,
-                    variant: Some(_s("summer")),
-                },
-                AtlasIndex {
-                    index: 6,
-                    variant: Some(_s("summer_bright")),
-                },
-                AtlasIndex {
-                    index: 7,
-                    variant: Some(_s("summer_dark")),
-                },
+                AtlasIndex { index: 5, variant: Some(_s("summer")) },
+                AtlasIndex { index: 6, variant: Some(_s("summer_bright")) },
+                AtlasIndex { index: 7, variant: Some(_s("summer_dark")) },
             ],
             variants: vec![_s("summer"), _s("summer_bright"), _s("summer_dark")],
             color: _s("#7cb342"),
@@ -205,14 +196,8 @@ pub fn default_tile_config() -> TileConfig {
         TileEntry {
             tile_id: 1,
             atlas_indexes: vec![
-                AtlasIndex {
-                    index: 1,
-                    variant: Some(_s("evergreen")),
-                },
-                AtlasIndex {
-                    index: 15,
-                    variant: Some(_s("evergreen_sparse")),
-                },
+                AtlasIndex { index: 1, variant: Some(_s("evergreen")) },
+                AtlasIndex { index: 15, variant: Some(_s("evergreen_sparse")) },
             ],
             variants: vec![_s("evergreen"), _s("evergreen_sparse")],
             color: _s("#2e7d32"),
@@ -228,10 +213,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("mountain"),
         TileEntry {
             tile_id: 2,
-            atlas_indexes: vec![AtlasIndex {
-                index: 2,
-                variant: Some(_s("rocky")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 2, variant: Some(_s("rocky")) }],
             variants: vec![_s("rocky")],
             color: _s("#8d8d8d"),
             ascii: _s("▲"),
@@ -246,10 +228,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("water"),
         TileEntry {
             tile_id: 3,
-            atlas_indexes: vec![AtlasIndex {
-                index: 3,
-                variant: Some(_s("calm")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 3, variant: Some(_s("calm")) }],
             variants: vec![_s("calm")],
             color: _s("#0d47a1"),
             ascii: _s("~"),
@@ -264,10 +243,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("city"),
         TileEntry {
             tile_id: 4,
-            atlas_indexes: vec![AtlasIndex {
-                index: 416,
-                variant: Some(_s("castle")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 416, variant: Some(_s("castle")) }],
             variants: vec![_s("castle"), _s("fortress"), _s("citadel")],
             color: _s("#ff7043"),
             ascii: _s("⌂"),
@@ -282,10 +258,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("city_entrance"),
         TileEntry {
             tile_id: 5,
-            atlas_indexes: vec![AtlasIndex {
-                index: 420,
-                variant: Some(_s("gate")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 420, variant: Some(_s("gate")) }],
             variants: vec![_s("gate"), _s("portcullis")],
             color: _s("#FBC02D"),
             ascii: _s("⌂"),
@@ -300,10 +273,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("road"),
         TileEntry {
             tile_id: 6,
-            atlas_indexes: vec![AtlasIndex {
-                index: 6,
-                variant: Some(_s("dirt")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 6, variant: Some(_s("dirt")) }],
             variants: vec![_s("dirt"), _s("cobble"), _s("paved")],
             color: _s("#d7b899"),
             ascii: _s("#"),
@@ -319,18 +289,9 @@ pub fn default_tile_config() -> TileConfig {
         TileEntry {
             tile_id: 7,
             atlas_indexes: vec![
-                AtlasIndex {
-                    index: 7,
-                    variant: Some(_s("shallow")),
-                },
-                AtlasIndex {
-                    index: 21,
-                    variant: Some(_s("shallow_rocky")),
-                },
-                AtlasIndex {
-                    index: 22,
-                    variant: Some(_s("deep")),
-                },
+                AtlasIndex { index: 7, variant: Some(_s("shallow")) },
+                AtlasIndex { index: 21, variant: Some(_s("shallow_rocky")) },
+                AtlasIndex { index: 22, variant: Some(_s("deep")) },
             ],
             variants: vec![_s("shallow"), _s("shallow_rocky"), _s("deep")],
             color: _s("#1e88e5"),
@@ -346,10 +307,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("bridge"),
         TileEntry {
             tile_id: 8,
-            atlas_indexes: vec![AtlasIndex {
-                index: 8,
-                variant: Some(_s("wood")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 8, variant: Some(_s("wood")) }],
             variants: vec![_s("wood"), _s("stone"), _s("rope")],
             color: _s("#9fb7c6"),
             ascii: _s("="),
@@ -364,10 +322,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("village"),
         TileEntry {
             tile_id: 9,
-            atlas_indexes: vec![AtlasIndex {
-                index: 9,
-                variant: Some(_s("hamlet")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 9, variant: Some(_s("hamlet")) }],
             variants: vec![_s("hamlet"), _s("town"), _s("trading_post")],
             color: _s("#FF2D55"),
             ascii: _s("⌘"),
@@ -382,10 +337,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("merchant"),
         TileEntry {
             tile_id: 10,
-            atlas_indexes: vec![AtlasIndex {
-                index: 10,
-                variant: Some(_s("tent")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 10, variant: Some(_s("tent")) }],
             variants: vec![_s("tent"), _s("stall"), _s("caravan")],
             color: _s("#cb30e0"),
             ascii: _s("$"),
@@ -400,10 +352,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("ruins"),
         TileEntry {
             tile_id: 11,
-            atlas_indexes: vec![AtlasIndex {
-                index: 11,
-                variant: Some(_s("ancient")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 11, variant: Some(_s("ancient")) }],
             variants: vec![_s("ancient"), _s("crumbling"), _s("buried")],
             color: _s("#BF6A02"),
             ascii: _s("⍟"),
@@ -418,10 +367,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("gold"),
         TileEntry {
             tile_id: 12,
-            atlas_indexes: vec![AtlasIndex {
-                index: 12,
-                variant: Some(_s("vein")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 12, variant: Some(_s("vein")) }],
             variants: vec![_s("vein"), _s("nugget"), _s("dust")],
             color: _s("#00c8b3"),
             ascii: _s("*"),
@@ -436,10 +382,7 @@ pub fn default_tile_config() -> TileConfig {
         _s("resource"),
         TileEntry {
             tile_id: 13,
-            atlas_indexes: vec![AtlasIndex {
-                index: 13,
-                variant: Some(_s("ore")),
-            }],
+            atlas_indexes: vec![AtlasIndex { index: 13, variant: Some(_s("ore")) }],
             variants: vec![_s("ore"), _s("lumber"), _s("gem")],
             color: _s("#00c3d0"),
             ascii: _s("◆"),
@@ -511,14 +454,8 @@ mod tests {
         let cfg = default_tile_config();
         let meadow = cfg.tiles.get("meadow").unwrap();
         assert_eq!(meadow.atlas_indexes.len(), 3);
-        assert_eq!(
-            meadow.atlas_indexes[0].variant.as_deref(),
-            Some("summer")
-        );
-        assert_eq!(
-            meadow.atlas_indexes[2].variant.as_deref(),
-            Some("summer_dark")
-        );
+        assert_eq!(meadow.atlas_indexes[0].variant.as_deref(), Some("summer"));
+        assert_eq!(meadow.atlas_indexes[2].variant.as_deref(), Some("summer_dark"));
     }
 
     #[test]

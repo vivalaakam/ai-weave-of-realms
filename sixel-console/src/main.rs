@@ -110,9 +110,10 @@ fn run() -> AppResult<()> {
                         &mut host,
                         map_key_event(key),
                         app_layout(render_size),
-                    ) => {
-                        needs_redraw = true;
-                    }
+                    ) =>
+                {
+                    needs_redraw = true;
+                }
                 Event::Resize(_, _) => {
                     last_output_size = None;
                     needs_redraw = true;
@@ -198,7 +199,11 @@ fn app_layout(screen_size: Size) -> AppLayout {
 
 fn app_theme() -> AppTheme<Rgb888> {
     AppTheme {
-        splash: SplashTheme { background: SPLASH_BACKGROUND, text: TEXT, selected: Rgb888::new(255, 255, 120) },
+        splash: SplashTheme {
+            background: SPLASH_BACKGROUND,
+            text: TEXT,
+            selected: Rgb888::new(255, 255, 120),
+        },
         list: ListTheme {
             background: BACKGROUND,
             text: TEXT,

@@ -12,19 +12,17 @@ use crate::input::InputEvent;
 
 /// First half of the seed phrase (adjectives / atmosphere).
 const FIRST_WORDS: [&str; 30] = [
-    "ancient", "burning", "crimson", "dark", "ember", "frozen", "gentle",
-    "hidden", "iron", "jade", "kindred", "lost", "misty", "noble", "obsidian",
-    "pale", "quiet", "radiant", "savage", "titan", "undying", "velvet", "wild",
-    "xeric", "yellow", "zealous", "bitter", "calm", "dread", "elder",
+    "ancient", "burning", "crimson", "dark", "ember", "frozen", "gentle", "hidden", "iron", "jade",
+    "kindred", "lost", "misty", "noble", "obsidian", "pale", "quiet", "radiant", "savage", "titan",
+    "undying", "velvet", "wild", "xeric", "yellow", "zealous", "bitter", "calm", "dread", "elder",
 ];
 
 /// Second half of the seed phrase (nouns / places).
 const SECOND_WORDS: [&str; 30] = [
-    "forests", "citadel", "valley", "wastes", "isles", "peaks", "marsh",
-    "steppes", "caverns", "plains", "ravine", "tundra", "jungle", "desert",
-    "shores", "meadows", "dungeon", "harbor", "towers", "grove", "thicket",
-    "basin", "fjords", "oasis", "ruins", "sanctum", "village", "passage",
-    "waters", "fields",
+    "forests", "citadel", "valley", "wastes", "isles", "peaks", "marsh", "steppes", "caverns",
+    "plains", "ravine", "tundra", "jungle", "desert", "shores", "meadows", "dungeon", "harbor",
+    "towers", "grove", "thicket", "basin", "fjords", "oasis", "ruins", "sanctum", "village",
+    "passage", "waters", "fields",
 ];
 
 /// Generates a random two-word seed phrase.
@@ -137,25 +135,13 @@ mod tests {
     fn random_map_navigates() {
         let mut screen = RandomMapScreen::new();
         assert_eq!(screen.selected, 0);
-        assert!(matches!(
-            screen.handle_input(InputEvent::Down),
-            RandomMapOutcome::Changed
-        ));
+        assert!(matches!(screen.handle_input(InputEvent::Down), RandomMapOutcome::Changed));
         assert_eq!(screen.selected, 1);
-        assert!(matches!(
-            screen.handle_input(InputEvent::Up),
-            RandomMapOutcome::Changed
-        ));
+        assert!(matches!(screen.handle_input(InputEvent::Up), RandomMapOutcome::Changed));
         assert_eq!(screen.selected, 0);
-        assert!(matches!(
-            screen.handle_input(InputEvent::Enter),
-            RandomMapOutcome::Changed
-        ));
+        assert!(matches!(screen.handle_input(InputEvent::Enter), RandomMapOutcome::Changed));
         assert!(screen.seed_phrase.is_some());
-        assert!(matches!(
-            screen.handle_input(InputEvent::Down),
-            RandomMapOutcome::Changed
-        ));
+        assert!(matches!(screen.handle_input(InputEvent::Down), RandomMapOutcome::Changed));
         assert_eq!(screen.selected, 1);
         assert!(matches!(
             screen.handle_input(InputEvent::Enter),
@@ -167,10 +153,7 @@ mod tests {
     fn play_without_seed_shows_error() {
         let mut screen = RandomMapScreen::new();
         screen.selected = 1;
-        assert!(matches!(
-            screen.handle_input(InputEvent::Enter),
-            RandomMapOutcome::Changed
-        ));
+        assert!(matches!(screen.handle_input(InputEvent::Enter), RandomMapOutcome::Changed));
         assert_eq!(screen.status, Some("Press Random first".to_string()));
     }
 
@@ -178,9 +161,6 @@ mod tests {
     fn back_button_works() {
         let mut screen = RandomMapScreen::new();
         screen.selected = 2;
-        assert!(matches!(
-            screen.handle_input(InputEvent::Enter),
-            RandomMapOutcome::BackRequested
-        ));
+        assert!(matches!(screen.handle_input(InputEvent::Enter), RandomMapOutcome::BackRequested));
     }
 }

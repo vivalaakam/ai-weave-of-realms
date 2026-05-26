@@ -1,6 +1,6 @@
-use bevy::prelude::*;
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
+use bevy::prelude::*;
 use engine::map::tile::Tiles;
 use game::input::InputEvent;
 use game::map_view::{MapViewApp, MapViewOutcome};
@@ -142,10 +142,7 @@ fn enter_map_view_impl(
             commands.spawn((
                 Sprite {
                     image: atlas_handle.clone(),
-                    texture_atlas: Some(TextureAtlas {
-                        layout: layout_handle.clone(),
-                        index: 0,
-                    }),
+                    texture_atlas: Some(TextureAtlas { layout: layout_handle.clone(), index: 0 }),
                     custom_size: Some(Vec2::splat(tile_size)),
                     ..Default::default()
                 },

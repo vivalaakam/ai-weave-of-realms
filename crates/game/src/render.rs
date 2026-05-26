@@ -803,7 +803,8 @@ pub fn draw_random_map_screen<D, C>(
     }
 
     // Menu options (Random, Play, Back)
-    let options = [&RandomMapScreen::OPTIONS[0], &RandomMapScreen::OPTIONS[1], &RandomMapScreen::OPTIONS[2]];
+    let options =
+        [&RandomMapScreen::OPTIONS[0], &RandomMapScreen::OPTIONS[1], &RandomMapScreen::OPTIONS[2]];
     let menu_top = center_y + 24;
     for (idx, label) in options.iter().enumerate() {
         let prefix = if idx == random_map.selected { ">" } else { " " };
@@ -884,9 +885,7 @@ pub fn draw_team_setup_screen<D, C>(
         let y = start_y + row as i32 * line_height;
         let label = team_setup.row_label(row);
         let style = if row == team_setup.selected_row { selected_style } else { body_style };
-        halt_on_error(
-            Text::new(&label, Point::new(margin, y), style).draw(display),
-        );
+        halt_on_error(Text::new(&label, Point::new(margin, y), style).draw(display));
     }
 
     // Footer

@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use crate::screens::AppState;
+use bevy::prelude::*;
 
 // ===== Theme constants (embedded-style flat UI) =====
 const BG_COLOR: Color = Color::srgb(0.08, 0.08, 0.12);
@@ -79,10 +79,8 @@ fn enter_splash(mut commands: Commands) {
                 TextColor(TITLE_COLOR),
             ));
 
-            parent.spawn((
-                Node { height: Val::Px(32.0), ..default() },
-                BackgroundColor(Color::NONE),
-            ));
+            parent
+                .spawn((Node { height: Val::Px(32.0), ..default() }, BackgroundColor(Color::NONE)));
 
             // New Game — framed flat button
             parent.spawn((
@@ -112,10 +110,8 @@ fn enter_splash(mut commands: Commands) {
                 )],
             ));
 
-            parent.spawn((
-                Node { height: Val::Px(24.0), ..default() },
-                BackgroundColor(Color::NONE),
-            ));
+            parent
+                .spawn((Node { height: Val::Px(24.0), ..default() }, BackgroundColor(Color::NONE)));
 
             parent.spawn((
                 Text::new(SPLASH_FOOTER),
