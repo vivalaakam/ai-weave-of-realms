@@ -115,10 +115,8 @@ fn main() -> Result<()> {
     } = Args::parse();
 
     let final_image = final_image.unwrap_or_else(|| {
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let ts =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
         format!("tmp/{ts}.jpg")
     });
 

@@ -330,7 +330,7 @@ fn save_image(
     for batch in 0..bsize {
         let image = images.i(batch)?;
         let image_filename = output_filename(
-            final_image: final_image_opt,
+            final_image,
             (bsize * idx) + batch + 1,
             batch + num_samples,
             timestep_ids,
@@ -530,10 +530,8 @@ fn run(args: Args) -> Result<()> {
     } = args;
 
     let final_image = final_image_opt.unwrap_or_else(|| {
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let ts =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
         format!("tmp/{ts}.jpg")
     });
 
