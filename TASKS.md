@@ -237,6 +237,7 @@ Update status as work progresses.
 | 13.9  | Вынести общий app-controller и screen flow целиком в `rpg-embedded`, чтобы `tdeck` и `sixel` использовали идентичные экраны начиная со splash | Codex    | DONE   | Добавлены shared `EmbeddedApp`, `AppScreen`, `MapViewScreen`, `AppHost`, screen-level renderer и единые тексты/переходы `Splash -> MapSelect/SaveSelect -> MapView`; `tdeck` и `sixel` сведены к thin host adapters вокруг storage/system/input                                     |
 | 13.10 | Добавить standalone SDL2 launcher по аналогии с `tdeck` и `sixel-console`, использующий общий `rpg-embedded` app-layer                        | Codex    | DONE   | Добавлен standalone package `sdl2-console/` вне workspace; SDL2 launcher использует тот же `EmbeddedApp`/`AppHost`/renderer из `rpg-embedded`, а локально держит только filesystem host, SDL2 window/texture loop и keyboard events                                                 |
 | 13.11 | Добавить scale при выводе framebuffer в `sixel-console` и `sdl2-console`                                                                      | Codex    | DONE   | В обоих standalone launchers добавлен platform-output scale `2x`: `sixel-console` масштабирует пиксели перед sixel encoding, `sdl2-console` — перед загрузкой RGB буфера в SDL2 texture; shared `rpg-embedded` renderer не менялся                                                  |
+| 13.12 | Исправить повторное срабатывание confirm в `bevy-console` при переходе New Game -> Random Map                                                  | Codex    | DONE   | `trigger_input_cooldown` очищает очередь `UiAction`, чтобы новый экран не читал старый Confirm                                                              |
 
 ## Phase 14 — SDL2 Refactor + Fullscreen
 
@@ -244,4 +245,3 @@ Update status as work progresses.
 |------|---------------------------------------------------------------------------|----------|------------|-------|
 | 14.1 | Refactor `sdl2-console/src/main.rs` into sub-modules (input, controller, render, layout, present) | — | DONE     | Slim main.rs to ~200 lines, modularised input/controller/render/layout/present |
 | 14.2 | Add F11 fullscreen toggle and cmdline `--fullscreen` flag                                             | — | DONE     | SDL2 `set_fullscreen` via `SDL_WINDOW_FULLSCREEN_DESKTOP`; `--fullscreen` in `Args` |
-

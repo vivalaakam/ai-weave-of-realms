@@ -304,7 +304,7 @@ fn collect_ui_actions(
     gamepads: Query<&Gamepad>,
     mapping: Res<InputMapping>,
     mut debounce: ResMut<GamepadDebounce>,
-    mut cooldown: ResMut<InputCooldown>,
+    cooldown: ResMut<InputCooldown>,
     mut writer: MessageWriter<UiAction>,
 ) {
     // ── Cooldown check ────────────────────────────────────────
@@ -434,6 +434,11 @@ fn collect_ui_actions(
 /// COOLDOWN_DURATION seconds so stale presses don't bleed through.
 const COOLDOWN_DURATION: f64 = 0.15;
 
-fn trigger_input_cooldown(time: Res<Time>, mut cooldown: ResMut<InputCooldown>) {
+fn trigger_input_cooldown(
+    time: Res<Time>,
+    mut cooldown: ResMut<InputCooldown>,
+    mut actions: ResMut<Messages<UiAction>>,
+) {
     *cooldown = InputCooldown::trigger(time.elapsed_secs_f64(), COOLDOWN_DURATION);
+    actions.clear();
 }
