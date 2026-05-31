@@ -1,4 +1,5 @@
 use crate::app_host::{AppHost, PendingMapData};
+use crate::input::UiAction;
 use crate::screens::AppState;
 use bevy::prelude::*;
 use helpers::ListEntry;
@@ -147,18 +148,20 @@ fn update_map_select(
     mut next_state: ResMut<NextState<AppState>>,
     mut host: ResMut<AppHost>,
     mut state: ResMut<MapSelectState>,
-    keys: Res<ButtonInput<KeyCode>>,
+    mut reader: MessageReader<UiAction>,
     mut buttons: Query<(&ListEntryIndex, &mut BackgroundColor, &mut BorderColor, &Interaction)>,
 ) {
     let old = state.selected;
-    if keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) {
+    let actions: Vec<UiAction> = reader.read().copied().collect();
+    let has = |action: UiAction| actions.contains(&action);
+    if has(UiAction::Up) {
         state.selected = state.selected.saturating_sub(1);
     }
-    if keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) {
+    if has(UiAction::Down) {
         let max = state.entries.len().saturating_sub(1);
         state.selected = (state.selected + 1).min(max);
     }
-    if keys.just_pressed(KeyCode::Escape) || keys.just_pressed(KeyCode::Backspace) {
+    if has(UiAction::Cancel) {
         next_state.set(AppState::Splash);
         return;
     }
@@ -183,22 +186,23 @@ fn update_map_select(
             *border = BorderColor::all(ROW_BORDER);
         }
 
-        if ((is_sel && keys.just_pressed(KeyCode::Enter)) || pressed)
-            && let Some(entry) = state.entries.get(idx.0)
-        {
-            if entry.id == "__random_map" {
-                next_state.set(AppState::RandomMap);
-            } else {
-                match host.load_map_only(entry) {
-                    Ok(map) => {
-                        commands.insert_resource(PendingMapData {
-                            map_name: entry.label.clone(),
-                            map: Some(map),
-                        });
-                        next_state.set(AppState::TeamSetup);
-                    }
-                    Err(e) => {
-                        state.status = Some(e.to_string());
+        let confirm = (is_sel && has(UiAction::Confirm)) || pressed;
+        if confirm {
+            if let Some(entry) = state.entries.get(idx.0) {
+                if entry.id == "__random_map" {
+                    next_state.set(AppState::RandomMap);
+                } else {
+                    match host.load_map_only(entry) {
+                        Ok(map) => {
+                            commands.insert_resource(PendingMapData {
+                                map_name: entry.label.clone(),
+                                map: Some(map),
+                            });
+                            next_state.set(AppState::TeamSetup);
+                        }
+                        Err(e) => {
+                            state.status = Some(e.to_string());
+                        }
                     }
                 }
             }

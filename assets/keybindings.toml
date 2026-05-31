@@ -1,0 +1,39 @@
+# Keybindings for Weave of Realms (Bevy frontend)
+#
+# Keyboard keys use Bevy KeyCode names:
+#   https://docs.rs/bevy/latest/bevy/input/keyboard/enum.KeyCode.html
+#
+# Gamepad buttons use Bevy GamepadButton names:
+#   https://docs.rs/bevy/latest/bevy/input/gamepad/enum.GamepadButton.html
+#
+# Each action can have multiple bindings. Edit this file and restart
+# the app — no code changes needed.
+
+[keyboard]
+up = ["ArrowUp", "KeyW"]
+down = ["ArrowDown", "KeyS"]
+left = ["ArrowLeft", "KeyA"]
+right = ["ArrowRight", "KeyD"]
+confirm = ["Enter", "Space"]
+cancel = ["Escape", "Backspace"]
+next_hero = ["Tab"]
+next_turn = ["Space"]
+cursor_up = ["KeyK"]
+cursor_down = ["KeyJ"]
+cursor_left = ["KeyH"]
+cursor_right = ["KeyL"]
+pan_up = ["KeyW"]
+pan_down = ["KeyS"]
+pan_left = ["KeyA"]
+pan_right = ["KeyD"]
+
+[gamepad]
+enabled = true
+up = ["DPadUp"]
+down = ["DPadDown"]
+left = ["DPadLeft"]
+right = ["DPadRight"]
+confirm = ["South"]       # A / Cross
+cancel = ["East"]         # B / Circle
+next_hero = ["LeftThumb"]  # L3
+next_turn = ["Start"]

@@ -1,3 +1,4 @@
+use crate::input::UiAction;
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
 use bevy::prelude::*;
@@ -43,7 +44,6 @@ pub struct MapViewState {
 
 const TEXT_COLOR: Color = Color::srgb(0.85, 0.85, 0.88);
 const FOOTER_COLOR: Color = Color::srgb(0.5, 0.5, 0.55);
-const CURSOR_COLOR: Color = Color::srgb(0.9, 0.9, 0.3);
 const OVERLAY_BG: Color = Color::srgba(0.0, 0.0, 0.0, 0.7);
 const OVERLAY_PANEL_BG: Color = Color::srgb(0.18, 0.18, 0.24);
 const OVERLAY_PANEL_BORDER: Color = Color::srgb(0.5, 0.5, 0.6);
@@ -118,6 +118,13 @@ fn button_node(w: f32, h: f32) -> Node {
         ..default()
     }
 }
+
+/// Atlas index for the cursor overlay sprite.
+const CURSOR_ATLAS_INDEX: usize = 624;
+const CURSOR_OVERLAY_COLOR: Color = Color::srgb(1.0, 1.0, 0.47);
+
+#[derive(Component)]
+pub struct CursorOverlay;
 
 #[derive(Component)]
 pub struct MapTile;
@@ -205,6 +212,22 @@ fn enter_map_view_impl(
             ));
         }
     }
+
+    // Cursor overlay sprite — drawn on top of all tiles at z=1.
+    commands.spawn((
+        Sprite {
+            image: atlas_handle.clone(),
+            texture_atlas: Some(TextureAtlas {
+                layout: layout_handle.clone(),
+                index: CURSOR_ATLAS_INDEX,
+            }),
+            color: CURSOR_OVERLAY_COLOR,
+            custom_size: Some(Vec2::splat(tile_size)),
+            ..Default::default()
+        },
+        Transform::from_xyz(offset_x, offset_y, 1.0),
+        CursorOverlay,
+    ));
 
     commands
         .spawn((
@@ -400,9 +423,10 @@ fn update_map_view(
     mut commands: Commands,
     mut map_view_state: ResMut<MapViewState>,
     mut next_state: ResMut<NextState<AppState>>,
-    keys: Res<ButtonInput<KeyCode>>,
+    mut reader: MessageReader<UiAction>,
     mut status_query: Query<&mut Text>,
     mut tile_query: Query<(&MapTilePos, &mut Sprite)>,
+    mut cursor_query: Query<&mut Transform, With<CursorOverlay>>,
     end_turn_q: Query<Entity, With<EndTurnOverlay>>,
     pause_q: Query<Entity, With<PauseOverlay>>,
     mut overlay_btns: Query<
@@ -431,26 +455,22 @@ fn update_map_view(
     };
     let map_view = &mut *map_view_box;
 
+    let actions: Vec<UiAction> = reader.read().copied().collect();
+    let frame = |action: UiAction| actions.contains(&action);
+
     // ── Pause overlay input handling ──────────────────────────────────────
     if map_view_state.pause_overlay {
         let selected = map_view_state.pause_selected;
 
-        // Keyboard navigation: W/S or arrows change selection
-        if keys.just_pressed(KeyCode::ArrowUp)
-            || keys.just_pressed(KeyCode::KeyW)
-            || keys.just_pressed(KeyCode::KeyK)
-        {
+        if frame(UiAction::Up) {
             map_view_state.pause_selected = selected.saturating_sub(1);
         }
-        if keys.just_pressed(KeyCode::ArrowDown)
-            || keys.just_pressed(KeyCode::KeyS)
-            || keys.just_pressed(KeyCode::KeyJ)
-        {
+        if frame(UiAction::Down) {
             map_view_state.pause_selected = (selected + 1).min(1);
         }
 
         // Esc always resumes
-        if keys.just_pressed(KeyCode::Escape) {
+        if frame(UiAction::Cancel) {
             if let Some(entity) = pause_q.iter().next() {
                 commands.entity(entity).despawn();
             }
@@ -465,7 +485,6 @@ fn update_map_view(
         for (et_confirm, et_cancel, resume_opt, quit_opt, mut bg, mut border, interaction) in
             overlay_btns.iter_mut()
         {
-            // Only process pause buttons in this branch
             if et_confirm.is_some() || et_cancel.is_some() {
                 continue;
             }
@@ -475,7 +494,7 @@ fn update_map_view(
                 _ => continue,
             };
             update_button_style(is_sel, &interaction, &mut bg, &mut border);
-            let clicked = is_sel && keys.just_pressed(KeyCode::Enter);
+            let clicked = is_sel && frame(UiAction::Confirm);
             let pressed = matches!(interaction, Interaction::Pressed);
             if clicked || pressed {
                 if resume_opt.is_some() {
@@ -503,22 +522,15 @@ fn update_map_view(
     if map_view_state.end_turn_overlay {
         let selected = map_view_state.end_turn_selected;
 
-        // Keyboard navigation
-        if keys.just_pressed(KeyCode::ArrowUp)
-            || keys.just_pressed(KeyCode::KeyW)
-            || keys.just_pressed(KeyCode::KeyK)
-        {
+        if frame(UiAction::Up) {
             map_view_state.end_turn_selected = selected.saturating_sub(1);
         }
-        if keys.just_pressed(KeyCode::ArrowDown)
-            || keys.just_pressed(KeyCode::KeyS)
-            || keys.just_pressed(KeyCode::KeyJ)
-        {
+        if frame(UiAction::Down) {
             map_view_state.end_turn_selected = (selected + 1).min(1);
         }
 
         // Esc cancels
-        if keys.just_pressed(KeyCode::Escape) {
+        if frame(UiAction::Cancel) {
             if let Some(entity) = end_turn_q.iter().next() {
                 commands.entity(entity).despawn();
             }
@@ -528,8 +540,8 @@ fn update_map_view(
             return;
         }
 
-        // Space always confirms (fast action)
-        if keys.just_pressed(KeyCode::Space) {
+        // NextTurn action always confirms (fast action)
+        if frame(UiAction::NextTurn) {
             if let Some(entity) = end_turn_q.iter().next() {
                 commands.entity(entity).despawn();
             }
@@ -553,7 +565,6 @@ fn update_map_view(
         for (confirm_opt, cancel_opt, p_resume, p_quit, mut bg, mut border, interaction) in
             overlay_btns.iter_mut()
         {
-            // Only process end-turn buttons in this branch
             if p_resume.is_some() || p_quit.is_some() {
                 continue;
             }
@@ -563,7 +574,7 @@ fn update_map_view(
                 _ => continue,
             };
             update_button_style(is_sel, &interaction, &mut bg, &mut border);
-            let clicked = is_sel && keys.just_pressed(KeyCode::Enter);
+            let clicked = is_sel && frame(UiAction::Confirm);
             let button_pressed = matches!(interaction, Interaction::Pressed);
             if clicked || button_pressed {
                 if confirm_opt.is_some() {
@@ -602,67 +613,65 @@ fn update_map_view(
 
     // ── Normal game input ────────────────────────────────────────────────
     let mut events = Vec::new();
-    if keys.just_pressed(KeyCode::ArrowUp) {
+    if frame(UiAction::Up) {
         events.push(InputEvent::Up);
     }
-    if keys.just_pressed(KeyCode::ArrowDown) {
+    if frame(UiAction::Down) {
         events.push(InputEvent::Down);
     }
-    if keys.just_pressed(KeyCode::ArrowLeft) {
+    if frame(UiAction::Left) {
         events.push(InputEvent::Left);
     }
-    if keys.just_pressed(KeyCode::ArrowRight) {
+    if frame(UiAction::Right) {
         events.push(InputEvent::Right);
     }
-    if keys.just_pressed(KeyCode::KeyH) {
+    if frame(UiAction::CursorLeft) {
         events.push(InputEvent::CursorLeft);
     }
-    if keys.just_pressed(KeyCode::KeyJ) {
+    if frame(UiAction::CursorDown) {
         events.push(InputEvent::CursorDown);
     }
-    if keys.just_pressed(KeyCode::KeyK) {
+    if frame(UiAction::CursorUp) {
         events.push(InputEvent::CursorUp);
     }
-    if keys.just_pressed(KeyCode::KeyL) {
+    if frame(UiAction::CursorRight) {
         events.push(InputEvent::CursorRight);
     }
-    if keys.just_pressed(KeyCode::KeyW) {
+    if frame(UiAction::PanUp) {
         events.push(InputEvent::PanUp);
     }
-    if keys.just_pressed(KeyCode::KeyS) {
+    if frame(UiAction::PanDown) {
         events.push(InputEvent::PanDown);
     }
-    if keys.just_pressed(KeyCode::KeyA) {
+    if frame(UiAction::PanLeft) {
         events.push(InputEvent::PanLeft);
     }
-    if keys.just_pressed(KeyCode::KeyD) {
+    if frame(UiAction::PanRight) {
         events.push(InputEvent::PanRight);
     }
-    if keys.just_pressed(KeyCode::Tab) {
+    if frame(UiAction::NextHero) {
         events.push(InputEvent::NextHero);
     }
-    if keys.just_pressed(KeyCode::Enter) {
+    if frame(UiAction::Confirm) {
         events.push(InputEvent::Enter);
     }
-    if keys.just_pressed(KeyCode::KeyQ) {
-        events.push(InputEvent::Key('q'));
-    }
 
-    // Space and E both trigger end-turn.
-    if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::KeyE) {
+    // KeyQ is not in UiAction, keep raw key check for now
+    // (TODO: add Quit/KeyQ to keybindings.toml if desired)
+    // No direct KeyCode access here — relies on MessageReader<UiAction>
+
+    // NextTurn triggers end-turn overlay
+    if frame(UiAction::NextTurn) {
         events.push(InputEvent::NextTurn);
     }
 
-    // Esc opens pause overlay instead of going back immediately.
-    if keys.just_pressed(KeyCode::Escape) {
+    // Cancel opens pause overlay instead of going back immediately.
+    if frame(UiAction::Cancel) {
         map_view_state.pause_overlay = true;
         map_view_state.pause_selected = 0;
         spawn_pause_overlay(&mut commands);
         map_view_state.map_view = Some(map_view_box);
         return;
-    }
-    if keys.just_pressed(KeyCode::Backspace) {
-        events.push(InputEvent::Back);
     }
 
     let mut needs_redraw = map_view_state.needs_initial_draw;
@@ -740,15 +749,30 @@ fn update_map_view(
                 continue;
             }
 
-            let is_cursor = tx as isize == cursor_x && ty as isize == cursor_y;
-            sprite.color = if is_cursor {
-                CURSOR_COLOR
-            } else {
-                map.get_tile(coord).map(|t| tile_color_for(t.kind)).unwrap_or(Color::BLACK)
-            };
+            // Tile always shows its own color/atlas — cursor is a separate overlay sprite.
+            sprite.color = map.get_tile(coord)
+                .map(|t| tile_color_for(t.kind))
+                .unwrap_or(Color::BLACK);
             if let Some(atlas) = sprite.texture_atlas.as_mut() {
                 let idx = map.get_tile(coord).map(|t| tile_atlas_index(t.kind)).unwrap_or(0);
                 atlas.index = idx;
+            }
+        }
+
+        // Move cursor overlay to the correct tile position.
+        let cx = cursor_x - view_x as isize;
+        let cy = cursor_y - view_y as isize;
+        if cx >= 0 && cy >= 0 && (cx as usize) < visible_cols && (cy as usize) < visible_rows {
+            let tile_size = map_view_state.tile_size;
+            let total_w = visible_cols as f32 * tile_size;
+            let total_h = visible_rows as f32 * tile_size;
+            let offset_x = -total_w / 2.0 + tile_size / 2.0;
+            let offset_y = total_h / 2.0 - tile_size / 2.0;
+            let new_x = offset_x + cx as f32 * tile_size;
+            let new_y = offset_y - cy as f32 * tile_size;
+            for mut transform in cursor_query.iter_mut() {
+                transform.translation.x = new_x;
+                transform.translation.y = new_y;
             }
         }
     }
@@ -760,11 +784,15 @@ fn exit_map_view(
     mut commands: Commands,
     query: Query<Entity, With<MapViewRoot>>,
     tile_query: Query<Entity, With<MapTile>>,
+    cursor_query: Query<Entity, With<CursorOverlay>>,
 ) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }
     for entity in tile_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    for entity in cursor_query.iter() {
         commands.entity(entity).despawn();
     }
 }

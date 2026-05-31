@@ -1,3 +1,4 @@
+use crate::input::UiAction;
 use crate::screens::AppState;
 use bevy::prelude::*;
 
@@ -125,7 +126,7 @@ fn enter_splash(mut commands: Commands) {
 fn update_splash(
     mut next_state: ResMut<NextState<AppState>>,
     mut splash_state: ResMut<SplashState>,
-    keys: Res<ButtonInput<KeyCode>>,
+    mut reader: MessageReader<UiAction>,
     mut query: Query<(
         Option<&NewGameButton>,
         Option<&LoadGameButton>,
@@ -134,17 +135,15 @@ fn update_splash(
         &Interaction,
     )>,
 ) {
-    // Keyboard navigation
-    if keys.just_pressed(KeyCode::ArrowUp)
-        || keys.just_pressed(KeyCode::KeyW)
-        || keys.just_pressed(KeyCode::KeyK)
-    {
+    // Collect all actions this frame so we can check multiple times.
+    let actions: Vec<UiAction> = reader.read().copied().collect();
+    let has = |action: UiAction| actions.contains(&action);
+
+    // Keyboard / gamepad navigation
+    if has(UiAction::Up) {
         splash_state.selected = splash_state.selected.saturating_sub(1);
     }
-    if keys.just_pressed(KeyCode::ArrowDown)
-        || keys.just_pressed(KeyCode::KeyS)
-        || keys.just_pressed(KeyCode::KeyJ)
-    {
+    if has(UiAction::Down) {
         splash_state.selected = (splash_state.selected + 1).min(SPLASH_OPTIONS.len() - 1);
     }
 
@@ -174,7 +173,7 @@ fn update_splash(
             *border = BorderColor::all(BTN_BORDER);
         }
 
-        if (is_selected && keys.just_pressed(KeyCode::Enter)) || pressed {
+        if (is_selected && has(UiAction::Confirm)) || pressed {
             if new_game_opt.is_some() {
                 next_state.set(AppState::MapSelect);
             } else {

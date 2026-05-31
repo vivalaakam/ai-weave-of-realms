@@ -1,7 +1,9 @@
-use crate::app_host::{PendingMapData, TeamConfig, build_state_with_teams};
+use crate::app_host::{build_state_with_teams, PendingMapData, TeamConfig};
+use crate::input::UiAction;
 use crate::screens::AppState;
 use bevy::prelude::*;
 use engine::game_state::GameState;
+use std::collections::HashSet;
 
 #[derive(Component)]
 pub struct TeamSetupRoot;
@@ -366,31 +368,34 @@ fn update_team_setup(
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut state: ResMut<TeamSetupState>,
-    keys: Res<ButtonInput<KeyCode>>,
+    mut reader: MessageReader<UiAction>,
     buttons: Query<&Interaction, With<Button>>,
     pending: Option<Res<PendingMapData>>,
 ) {
+    // Collect all UiAction messages for this frame into a set for O(1) lookups.
+    let actions: HashSet<UiAction> = reader.read().copied().collect();
+
     let row_count = state.count + 1; // +1 for count selector
     let max_sel = row_count; // last row is play button
 
     let mut changed = false;
 
-    if keys.just_pressed(KeyCode::Escape) || keys.just_pressed(KeyCode::Backspace) {
+    if actions.contains(&UiAction::Cancel) {
         commands.remove_resource::<PendingMapData>();
         next_state.set(AppState::MapSelect);
         return;
     }
 
-    if keys.just_pressed(KeyCode::ArrowUp) {
+    if actions.contains(&UiAction::Up) {
         state.selected = state.selected.saturating_sub(1);
         changed = true;
     }
-    if keys.just_pressed(KeyCode::ArrowDown) {
+    if actions.contains(&UiAction::Down) {
         state.selected = (state.selected + 1).min(max_sel);
         changed = true;
     }
 
-    if keys.just_pressed(KeyCode::ArrowLeft) {
+    if actions.contains(&UiAction::Left) {
         if state.selected == 0 {
             let new_count = state.count.saturating_sub(1).max(1);
             if new_count != state.count {
@@ -406,7 +411,7 @@ fn update_team_setup(
         }
     }
 
-    if keys.just_pressed(KeyCode::ArrowRight) {
+    if actions.contains(&UiAction::Right) {
         if state.selected == 0 {
             let new_count = (state.count + 1).min(8);
             if new_count != state.count {
@@ -422,8 +427,7 @@ fn update_team_setup(
         }
     }
 
-    let confirm = keys.just_pressed(KeyCode::Enter)
-        || keys.just_pressed(KeyCode::Space)
+    let confirm = actions.contains(&UiAction::Confirm)
         || buttons.iter().any(|i| matches!(i, Interaction::Pressed));
 
     if confirm {

@@ -1,6 +1,8 @@
 use crate::app_host::{AppHost, PendingMapData};
+use crate::input::UiAction;
 use crate::screens::AppState;
 use bevy::prelude::*;
+use std::collections::HashSet;
 use tracing::error;
 
 #[derive(Component)]
@@ -131,14 +133,17 @@ fn update_random_map(
     mut next_state: ResMut<NextState<AppState>>,
     mut host: ResMut<AppHost>,
     mut state: ResMut<RandomMapState>,
-    keys: Res<ButtonInput<KeyCode>>,
+    mut reader: MessageReader<UiAction>,
     random_btns: Query<&Interaction, With<RandomButton>>,
     play_btns: Query<&Interaction, With<PlayButton>>,
     mut text_query: Query<&mut Text>,
     seed_texts: Query<Entity, With<SeedText>>,
     status_texts: Query<Entity, With<StatusText>>,
 ) {
-    if keys.just_pressed(KeyCode::Escape) || keys.just_pressed(KeyCode::Backspace) {
+    // Collect all UiAction messages for this frame into a set for O(1) lookups.
+    let actions: HashSet<UiAction> = reader.read().copied().collect();
+
+    if actions.contains(&UiAction::Cancel) {
         next_state.set(AppState::MapSelect);
         return;
     }

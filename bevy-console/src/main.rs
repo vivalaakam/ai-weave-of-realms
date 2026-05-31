@@ -8,6 +8,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 mod app_host;
+mod input;
 mod screens;
 
 use app_host::AppHost;
@@ -92,6 +93,7 @@ fn main() {
             evaluator: args.evaluator,
         })
         .init_state::<screens::AppState>()
+        .add_plugins(input::InputPlugin)
         .add_plugins(screens::splash::SplashPlugin)
         .add_plugins(screens::map_select::MapSelectPlugin)
         .add_plugins(screens::save_select::SaveSelectPlugin)

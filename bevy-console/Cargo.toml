@@ -12,5 +12,7 @@ mapgen = { path = "../crates/mapgen" }
 tiled = { path = "../crates/tiled" }
 helpers = { path = "../crates/helpers" }
 tracing = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+toml = "0.8"
