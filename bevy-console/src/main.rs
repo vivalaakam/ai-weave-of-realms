@@ -101,6 +101,8 @@ fn main() {
         .add_plugins(screens::team_setup::TeamSetupPlugin)
         .add_plugins(screens::map_view::MapViewPlugin)
         .add_plugins(screens::city::CityPlugin)
+        .add_plugins(screens::city_entrance::CityEntrancePlugin)
+        .add_plugins(screens::hero::HeroPlugin)
         .add_systems(Startup, setup_camera)
         .run();
 }

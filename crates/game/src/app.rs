@@ -693,6 +693,33 @@ where
             ));
             ScreenOutcome { changed: true, next_screen: None }
         }
+        MapViewOutcome::OpenHeroInfo => {
+            let lines = map_view
+                .app
+                .cursor_coord()
+                .and_then(|coord| map_view.app.session().state().hero_at(coord))
+                .map(|hero| {
+                    vec![
+                        format!("HP: {}/{}", hero.hp, hero.max_hp),
+                        format!("ATK: {} DEF: {} SPD: {}", hero.atk, hero.def, hero.spd),
+                        format!("MOV: {}/{}", hero.mov_remaining, hero.mov),
+                        format!("Position: {},{}", hero.position.x, hero.position.y),
+                    ]
+                })
+                .unwrap_or_else(|| vec!["No hero selected".to_string()]);
+            let title = map_view
+                .app
+                .cursor_coord()
+                .and_then(|coord| map_view.app.session().state().hero_at(coord))
+                .map(|hero| hero.name.clone())
+                .unwrap_or_else(|| "Hero".to_string());
+            map_view.info_overlay = Some(crate::info_overlay::InfoOverlay::new(
+                title,
+                lines,
+                "Enter/Back: close".to_string(),
+            ));
+            ScreenOutcome { changed: true, next_screen: None }
+        }
     }
 }
 

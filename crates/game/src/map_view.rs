@@ -5,6 +5,7 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
+use engine::hero::HeroId;
 use engine::map::game_map::Direction as MapDir;
 use engine::map::game_map::GameMap;
 use engine::map::game_map::MapCoord;
@@ -95,6 +96,8 @@ pub enum MapViewOutcome {
     GameOver { won: bool, message: String },
     /// User pressed Enter on a structure under the cursor.
     OpenStructureOverlay { name: String },
+    /// User pressed Enter on a hero standing outside any structure.
+    OpenHeroInfo,
 }
 
 /// Shared gameplay screen model for embedded and terminal frontends.
@@ -291,6 +294,20 @@ impl MapViewApp {
         }
     }
 
+    /// Returns the map coordinate currently under the cursor, if it is valid.
+    pub fn cursor_coord(&self) -> Option<MapCoord> {
+        if self.cursor_x < 0 || self.cursor_y < 0 {
+            return None;
+        }
+        Some(MapCoord::new(self.cursor_x as u32, self.cursor_y as u32))
+    }
+
+    /// Returns the id of the living hero standing under the cursor, if any.
+    pub fn cursor_hero_id(&self) -> Option<HeroId> {
+        let coord = self.cursor_coord()?;
+        self.session.state().hero_at(coord).map(|hero| hero.get_id())
+    }
+
     /// Clamps the current viewport to the map dimensions.
     pub fn clamp_view_to_map(&mut self, visible_cols: usize, visible_rows: usize) {
         let map = &self.session.state().map;
@@ -355,6 +372,8 @@ impl MapViewApp {
             InputEvent::Enter => {
                 if let Some(info) = self.cursor_structure() {
                     MapViewOutcome::OpenStructureOverlay { name: info.name }
+                } else if self.cursor_hero_id().is_some() {
+                    MapViewOutcome::OpenHeroInfo
                 } else {
                     MapViewOutcome::NoChange
                 }

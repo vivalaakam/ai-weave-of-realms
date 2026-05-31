@@ -10,9 +10,13 @@ pub enum AppState {
     TeamSetup,
     MapView,
     City,
+    CityEntrance,
+    Hero,
 }
 
 pub mod city;
+pub mod city_entrance;
+pub mod hero;
 pub mod map_select;
 pub mod map_view;
 pub mod overlays;

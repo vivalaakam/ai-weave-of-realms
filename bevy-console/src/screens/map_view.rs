@@ -786,14 +786,26 @@ fn update_map_view(
                 map_view_state.map_view = Some(map_view_box);
                 return;
             }
-            MapViewOutcome::OpenStructureOverlay { name } => {
-                if matches!(name.as_str(), "City" | "City Entrance") {
+            MapViewOutcome::OpenStructureOverlay { name } => match name.as_str() {
+                "City" => {
                     next_state.set(AppState::City);
                     map_view_state.map_view = Some(map_view_box);
                     return;
                 }
-                map_view.set_status(Some(format!("Structure: {}", name)));
-                needs_redraw = true;
+                "City Entrance" => {
+                    next_state.set(AppState::CityEntrance);
+                    map_view_state.map_view = Some(map_view_box);
+                    return;
+                }
+                _ => {
+                    map_view.set_status(Some(format!("Structure: {}", name)));
+                    needs_redraw = true;
+                }
+            },
+            MapViewOutcome::OpenHeroInfo => {
+                next_state.set(AppState::Hero);
+                map_view_state.map_view = Some(map_view_box);
+                return;
             }
         }
     }
