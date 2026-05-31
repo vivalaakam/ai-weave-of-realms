@@ -1,6 +1,7 @@
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
 use bevy::prelude::*;
+use engine::map::game_map::MapCoord;
 use engine::map::tile::Tiles;
 use game::input::InputEvent;
 use game::map_view::{MapViewApp, MapViewOutcome};
@@ -12,6 +13,21 @@ pub struct MapViewRoot;
 #[derive(Component)]
 pub struct EndTurnOverlay;
 
+#[derive(Component)]
+pub struct PauseOverlay;
+
+#[derive(Component)]
+pub struct EndTurnConfirmButton;
+
+#[derive(Component)]
+pub struct EndTurnCancelButton;
+
+#[derive(Component)]
+pub struct PauseResumeButton;
+
+#[derive(Component)]
+pub struct PauseQuitButton;
+
 #[derive(Resource)]
 pub struct MapViewState {
     pub map_view: Option<Box<MapViewApp>>,
@@ -20,18 +36,40 @@ pub struct MapViewState {
     pub visible_rows: usize,
     pub needs_initial_draw: bool,
     pub end_turn_overlay: bool,
+    pub end_turn_selected: usize,
+    pub pause_overlay: bool,
+    pub pause_selected: usize,
 }
 
 const TEXT_COLOR: Color = Color::srgb(0.85, 0.85, 0.88);
+const FOOTER_COLOR: Color = Color::srgb(0.5, 0.5, 0.55);
 const CURSOR_COLOR: Color = Color::srgb(0.9, 0.9, 0.3);
 const OVERLAY_BG: Color = Color::srgba(0.0, 0.0, 0.0, 0.7);
 const OVERLAY_PANEL_BG: Color = Color::srgb(0.18, 0.18, 0.24);
 const OVERLAY_PANEL_BORDER: Color = Color::srgb(0.5, 0.5, 0.6);
 
+// Button theme (matches splash.rs)
+const BTN_BG: Color = Color::srgb(0.14, 0.14, 0.18);
+const BTN_BG_HOVER: Color = Color::srgb(0.22, 0.22, 0.28);
+const BTN_BG_SELECTED: Color = Color::srgb(0.28, 0.28, 0.35);
+const BTN_BG_PRESSED: Color = Color::srgb(0.35, 0.35, 0.42);
+const BTN_BORDER: Color = Color::srgb(0.4, 0.4, 0.48);
+const BTN_BORDER_HOVER: Color = Color::srgb(0.55, 0.55, 0.62);
+const BTN_BORDER_SELECTED: Color = Color::srgb(0.7, 0.7, 0.78);
+const BTN_BORDER_PRESSED: Color = Color::srgb(0.65, 0.65, 0.72);
+
 const ATLAS_COLS: u32 = 49;
 const ATLAS_ROWS: u32 = 22;
 const ATLAS_TILE_W: u32 = 16;
 const ATLAS_TILE_H: u32 = 16;
+
+/// Atlas index for the hero sprite silhouette (matches embedded-graphics `tile_atlas_mask(25)`).
+const HERO_ATLAS_INDEX: usize = 25;
+/// Atlas index for the selected hero sprite (currently same silhouette, different colour).
+const SELECTED_HERO_ATLAS_INDEX: usize = 25;
+
+const HERO_COLOR: Color = Color::srgb(1.0, 1.0, 1.0);
+const SELECTED_HERO_COLOR: Color = Color::srgb(1.0, 1.0, 0.47);
 
 pub struct MapViewPlugin;
 
@@ -53,6 +91,9 @@ impl Default for MapViewState {
             visible_rows: 0,
             needs_initial_draw: true,
             end_turn_overlay: false,
+            end_turn_selected: 0,
+            pause_overlay: false,
+            pause_selected: 0,
         }
     }
 }
@@ -64,6 +105,18 @@ fn tile_color_for(kind: Tiles) -> Color {
 
 fn tile_atlas_index(kind: Tiles) -> usize {
     kind.atlas_index() as usize
+}
+
+/// Common button node style for overlay buttons.
+fn button_node(w: f32, h: f32) -> Node {
+    Node {
+        width: Val::Px(w),
+        height: Val::Px(h),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        border: UiRect::all(Val::Px(2.0)),
+        ..default()
+    }
 }
 
 #[derive(Component)]
@@ -177,6 +230,172 @@ fn enter_map_view_impl(
         });
 }
 
+fn spawn_end_turn_overlay(commands: &mut Commands, team_name: &str) {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(OVERLAY_BG),
+            EndTurnOverlay,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(400.0),
+                        height: Val::Px(260.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(20.0),
+                        border: UiRect::all(Val::Px(2.0)),
+                        ..default()
+                    },
+                    BackgroundColor(OVERLAY_PANEL_BG),
+                    BorderColor::all(OVERLAY_PANEL_BORDER),
+                ))
+                .with_children(|panel| {
+                    panel.spawn((
+                        Text::new(format!("End turn for {}?", team_name)),
+                        TextFont { font_size: FontSize::Px(22.0), ..default() },
+                        TextColor(TEXT_COLOR),
+                    ));
+                    // Confirm button (selected by default)
+                    panel.spawn((
+                        Button,
+                        EndTurnConfirmButton,
+                        button_node(200.0, 50.0),
+                        BackgroundColor(BTN_BG_SELECTED),
+                        BorderColor::all(BTN_BORDER_SELECTED),
+                        children![(
+                            Text::new("End Turn"),
+                            TextFont { font_size: FontSize::Px(20.0), ..default() },
+                            TextColor(TEXT_COLOR),
+                        )],
+                    ));
+                    // Cancel button
+                    panel.spawn((
+                        Button,
+                        EndTurnCancelButton,
+                        button_node(200.0, 50.0),
+                        BackgroundColor(BTN_BG),
+                        BorderColor::all(BTN_BORDER),
+                        children![(
+                            Text::new("Cancel"),
+                            TextFont { font_size: FontSize::Px(20.0), ..default() },
+                            TextColor(TEXT_COLOR),
+                        )],
+                    ));
+                    panel.spawn((
+                        Text::new("W/S: navigate  Enter: select  Esc: cancel"),
+                        TextFont { font_size: FontSize::Px(12.0), ..default() },
+                        TextColor(FOOTER_COLOR),
+                    ));
+                });
+        });
+}
+
+fn spawn_pause_overlay(commands: &mut Commands) {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(OVERLAY_BG),
+            PauseOverlay,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(400.0),
+                        height: Val::Px(300.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(20.0),
+                        border: UiRect::all(Val::Px(2.0)),
+                        ..default()
+                    },
+                    BackgroundColor(OVERLAY_PANEL_BG),
+                    BorderColor::all(OVERLAY_PANEL_BORDER),
+                ))
+                .with_children(|panel| {
+                    panel.spawn((
+                        Text::new("PAUSED"),
+                        TextFont { font_size: FontSize::Px(28.0), ..default() },
+                        TextColor(TEXT_COLOR),
+                    ));
+                    // Resume button (selected by default)
+                    panel.spawn((
+                        Button,
+                        PauseResumeButton,
+                        button_node(200.0, 50.0),
+                        BackgroundColor(BTN_BG_SELECTED),
+                        BorderColor::all(BTN_BORDER_SELECTED),
+                        children![(
+                            Text::new("Resume"),
+                            TextFont { font_size: FontSize::Px(20.0), ..default() },
+                            TextColor(TEXT_COLOR),
+                        )],
+                    ));
+                    // Quit button
+                    panel.spawn((
+                        Button,
+                        PauseQuitButton,
+                        button_node(200.0, 50.0),
+                        BackgroundColor(BTN_BG),
+                        BorderColor::all(BTN_BORDER),
+                        children![(
+                            Text::new("Quit to Menu"),
+                            TextFont { font_size: FontSize::Px(20.0), ..default() },
+                            TextColor(TEXT_COLOR),
+                        )],
+                    ));
+                    panel.spawn((
+                        Text::new("W/S: navigate  Enter: select  Esc: resume"),
+                        TextFont { font_size: FontSize::Px(12.0), ..default() },
+                        TextColor(FOOTER_COLOR),
+                    ));
+                });
+        });
+}
+
+/// Update button visual state based on selection and interaction.
+#[allow(clippy::type_complexity)]
+fn update_button_style(
+    is_selected: bool,
+    interaction: &Interaction,
+    bg: &mut BackgroundColor,
+    border: &mut BorderColor,
+) {
+    let hovered = matches!(interaction, Interaction::Hovered);
+    let pressed = matches!(interaction, Interaction::Pressed);
+    if pressed {
+        *bg = BackgroundColor(BTN_BG_PRESSED);
+        *border = BorderColor::all(BTN_BORDER_PRESSED);
+    } else if is_selected {
+        *bg = BackgroundColor(BTN_BG_SELECTED);
+        *border = BorderColor::all(BTN_BORDER_SELECTED);
+    } else if hovered {
+        *bg = BackgroundColor(BTN_BG_HOVER);
+        *border = BorderColor::all(BTN_BORDER_HOVER);
+    } else {
+        *bg = BackgroundColor(BTN_BG);
+        *border = BorderColor::all(BTN_BORDER);
+    }
+}
+
+#[allow(clippy::type_complexity)]
 fn update_map_view(
     mut commands: Commands,
     mut map_view_state: ResMut<MapViewState>,
@@ -184,7 +403,25 @@ fn update_map_view(
     keys: Res<ButtonInput<KeyCode>>,
     mut status_query: Query<&mut Text>,
     mut tile_query: Query<(&MapTilePos, &mut Sprite)>,
-    overlay_q: Query<Entity, With<EndTurnOverlay>>,
+    end_turn_q: Query<Entity, With<EndTurnOverlay>>,
+    pause_q: Query<Entity, With<PauseOverlay>>,
+    mut overlay_btns: Query<
+        (
+            Option<&EndTurnConfirmButton>,
+            Option<&EndTurnCancelButton>,
+            Option<&PauseResumeButton>,
+            Option<&PauseQuitButton>,
+            &mut BackgroundColor,
+            &mut BorderColor,
+            &Interaction,
+        ),
+        Or<(
+            With<EndTurnConfirmButton>,
+            With<EndTurnCancelButton>,
+            With<PauseResumeButton>,
+            With<PauseQuitButton>,
+        )>,
+    >,
 ) {
     let visible_cols = map_view_state.visible_cols;
     let visible_rows = map_view_state.visible_rows;
@@ -194,12 +431,110 @@ fn update_map_view(
     };
     let map_view = &mut *map_view_box;
 
+    // ── Pause overlay input handling ──────────────────────────────────────
+    if map_view_state.pause_overlay {
+        let selected = map_view_state.pause_selected;
+
+        // Keyboard navigation: W/S or arrows change selection
+        if keys.just_pressed(KeyCode::ArrowUp)
+            || keys.just_pressed(KeyCode::KeyW)
+            || keys.just_pressed(KeyCode::KeyK)
+        {
+            map_view_state.pause_selected = selected.saturating_sub(1);
+        }
+        if keys.just_pressed(KeyCode::ArrowDown)
+            || keys.just_pressed(KeyCode::KeyS)
+            || keys.just_pressed(KeyCode::KeyJ)
+        {
+            map_view_state.pause_selected = (selected + 1).min(1);
+        }
+
+        // Esc always resumes
+        if keys.just_pressed(KeyCode::Escape) {
+            if let Some(entity) = pause_q.iter().next() {
+                commands.entity(entity).despawn();
+            }
+            map_view_state.pause_overlay = false;
+            map_view_state.pause_selected = 0;
+            map_view_state.map_view = Some(map_view_box);
+            return;
+        }
+
+        // Update button styles and handle clicks
+        let sel = map_view_state.pause_selected;
+        for (et_confirm, et_cancel, resume_opt, quit_opt, mut bg, mut border, interaction) in
+            overlay_btns.iter_mut()
+        {
+            // Only process pause buttons in this branch
+            if et_confirm.is_some() || et_cancel.is_some() {
+                continue;
+            }
+            let is_sel = match (resume_opt, quit_opt) {
+                (Some(_), None) => sel == 0,
+                (None, Some(_)) => sel == 1,
+                _ => continue,
+            };
+            update_button_style(is_sel, &interaction, &mut bg, &mut border);
+            let clicked = is_sel && keys.just_pressed(KeyCode::Enter);
+            let pressed = matches!(interaction, Interaction::Pressed);
+            if clicked || pressed {
+                if resume_opt.is_some() {
+                    if let Some(entity) = pause_q.iter().next() {
+                        commands.entity(entity).despawn();
+                    }
+                    map_view_state.pause_overlay = false;
+                    map_view_state.pause_selected = 0;
+                    map_view_state.map_view = Some(map_view_box);
+                    return;
+                }
+                if quit_opt.is_some() {
+                    next_state.set(AppState::Splash);
+                    map_view_state.map_view = Some(map_view_box);
+                    return;
+                }
+            }
+        }
+
+        map_view_state.map_view = Some(map_view_box);
+        return;
+    }
+
+    // ── End-turn overlay input handling ───────────────────────────────────
     if map_view_state.end_turn_overlay {
-        if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Space) {
-            if let Some(entity) = overlay_q.iter().next() {
+        let selected = map_view_state.end_turn_selected;
+
+        // Keyboard navigation
+        if keys.just_pressed(KeyCode::ArrowUp)
+            || keys.just_pressed(KeyCode::KeyW)
+            || keys.just_pressed(KeyCode::KeyK)
+        {
+            map_view_state.end_turn_selected = selected.saturating_sub(1);
+        }
+        if keys.just_pressed(KeyCode::ArrowDown)
+            || keys.just_pressed(KeyCode::KeyS)
+            || keys.just_pressed(KeyCode::KeyJ)
+        {
+            map_view_state.end_turn_selected = (selected + 1).min(1);
+        }
+
+        // Esc cancels
+        if keys.just_pressed(KeyCode::Escape) {
+            if let Some(entity) = end_turn_q.iter().next() {
                 commands.entity(entity).despawn();
             }
             map_view_state.end_turn_overlay = false;
+            map_view_state.end_turn_selected = 0;
+            map_view_state.map_view = Some(map_view_box);
+            return;
+        }
+
+        // Space always confirms (fast action)
+        if keys.just_pressed(KeyCode::Space) {
+            if let Some(entity) = end_turn_q.iter().next() {
+                commands.entity(entity).despawn();
+            }
+            map_view_state.end_turn_overlay = false;
+            map_view_state.end_turn_selected = 0;
             match map_view.session_mut().end_turn() {
                 Ok(summary) => {
                     map_view.set_status(Some(summary));
@@ -212,18 +547,60 @@ fn update_map_view(
             map_view_state.map_view = Some(map_view_box);
             return;
         }
-        if keys.just_pressed(KeyCode::Escape) || keys.just_pressed(KeyCode::Backspace) {
-            if let Some(entity) = overlay_q.iter().next() {
-                commands.entity(entity).despawn();
+
+        // Update button styles and handle clicks
+        let sel = map_view_state.end_turn_selected;
+        for (confirm_opt, cancel_opt, p_resume, p_quit, mut bg, mut border, interaction) in
+            overlay_btns.iter_mut()
+        {
+            // Only process end-turn buttons in this branch
+            if p_resume.is_some() || p_quit.is_some() {
+                continue;
             }
-            map_view_state.end_turn_overlay = false;
-            map_view_state.map_view = Some(map_view_box);
-            return;
+            let is_sel = match (confirm_opt, cancel_opt) {
+                (Some(_), None) => sel == 0,
+                (None, Some(_)) => sel == 1,
+                _ => continue,
+            };
+            update_button_style(is_sel, &interaction, &mut bg, &mut border);
+            let clicked = is_sel && keys.just_pressed(KeyCode::Enter);
+            let button_pressed = matches!(interaction, Interaction::Pressed);
+            if clicked || button_pressed {
+                if confirm_opt.is_some() {
+                    if let Some(entity) = end_turn_q.iter().next() {
+                        commands.entity(entity).despawn();
+                    }
+                    map_view_state.end_turn_overlay = false;
+                    map_view_state.end_turn_selected = 0;
+                    match map_view.session_mut().end_turn() {
+                        Ok(summary) => {
+                            map_view.set_status(Some(summary));
+                        }
+                        Err(e) => {
+                            map_view.set_status(Some(e.to_string()));
+                        }
+                    }
+                    map_view_state.needs_initial_draw = true;
+                    map_view_state.map_view = Some(map_view_box);
+                    return;
+                }
+                if cancel_opt.is_some() {
+                    if let Some(entity) = end_turn_q.iter().next() {
+                        commands.entity(entity).despawn();
+                    }
+                    map_view_state.end_turn_overlay = false;
+                    map_view_state.end_turn_selected = 0;
+                    map_view_state.map_view = Some(map_view_box);
+                    return;
+                }
+            }
         }
+
         map_view_state.map_view = Some(map_view_box);
         return;
     }
 
+    // ── Normal game input ────────────────────────────────────────────────
     let mut events = Vec::new();
     if keys.just_pressed(KeyCode::ArrowUp) {
         events.push(InputEvent::Up);
@@ -270,10 +647,21 @@ fn update_map_view(
     if keys.just_pressed(KeyCode::KeyQ) {
         events.push(InputEvent::Key('q'));
     }
-    if keys.just_pressed(KeyCode::KeyE) {
+
+    // Space and E both trigger end-turn.
+    if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::KeyE) {
         events.push(InputEvent::NextTurn);
     }
-    if keys.just_pressed(KeyCode::Escape) || keys.just_pressed(KeyCode::Backspace) {
+
+    // Esc opens pause overlay instead of going back immediately.
+    if keys.just_pressed(KeyCode::Escape) {
+        map_view_state.pause_overlay = true;
+        map_view_state.pause_selected = 0;
+        spawn_pause_overlay(&mut commands);
+        map_view_state.map_view = Some(map_view_box);
+        return;
+    }
+    if keys.just_pressed(KeyCode::Backspace) {
         events.push(InputEvent::Back);
     }
 
@@ -310,53 +698,14 @@ fn update_map_view(
 
     if request_end_turn {
         map_view_state.end_turn_overlay = true;
+        map_view_state.end_turn_selected = 0;
         let team_name = {
             let session = map_view.session();
             let state = session.state();
             let team = state.get_active_team().ok();
             team.map(|t| t.name.clone()).unwrap_or_else(|| "Unknown".to_string())
         };
-        commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(OVERLAY_BG),
-                EndTurnOverlay,
-            ))
-            .with_children(|parent| {
-                parent
-                    .spawn((
-                        Node {
-                            width: Val::Px(400.0),
-                            height: Val::Px(200.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(16.0),
-                            border: UiRect::all(Val::Px(2.0)),
-                            ..default()
-                        },
-                        BackgroundColor(OVERLAY_PANEL_BG),
-                        BorderColor::all(OVERLAY_PANEL_BORDER),
-                    ))
-                    .with_children(|panel| {
-                        panel.spawn((
-                            Text::new(format!("End turn for {}?", team_name)),
-                            TextFont { font_size: FontSize::Px(22.0), ..default() },
-                            TextColor(TEXT_COLOR),
-                        ));
-                        panel.spawn((
-                            Text::new("Press Enter to confirm or Esc to cancel"),
-                            TextFont { font_size: FontSize::Px(14.0), ..default() },
-                            TextColor(Color::srgb(0.6, 0.6, 0.65)),
-                        ));
-                    });
-            });
+        spawn_end_turn_overlay(&mut commands, &team_name);
         map_view_state.map_view = Some(map_view_box);
         return;
     }
@@ -373,20 +722,31 @@ fn update_map_view(
         let view_y = map_view.view_y();
         let cursor_x = map_view.cursor_x();
         let cursor_y = map_view.cursor_y();
+        let selected_hero_id = session.selected_hero_id();
 
         for (tile_pos, mut sprite) in tile_query.iter_mut() {
             let tx = view_x + tile_pos.col;
             let ty = view_y + tile_pos.row;
+            let coord = MapCoord::new(tx as u32, ty as u32);
+
+            // Check for hero on this tile first — hero sprite takes priority.
+            if let Some(hero) = session.state().hero_at(coord) {
+                let is_selected = hero.get_id() == selected_hero_id;
+                sprite.color = if is_selected { SELECTED_HERO_COLOR } else { HERO_COLOR };
+                if let Some(atlas) = sprite.texture_atlas.as_mut() {
+                    atlas.index =
+                        if is_selected { SELECTED_HERO_ATLAS_INDEX } else { HERO_ATLAS_INDEX };
+                }
+                continue;
+            }
 
             let is_cursor = tx as isize == cursor_x && ty as isize == cursor_y;
             sprite.color = if is_cursor {
                 CURSOR_COLOR
             } else {
-                let coord = engine::map::game_map::MapCoord::new(tx as u32, ty as u32);
                 map.get_tile(coord).map(|t| tile_color_for(t.kind)).unwrap_or(Color::BLACK)
             };
             if let Some(atlas) = sprite.texture_atlas.as_mut() {
-                let coord = engine::map::game_map::MapCoord::new(tx as u32, ty as u32);
                 let idx = map.get_tile(coord).map(|t| tile_atlas_index(t.kind)).unwrap_or(0);
                 atlas.index = idx;
             }
@@ -398,17 +758,13 @@ fn update_map_view(
 
 fn exit_map_view(
     mut commands: Commands,
-    query: Query<Entity, With<MapTile>>,
-    root_q: Query<Entity, With<MapViewRoot>>,
-    overlay_q: Query<Entity, With<EndTurnOverlay>>,
+    query: Query<Entity, With<MapViewRoot>>,
+    tile_query: Query<Entity, With<MapTile>>,
 ) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }
-    for entity in root_q.iter() {
-        commands.entity(entity).despawn();
-    }
-    for entity in overlay_q.iter() {
+    for entity in tile_query.iter() {
         commands.entity(entity).despawn();
     }
 }
