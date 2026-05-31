@@ -9,8 +9,10 @@ pub enum AppState {
     RandomMap,
     TeamSetup,
     MapView,
+    City,
 }
 
+pub mod city;
 pub mod map_select;
 pub mod map_view;
 pub mod overlays;

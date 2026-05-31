@@ -40,6 +40,7 @@ pub struct MapViewState {
     pub end_turn_selected: usize,
     pub pause_overlay: bool,
     pub pause_selected: usize,
+    pub last_mouse_tile: Option<(usize, usize)>,
 }
 
 const TEXT_COLOR: Color = Color::srgb(0.85, 0.85, 0.88);
@@ -94,6 +95,7 @@ impl Default for MapViewState {
             end_turn_selected: 0,
             pause_overlay: false,
             pause_selected: 0,
+            last_mouse_tile: None,
         }
     }
 }
@@ -122,6 +124,8 @@ fn button_node(w: f32, h: f32) -> Node {
 /// Atlas index for the cursor overlay sprite.
 const CURSOR_ATLAS_INDEX: usize = 624;
 const CURSOR_OVERLAY_COLOR: Color = Color::srgb(1.0, 1.0, 0.47);
+const CITY_CURSOR_SCALE: f32 = 3.0;
+const CITY_CURSOR_Z: f32 = 0.5;
 
 #[derive(Component)]
 pub struct CursorOverlay;
@@ -146,6 +150,31 @@ fn enter_map_view(
     enter_map_view_impl(commands, map_view_state, loaded, window, asset_server, atlas_layouts);
 }
 
+fn is_city_core_tile(kind: Tiles) -> bool {
+    matches!(kind, Tiles::City)
+}
+
+fn mouse_visible_tile(
+    window: &Window,
+    cursor_position: Vec2,
+    tile_size: f32,
+    visible_cols: usize,
+    visible_rows: usize,
+) -> Option<(usize, usize)> {
+    let total_w = visible_cols as f32 * tile_size;
+    let total_h = visible_rows as f32 * tile_size;
+    let left = (window.width() - total_w) * 0.5;
+    let top = (window.height() - total_h) * 0.5;
+    let local_x = cursor_position.x - left;
+    let local_y = cursor_position.y - top;
+
+    if local_x < 0.0 || local_y < 0.0 || local_x >= total_w || local_y >= total_h {
+        return None;
+    }
+
+    Some(((local_x / tile_size) as usize, (local_y / tile_size) as usize))
+}
+
 fn enter_map_view_impl(
     mut commands: Commands,
     mut map_view_state: ResMut<MapViewState>,
@@ -154,31 +183,50 @@ fn enter_map_view_impl(
     asset_server: Res<AssetServer>,
     mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let Some(mut loaded) = loaded.take() else {
-        return;
-    };
-
-    let Some(state) = loaded.state.take() else {
-        return;
-    };
-
-    let session = match GameSession::from_state(loaded.map_name.clone(), state) {
-        Ok(s) => s,
-        Err(_e) => {
+    if map_view_state.map_view.is_none() {
+        let Some(mut loaded) = loaded.take() else {
             return;
-        }
-    };
+        };
 
+        let Some(state) = loaded.state.take() else {
+            return;
+        };
+
+        let session = match GameSession::from_state(loaded.map_name.clone(), state) {
+            Ok(s) => s,
+            Err(_e) => {
+                return;
+            }
+        };
+
+        map_view_state.map_view = Some(Box::new(MapViewApp::new(session, 0, 0, None)));
+    }
+
+    spawn_map_view_entities(
+        &mut commands,
+        &mut map_view_state,
+        &window,
+        &asset_server,
+        &mut atlas_layouts,
+    );
+}
+
+fn spawn_map_view_entities(
+    commands: &mut Commands,
+    map_view_state: &mut MapViewState,
+    window: &Window,
+    asset_server: &AssetServer,
+    atlas_layouts: &mut Assets<TextureAtlasLayout>,
+) {
     let tile_size = map_view_state.tile_size;
     let map_h = window.height() - 40.0;
     let visible_cols = (window.width() / tile_size).max(1.0) as usize;
     let visible_rows = (map_h / tile_size).max(1.0) as usize;
 
-    let map_view = MapViewApp::new(session, 0, 0, None);
-    map_view_state.map_view = Some(Box::new(map_view));
     map_view_state.visible_cols = visible_cols;
     map_view_state.visible_rows = visible_rows;
     map_view_state.needs_initial_draw = true;
+    map_view_state.last_mouse_tile = None;
 
     let total_w = visible_cols as f32 * tile_size;
     let total_h = visible_rows as f32 * tile_size;
@@ -425,8 +473,9 @@ fn update_map_view(
     mut next_state: ResMut<NextState<AppState>>,
     mut reader: MessageReader<UiAction>,
     mut status_query: Query<&mut Text>,
-    mut tile_query: Query<(&MapTilePos, &mut Sprite)>,
-    mut cursor_query: Query<&mut Transform, With<CursorOverlay>>,
+    mut tile_query: Query<(&MapTilePos, &mut Sprite), (With<MapTile>, Without<CursorOverlay>)>,
+    mut cursor_query: Query<(&mut Transform, &mut Sprite), (With<CursorOverlay>, Without<MapTile>)>,
+    window: Single<&Window>,
     end_turn_q: Query<Entity, With<EndTurnOverlay>>,
     pause_q: Query<Entity, With<PauseOverlay>>,
     mut overlay_btns: Query<
@@ -677,6 +726,32 @@ fn update_map_view(
     let mut needs_redraw = map_view_state.needs_initial_draw;
     map_view_state.needs_initial_draw = false;
     let mut request_end_turn = false;
+    let view_x = map_view.view_x();
+    let view_y = map_view.view_y();
+
+    if let Some(cursor_position) = window.cursor_position() {
+        if let Some((col, row)) = mouse_visible_tile(
+            &window,
+            cursor_position,
+            map_view_state.tile_size,
+            visible_cols,
+            visible_rows,
+        ) {
+            let target_x = view_x + col;
+            let target_y = view_y + row;
+            let target_tile = (target_x, target_y);
+            if map_view_state.last_mouse_tile != Some(target_tile)
+                && map_view.set_cursor_from_pointer(target_x, target_y, visible_cols, visible_rows)
+            {
+                needs_redraw = true;
+            }
+            map_view_state.last_mouse_tile = Some(target_tile);
+        } else {
+            map_view_state.last_mouse_tile = None;
+        }
+    } else {
+        map_view_state.last_mouse_tile = None;
+    }
 
     for event in events {
         let outcome = map_view.handle_input(event, visible_cols, visible_rows);
@@ -699,6 +774,11 @@ fn update_map_view(
                 return;
             }
             MapViewOutcome::OpenStructureOverlay { name } => {
+                if matches!(name.as_str(), "City" | "City Entrance") {
+                    next_state.set(AppState::City);
+                    map_view_state.map_view = Some(map_view_box);
+                    return;
+                }
                 map_view.set_status(Some(format!("Structure: {}", name)));
                 needs_redraw = true;
             }
@@ -733,10 +813,18 @@ fn update_map_view(
         let cursor_y = map_view.cursor_y();
         let selected_hero_id = session.selected_hero_id();
 
+        let city_cursor = if cursor_x >= 0 && cursor_y >= 0 {
+            let cursor_coord = MapCoord::new(cursor_x as u32, cursor_y as u32);
+            map.get_tile(cursor_coord).map(|tile| is_city_core_tile(tile.kind)).unwrap_or(false)
+        } else {
+            false
+        };
+
         for (tile_pos, mut sprite) in tile_query.iter_mut() {
             let tx = view_x + tile_pos.col;
             let ty = view_y + tile_pos.row;
             let coord = MapCoord::new(tx as u32, ty as u32);
+            sprite.custom_size = Some(Vec2::splat(map_view_state.tile_size));
 
             // Check for hero on this tile first — hero sprite takes priority.
             if let Some(hero) = session.state().hero_at(coord) {
@@ -750,11 +838,10 @@ fn update_map_view(
             }
 
             // Tile always shows its own color/atlas — cursor is a separate overlay sprite.
-            sprite.color = map.get_tile(coord)
-                .map(|t| tile_color_for(t.kind))
-                .unwrap_or(Color::BLACK);
+            let tile = map.get_tile(coord).ok();
+            sprite.color = tile.map(|t| tile_color_for(t.kind)).unwrap_or(Color::BLACK);
             if let Some(atlas) = sprite.texture_atlas.as_mut() {
-                let idx = map.get_tile(coord).map(|t| tile_atlas_index(t.kind)).unwrap_or(0);
+                let idx = tile.map(|t| tile_atlas_index(t.kind)).unwrap_or(0);
                 atlas.index = idx;
             }
         }
@@ -770,9 +857,15 @@ fn update_map_view(
             let offset_y = total_h / 2.0 - tile_size / 2.0;
             let new_x = offset_x + cx as f32 * tile_size;
             let new_y = offset_y - cy as f32 * tile_size;
-            for mut transform in cursor_query.iter_mut() {
+            for (mut transform, mut sprite) in cursor_query.iter_mut() {
                 transform.translation.x = new_x;
                 transform.translation.y = new_y;
+                transform.translation.z = CITY_CURSOR_Z;
+                sprite.custom_size = Some(Vec2::splat(if city_cursor {
+                    tile_size * CITY_CURSOR_SCALE
+                } else {
+                    tile_size
+                }));
             }
         }
     }

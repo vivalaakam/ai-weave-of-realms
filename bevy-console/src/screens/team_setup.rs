@@ -1,4 +1,4 @@
-use crate::app_host::{build_state_with_teams, PendingMapData, TeamConfig};
+use crate::app_host::{PendingMapData, TeamConfig, build_state_with_teams};
 use crate::input::UiAction;
 use crate::screens::AppState;
 use bevy::prelude::*;

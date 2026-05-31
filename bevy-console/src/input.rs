@@ -5,8 +5,8 @@
 //! a button must be held for `DEBOUNCE_FRAMES` consecutive frames before
 //! emitting a UiAction. This filters out phantom presses from macOS
 //! virtual gamepads with broken gilrs default mappings.
-use bevy::prelude::*;
 use crate::screens;
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -224,23 +224,57 @@ fn parse_keycode(s: &str) -> Option<KeyCode> {
         "Space" => Space,
         "Backspace" => Backspace,
         "Tab" => Tab,
-        "KeyA" => KeyA, "KeyB" => KeyB, "KeyC" => KeyC, "KeyD" => KeyD,
-        "KeyE" => KeyE, "KeyF" => KeyF, "KeyG" => KeyG, "KeyH" => KeyH,
-        "KeyI" => KeyI, "KeyJ" => KeyJ, "KeyK" => KeyK, "KeyL" => KeyL,
-        "KeyM" => KeyM, "KeyN" => KeyN, "KeyO" => KeyO, "KeyP" => KeyP,
-        "KeyQ" => KeyQ, "KeyR" => KeyR, "KeyS" => KeyS, "KeyT" => KeyT,
-        "KeyU" => KeyU, "KeyV" => KeyV, "KeyW" => KeyW, "KeyX" => KeyX,
-        "KeyY" => KeyY, "KeyZ" => KeyZ,
-        "Numpad0" => Numpad0, "Numpad1" => Numpad1, "Numpad2" => Numpad2,
-        "Numpad3" => Numpad3, "Numpad4" => Numpad4, "Numpad5" => Numpad5,
-        "Numpad6" => Numpad6, "Numpad7" => Numpad7, "Numpad8" => Numpad8,
+        "KeyA" => KeyA,
+        "KeyB" => KeyB,
+        "KeyC" => KeyC,
+        "KeyD" => KeyD,
+        "KeyE" => KeyE,
+        "KeyF" => KeyF,
+        "KeyG" => KeyG,
+        "KeyH" => KeyH,
+        "KeyI" => KeyI,
+        "KeyJ" => KeyJ,
+        "KeyK" => KeyK,
+        "KeyL" => KeyL,
+        "KeyM" => KeyM,
+        "KeyN" => KeyN,
+        "KeyO" => KeyO,
+        "KeyP" => KeyP,
+        "KeyQ" => KeyQ,
+        "KeyR" => KeyR,
+        "KeyS" => KeyS,
+        "KeyT" => KeyT,
+        "KeyU" => KeyU,
+        "KeyV" => KeyV,
+        "KeyW" => KeyW,
+        "KeyX" => KeyX,
+        "KeyY" => KeyY,
+        "KeyZ" => KeyZ,
+        "Numpad0" => Numpad0,
+        "Numpad1" => Numpad1,
+        "Numpad2" => Numpad2,
+        "Numpad3" => Numpad3,
+        "Numpad4" => Numpad4,
+        "Numpad5" => Numpad5,
+        "Numpad6" => Numpad6,
+        "Numpad7" => Numpad7,
+        "Numpad8" => Numpad8,
         "Numpad9" => Numpad9,
         "NumpadEnter" => NumpadEnter,
         "NumpadAdd" => NumpadAdd,
         "NumpadSubtract" => NumpadSubtract,
-        "F1" => F1, "F2" => F2, "F3" => F3, "F4" => F4,
-        "F5" => F5, "F6" => F6, "F7" => F7, "F8" => F8,
-        "F9" => F9, "F10" => F10, "F11" => F11, "F12" => F12,
+        "F1" => F1,
+        "F2" => F2,
+        "F3" => F3,
+        "F4" => F4,
+        "F5" => F5,
+        "F6" => F6,
+        "F7" => F7,
+        "F8" => F8,
+        "F9" => F9,
+        "F10" => F10,
+        "F11" => F11,
+        "F12" => F12,
         _ => {
             tracing::warn!("unknown KeyCode in keybindings.toml: {s}");
             return None;
@@ -251,13 +285,23 @@ fn parse_keycode(s: &str) -> Option<KeyCode> {
 fn parse_gamepad_button(s: &str) -> Option<GamepadButton> {
     use GamepadButton::*;
     Some(match s {
-        "South" => South, "East" => East, "North" => North, "West" => West,
-        "Select" => Select, "Start" => Start, "Mode" => Mode,
-        "LeftTrigger" => LeftTrigger, "LeftTrigger2" => LeftTrigger2,
-        "RightTrigger" => RightTrigger, "RightTrigger2" => RightTrigger2,
-        "LeftThumb" => LeftThumb, "RightThumb" => RightThumb,
-        "DPadUp" => DPadUp, "DPadDown" => DPadDown,
-        "DPadLeft" => DPadLeft, "DPadRight" => DPadRight,
+        "South" => South,
+        "East" => East,
+        "North" => North,
+        "West" => West,
+        "Select" => Select,
+        "Start" => Start,
+        "Mode" => Mode,
+        "LeftTrigger" => LeftTrigger,
+        "LeftTrigger2" => LeftTrigger2,
+        "RightTrigger" => RightTrigger,
+        "RightTrigger2" => RightTrigger2,
+        "LeftThumb" => LeftThumb,
+        "RightThumb" => RightThumb,
+        "DPadUp" => DPadUp,
+        "DPadDown" => DPadDown,
+        "DPadLeft" => DPadLeft,
+        "DPadRight" => DPadRight,
         _ => {
             tracing::warn!("unknown GamepadButton in keybindings.toml: {s}");
             return None;
@@ -293,7 +337,8 @@ impl Plugin for InputPlugin {
             .add_systems(OnEnter(screens::AppState::SaveSelect), trigger_input_cooldown)
             .add_systems(OnEnter(screens::AppState::RandomMap), trigger_input_cooldown)
             .add_systems(OnEnter(screens::AppState::TeamSetup), trigger_input_cooldown)
-            .add_systems(OnEnter(screens::AppState::MapView), trigger_input_cooldown);
+            .add_systems(OnEnter(screens::AppState::MapView), trigger_input_cooldown)
+            .add_systems(OnEnter(screens::AppState::City), trigger_input_cooldown);
     }
 }
 
@@ -382,13 +427,28 @@ fn collect_ui_actions(
         }
     }
 
-    // Debounce left stick axes → directional actions.
+    // Debounce left stick axes → map cursor actions. D-pad remains hero movement.
     let axis_deadzone = 0.5;
     let axis_actions = [
-        (GamepadAxis::LeftStickX, Sign::Positive, left_stick_x > axis_deadzone, UiAction::Right),
-        (GamepadAxis::LeftStickX, Sign::Negative, left_stick_x < -axis_deadzone, UiAction::Left),
-        (GamepadAxis::LeftStickY, Sign::Positive, left_stick_y > axis_deadzone, UiAction::Up),
-        (GamepadAxis::LeftStickY, Sign::Negative, left_stick_y < -axis_deadzone, UiAction::Down),
+        (
+            GamepadAxis::LeftStickX,
+            Sign::Positive,
+            left_stick_x > axis_deadzone,
+            UiAction::CursorRight,
+        ),
+        (
+            GamepadAxis::LeftStickX,
+            Sign::Negative,
+            left_stick_x < -axis_deadzone,
+            UiAction::CursorLeft,
+        ),
+        (GamepadAxis::LeftStickY, Sign::Positive, left_stick_y > axis_deadzone, UiAction::CursorUp),
+        (
+            GamepadAxis::LeftStickY,
+            Sign::Negative,
+            left_stick_y < -axis_deadzone,
+            UiAction::CursorDown,
+        ),
     ];
     let mut axis_to_fire: Vec<UiAction> = Vec::new();
     let mut axis_held = std::mem::take(&mut debounce.axis_held);

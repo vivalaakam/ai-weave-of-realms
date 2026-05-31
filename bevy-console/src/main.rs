@@ -100,6 +100,7 @@ fn main() {
         .add_plugins(screens::random_map::RandomMapPlugin)
         .add_plugins(screens::team_setup::TeamSetupPlugin)
         .add_plugins(screens::map_view::MapViewPlugin)
+        .add_plugins(screens::city::CityPlugin)
         .add_systems(Startup, setup_camera)
         .run();
 }
