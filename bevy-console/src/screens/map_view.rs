@@ -100,9 +100,22 @@ impl Default for MapViewState {
     }
 }
 
+/// Color used for tiles of a neutral (unowned) city.
+const NEUTRAL_CITY_COLOR: Color = Color::srgb(1.0, 0.0, 1.0); // magenta
+
 fn tile_color_for(kind: Tiles) -> Color {
     let (r, g, b) = kind.as_color();
+    rgb_color(r, g, b)
+}
+
+fn rgb_color(r: u8, g: u8, b: u8) -> Color {
     Color::srgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+}
+
+/// City tiles (the city body and its entrance) are tinted by ownership:
+/// the owning team's color, or magenta when neutral.
+fn is_city_tile(kind: Tiles) -> bool {
+    matches!(kind, Tiles::City | Tiles::CityEntrance)
 }
 
 fn tile_atlas_index(kind: Tiles) -> usize {
@@ -839,7 +852,21 @@ fn update_map_view(
 
             // Tile always shows its own color/atlas — cursor is a separate overlay sprite.
             let tile = map.get_tile(coord).ok();
-            sprite.color = tile.map(|t| tile_color_for(t.kind)).unwrap_or(Color::BLACK);
+            sprite.color = match tile {
+                Some(t) if is_city_tile(t.kind) => match session.state().city_owner(coord) {
+                    Some(team_id) => session
+                        .state()
+                        .get_team(team_id)
+                        .map(|team| {
+                            let (r, g, b) = team.color;
+                            rgb_color(r, g, b)
+                        })
+                        .unwrap_or(NEUTRAL_CITY_COLOR),
+                    None => NEUTRAL_CITY_COLOR,
+                },
+                Some(t) => tile_color_for(t.kind),
+                None => Color::BLACK,
+            };
             if let Some(atlas) = sprite.texture_atlas.as_mut() {
                 let idx = tile.map(|t| tile_atlas_index(t.kind)).unwrap_or(0);
                 atlas.index = idx;
