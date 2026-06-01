@@ -64,7 +64,7 @@ pub(crate) fn to_save_bytes_with_name(
     let tile_count = to_u32(map.tiles().len(), "tiles")?;
     writer.push_u32(tile_count);
     for tile in map.tiles() {
-        writer.push_u8(tile.kind.tile_id() as u8);
+        writer.push_u8(tile.kind.base_tile_id() as u8);
     }
 
     let enemy_count = to_u32(map.enemy_spawns().len(), "enemy spawns")?;

@@ -5,24 +5,47 @@ use crate::input::InputEvent;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use core::time::Duration;
 
 // ─── Vocabulary for team name generation ────────────────────────────────────────
 
 const ADJECTIVES: [&str; 30] = [
-    "Ember", "Crimson", "Azure", "Golden", "Shadow", "Iron", "Silver",
-    "Storm", "Frost", "Blood", "Dragon", "Phoenix", "Thunder", "Night",
-    "Dawn", "Eternal", "Sacred", "Ancient", "Noble", "Savage",
-    "Wild", "Dark", "Bright", "Royal", "Venom", "Crystal", "Flame",
-    "Phantom", "Solar", "Void",
+    "Ember", "Crimson", "Azure", "Golden", "Shadow", "Iron", "Silver", "Storm", "Frost", "Blood",
+    "Dragon", "Phoenix", "Thunder", "Night", "Dawn", "Eternal", "Sacred", "Ancient", "Noble",
+    "Savage", "Wild", "Dark", "Bright", "Royal", "Venom", "Crystal", "Flame", "Phantom", "Solar",
+    "Void",
 ];
 
 const NOUNS: [&str; 30] = [
-    "Legion", "Vanguard", "Order", "Clan", "Guild", "Empire", "Kingdom",
-    "Horde", "Tribe", "Covenant", "Alliance", "Fellowship", "Brotherhood",
-    "Dominion", "Republic", "Dynasty", "Host", "Swarm", "Collective",
-    "Circle", "Syndicate", "Cult", "Squad", "Brigade", "Regiment",
-    "Battalion", "Phalanx", "Guard", "Watch", "Sentinels",
+    "Legion",
+    "Vanguard",
+    "Order",
+    "Clan",
+    "Guild",
+    "Empire",
+    "Kingdom",
+    "Horde",
+    "Tribe",
+    "Covenant",
+    "Alliance",
+    "Fellowship",
+    "Brotherhood",
+    "Dominion",
+    "Republic",
+    "Dynasty",
+    "Host",
+    "Swarm",
+    "Collective",
+    "Circle",
+    "Syndicate",
+    "Cult",
+    "Squad",
+    "Brigade",
+    "Regiment",
+    "Battalion",
+    "Phalanx",
+    "Guard",
+    "Watch",
+    "Sentinels",
 ];
 
 /// Generates a deterministic but varied team name based on index.
@@ -39,11 +62,7 @@ pub fn generate_team_name(index: usize) -> String {
 /// Generate a distinct color for team at `index` out of `total` teams.
 pub fn generate_team_color(index: usize, total: usize) -> (u8, u8, u8) {
     // Distribute hues evenly around the color wheel.
-    let hue = if total > 0 {
-        (index as f64 / total as f64 * 360.0) as u16 % 360
-    } else {
-        0
-    };
+    let hue = if total > 0 { (index as f64 / total as f64 * 360.0) as u16 % 360 } else { 0 };
     // 75% saturation, 55% lightness = vivid but not blinding.
     hsl_to_rgb(hue, 75, 55)
 }
@@ -237,9 +256,7 @@ impl TeamSetupScreen {
                     TeamSetupOutcome::NoChange
                 }
             }
-            InputEvent::Left | InputEvent::Right => {
-                self.handle_field_adjust(event)
-            }
+            InputEvent::Left | InputEvent::Right => self.handle_field_adjust(event),
             InputEvent::Enter => self.handle_enter(),
             InputEvent::Back => TeamSetupOutcome::BackRequested,
             _ => TeamSetupOutcome::NoChange,
@@ -251,7 +268,8 @@ impl TeamSetupScreen {
             SetupRow::TeamCount => {
                 let delta = if matches!(event, InputEvent::Left) { -1i32 } else { 1i32 };
                 let new_count = (self.team_count as i32 + delta)
-                    .clamp(Self::MIN_TEAMS as i32, Self::MAX_TEAMS as i32) as usize;
+                    .clamp(Self::MIN_TEAMS as i32, Self::MAX_TEAMS as i32)
+                    as usize;
                 if new_count != self.team_count {
                     self.rebuild_teams(new_count);
                     TeamSetupOutcome::Changed
@@ -371,7 +389,11 @@ fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (u16, u8, u8) {
         0.0
     } else {
         let d = max - min;
-        if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) }
+        if l > 0.5 {
+            d / (2.0 - max - min)
+        } else {
+            d / (max + min)
+        }
     };
 
     let h = if max == min {

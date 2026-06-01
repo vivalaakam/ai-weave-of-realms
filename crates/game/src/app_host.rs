@@ -1,7 +1,7 @@
-use alloc::string::String;
 use crate::app::LoadedGame;
 use crate::info_overlay::InfoOverlay;
 use crate::io::{discover_rpgs_dir, load_state, sanitize_save_filename, IoError, ListEntry};
+use alloc::string::String;
 use engine::error::EngineError;
 use engine::game_state::GameState;
 use engine::map::game_map::GameMap;
@@ -83,7 +83,7 @@ pub trait AppHost {
     fn load_map(&mut self, entry: &ListEntry) -> Result<LoadedGame, AppHostError> {
         if entry.id.starts_with("generated:") {
             let state = load_state(
-                &self.get_seed(),
+                self.get_seed(),
                 self.get_width(),
                 self.get_height(),
                 self.get_generator(),
@@ -112,7 +112,7 @@ pub trait AppHost {
     fn load_map_only(&mut self, entry: &ListEntry) -> Result<GameMap, AppHostError> {
         if entry.id.starts_with("generated:") {
             let map = crate::io::load_map_only(
-                &self.get_seed(),
+                self.get_seed(),
                 self.get_width(),
                 self.get_height(),
                 self.get_generator(),
@@ -192,8 +192,7 @@ pub trait AppHost {
     /// # Errors
     /// Returns the same error variants as [`save_game`] and [`load_map`] when
     /// generation or writing fails.
-    fn generate_and_save_map(&mut self, seed: &str,
-    ) -> Result<ListEntry, AppHostError> {
+    fn generate_and_save_map(&mut self, seed: &str) -> Result<ListEntry, AppHostError> {
         let map = crate::io::generate_map(
             seed.to_string(),
             self.get_width(),
@@ -217,9 +216,8 @@ pub trait AppHost {
         let file_name = sanitize_save_filename(seed);
         let path = self.get_maps_dir().join(&file_name);
 
-        let bytes = state
-            .to_save_bytes_with_name(seed)
-            .map_err(AppHostError::SaveGameEngineError)?;
+        let bytes =
+            state.to_save_bytes_with_name(seed).map_err(AppHostError::SaveGameEngineError)?;
         fs::write(&path, bytes).map_err(|err| {
             AppHostError::SaveGameWriteFailed(path.to_string_lossy().to_string(), err)
         })?;

@@ -14,8 +14,10 @@ pub mod info_overlay;
 pub mod input;
 pub mod list;
 pub mod map_view;
+#[cfg(feature = "render")]
 pub mod prelude;
 pub mod random_map;
+#[cfg(feature = "render")]
 pub mod render;
 pub mod save_overlay;
 pub mod session;

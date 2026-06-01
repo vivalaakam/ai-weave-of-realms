@@ -450,9 +450,9 @@ local function stage_city(result, rng)
             result[idx(bx + dx, by + dy)] = "city"
         end
     end
-    -- Bottom row: entrance at left, city on right two
-    result[idx(bx, by + 2)] = "city_entrance"
-    result[idx(bx + 1, by + 2)] = "city"
+    -- Bottom row: city on left and right, entrance in centre
+    result[idx(bx, by + 2)] = "city"
+    result[idx(bx + 1, by + 2)] = "city_entrance"
     result[idx(bx + 2, by + 2)] = "city"
 
     -- Force entrance neighbours (outside the 3×3 block) to meadow or road

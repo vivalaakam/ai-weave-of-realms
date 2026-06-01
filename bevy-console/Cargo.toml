@@ -1,0 +1,18 @@
+[package]
+name = "weave-of-realms-bevy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "=0.19.0-rc.2" }
+clap = { workspace = true }
+game = { path = "../crates/game", default-features = false, features = ["std"] }
+engine = { path = "../crates/engine" }
+mapgen = { path = "../crates/mapgen" }
+tiled = { path = "../crates/tiled" }
+helpers = { path = "../crates/helpers" }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = "0.8"

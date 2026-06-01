@@ -5,6 +5,7 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
+use engine::hero::HeroId;
 use engine::map::game_map::Direction as MapDir;
 use engine::map::game_map::GameMap;
 use engine::map::game_map::MapCoord;
@@ -16,10 +17,7 @@ use crate::session::GameSession;
 
 /// Flood-fill a connected city starting from `start`.
 fn flood_city(map: &GameMap, start: MapCoord) -> Vec<MapCoord> {
-    let is_city = map
-        .get_tile(start)
-        .map(|t| matches!(t.kind, Tiles::City | Tiles::CityEntrance))
-        .unwrap_or(false);
+    let is_city = map.get_tile(start).map(|t| matches!(t.kind, Tiles::City)).unwrap_or(false);
 
     if !is_city {
         return vec![start];
@@ -42,7 +40,7 @@ fn flood_city(map: &GameMap, start: MapCoord) -> Vec<MapCoord> {
                 if !visited.contains(&neighbor)
                     && map
                         .get_tile(neighbor)
-                        .map(|t| matches!(t.kind, Tiles::City | Tiles::CityEntrance))
+                        .map(|t| matches!(t.kind, Tiles::City))
                         .unwrap_or(false)
                 {
                     visited.insert(neighbor);
@@ -98,6 +96,8 @@ pub enum MapViewOutcome {
     GameOver { won: bool, message: String },
     /// User pressed Enter on a structure under the cursor.
     OpenStructureOverlay { name: String },
+    /// User pressed Enter on a hero standing outside any structure.
+    OpenHeroInfo,
 }
 
 /// Shared gameplay screen model for embedded and terminal frontends.
@@ -174,6 +174,26 @@ impl MapViewApp {
         let h = self.session.state().map.tile_height() as isize;
         self.cursor_x = self.cursor_x.clamp(0, w - 1);
         self.cursor_y = self.cursor_y.clamp(0, h - 1);
+    }
+
+    /// Places the cursor at an absolute map coordinate and applies city snapping.
+    ///
+    /// Returns `true` when the resulting cursor position changed.
+    pub fn set_cursor_from_pointer(
+        &mut self,
+        x: usize,
+        y: usize,
+        visible_cols: usize,
+        visible_rows: usize,
+    ) -> bool {
+        let previous_x = self.cursor_x;
+        let previous_y = self.cursor_y;
+        self.cursor_x = x as isize;
+        self.cursor_y = y as isize;
+        self.clamp_cursor();
+        self.snap_cursor_to_city_center();
+        self.scroll_cursor_into_view(visible_cols, visible_rows);
+        self.cursor_x != previous_x || self.cursor_y != previous_y
     }
 
     /// Moves the cursor so the target tile is visible within the viewport.
@@ -274,6 +294,20 @@ impl MapViewApp {
         }
     }
 
+    /// Returns the map coordinate currently under the cursor, if it is valid.
+    pub fn cursor_coord(&self) -> Option<MapCoord> {
+        if self.cursor_x < 0 || self.cursor_y < 0 {
+            return None;
+        }
+        Some(MapCoord::new(self.cursor_x as u32, self.cursor_y as u32))
+    }
+
+    /// Returns the id of the living hero standing under the cursor, if any.
+    pub fn cursor_hero_id(&self) -> Option<HeroId> {
+        let coord = self.cursor_coord()?;
+        self.session.state().hero_at(coord).map(|hero| hero.get_id())
+    }
+
     /// Clamps the current viewport to the map dimensions.
     pub fn clamp_view_to_map(&mut self, visible_cols: usize, visible_rows: usize) {
         let map = &self.session.state().map;
@@ -304,12 +338,7 @@ impl MapViewApp {
             | InputEvent::CursorDown
             | InputEvent::CursorLeft
             | InputEvent::CursorRight => {
-                if self.move_cursor(event) {
-                    self.scroll_cursor_into_view(visible_cols, visible_rows);
-                    MapViewOutcome::CursorChanged
-                } else {
-                    MapViewOutcome::NoChange
-                }
+                self.move_cursor_and_snap(event, visible_cols, visible_rows)
             }
             InputEvent::NextHero => {
                 self.session_mut().cycle_selected_hero();
@@ -324,36 +353,14 @@ impl MapViewApp {
                 'a' => self.pan_view(InputEvent::Left, visible_cols, visible_rows),
                 'd' => self.pan_view(InputEvent::Right, visible_cols, visible_rows),
                 'h' => {
-                    if self.move_cursor(InputEvent::CursorLeft) {
-                        self.scroll_cursor_into_view(visible_cols, visible_rows);
-                        MapViewOutcome::CursorChanged
-                    } else {
-                        MapViewOutcome::NoChange
-                    }
+                    self.move_cursor_and_snap(InputEvent::CursorLeft, visible_cols, visible_rows)
                 }
                 'j' => {
-                    if self.move_cursor(InputEvent::CursorDown) {
-                        self.scroll_cursor_into_view(visible_cols, visible_rows);
-                        MapViewOutcome::CursorChanged
-                    } else {
-                        MapViewOutcome::NoChange
-                    }
+                    self.move_cursor_and_snap(InputEvent::CursorDown, visible_cols, visible_rows)
                 }
-                'k' => {
-                    if self.move_cursor(InputEvent::CursorUp) {
-                        self.scroll_cursor_into_view(visible_cols, visible_rows);
-                        MapViewOutcome::CursorChanged
-                    } else {
-                        MapViewOutcome::NoChange
-                    }
-                }
+                'k' => self.move_cursor_and_snap(InputEvent::CursorUp, visible_cols, visible_rows),
                 'l' => {
-                    if self.move_cursor(InputEvent::CursorRight) {
-                        self.scroll_cursor_into_view(visible_cols, visible_rows);
-                        MapViewOutcome::CursorChanged
-                    } else {
-                        MapViewOutcome::NoChange
-                    }
+                    self.move_cursor_and_snap(InputEvent::CursorRight, visible_cols, visible_rows)
                 }
                 'q' => MapViewOutcome::BackRequested,
                 _ => MapViewOutcome::NoChange,
@@ -365,6 +372,8 @@ impl MapViewApp {
             InputEvent::Enter => {
                 if let Some(info) = self.cursor_structure() {
                     MapViewOutcome::OpenStructureOverlay { name: info.name }
+                } else if self.cursor_hero_id().is_some() {
+                    MapViewOutcome::OpenHeroInfo
                 } else {
                     MapViewOutcome::NoChange
                 }
@@ -415,6 +424,86 @@ impl MapViewApp {
             _ => {}
         }
         self.cursor_x != previous_x || self.cursor_y != previous_y
+    }
+
+    fn move_cursor_and_snap(
+        &mut self,
+        event: InputEvent,
+        visible_cols: usize,
+        visible_rows: usize,
+    ) -> MapViewOutcome {
+        let moved = if self.cursor_is_city_tile() {
+            self.move_cursor_out_of_city(event)
+        } else {
+            self.move_cursor(event)
+        };
+
+        if !moved {
+            return MapViewOutcome::NoChange;
+        }
+
+        self.snap_cursor_to_city_center();
+        self.scroll_cursor_into_view(visible_cols, visible_rows);
+        MapViewOutcome::CursorChanged
+    }
+
+    fn cursor_is_city_tile(&self) -> bool {
+        if self.cursor_x < 0 || self.cursor_y < 0 {
+            return false;
+        }
+        let coord = MapCoord::new(self.cursor_x as u32, self.cursor_y as u32);
+        self.session
+            .state()
+            .map
+            .get_tile(coord)
+            .map(|tile| matches!(tile.kind, Tiles::City))
+            .unwrap_or(false)
+    }
+
+    fn move_cursor_out_of_city(&mut self, event: InputEvent) -> bool {
+        let (dx, dy) = match event {
+            InputEvent::CursorUp => (0, -1),
+            InputEvent::CursorDown => (0, 1),
+            InputEvent::CursorLeft => (-1, 0),
+            InputEvent::CursorRight => (1, 0),
+            _ => return false,
+        };
+        let map = &self.session.state().map;
+        let w = map.tile_width() as isize;
+        let h = map.tile_height() as isize;
+        let mut next_x = self.cursor_x + dx;
+        let mut next_y = self.cursor_y + dy;
+
+        while next_x >= 0 && next_y >= 0 && next_x < w && next_y < h {
+            let coord = MapCoord::new(next_x as u32, next_y as u32);
+            let is_city =
+                map.get_tile(coord).map(|tile| matches!(tile.kind, Tiles::City)).unwrap_or(false);
+            if !is_city {
+                self.cursor_x = next_x;
+                self.cursor_y = next_y;
+                return true;
+            }
+            next_x += dx;
+            next_y += dy;
+        }
+
+        false
+    }
+
+    fn snap_cursor_to_city_center(&mut self) -> bool {
+        let Some(info) = self.cursor_structure() else {
+            return false;
+        };
+        if info.name != "City" {
+            return false;
+        }
+
+        let center_x = ((info.min_x + info.max_x) / 2) as isize;
+        let center_y = ((info.min_y + info.max_y) / 2) as isize;
+        let changed = self.cursor_x != center_x || self.cursor_y != center_y;
+        self.cursor_x = center_x;
+        self.cursor_y = center_y;
+        changed
     }
 
     fn move_hero_or_report(

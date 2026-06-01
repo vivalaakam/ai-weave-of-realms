@@ -5,11 +5,12 @@ edition = "2021"
 description = "Shared embedded-graphics frontend primitives for T-Deck and terminal runtimes."
 
 [features]
-default = []
+default = ["render"]
 std = ["dep:mapgen", "dep:tiled", "engine/std", "tracing/std"]
+render = ["dep:embedded-graphics"]
 
 [dependencies]
-embedded-graphics = "0.8.1"
+embedded-graphics = { version = "0.8.1", optional = true }
 
 thiserror = { workspace = true }
 tracing = { workspace = true }
