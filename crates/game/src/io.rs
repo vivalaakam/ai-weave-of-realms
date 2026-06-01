@@ -4,6 +4,7 @@
 use engine::error::EngineError;
 use engine::game_state::GameState;
 use engine::hero::Hero;
+use engine::hero_class::HeroClass;
 use engine::map::game_map::{GameMap, MapCoord};
 use engine::spawn;
 use engine::spawn::SpawnError;
@@ -142,7 +143,7 @@ pub fn build_state_with_teams(
             state.add_team(Team::new(i as u8, &cfg.name, cfg.color, cfg.player_controlled));
         let hero_pos = entrance_spawns.get(i).copied().unwrap_or_else(|| MapCoord::new(0, 0));
         let hero_name = cfg.name.to_string();
-        state.add_hero(Hero::new(i as u8, &hero_name, 100, 20, 10, 15, hero_pos, team_id));
+        state.add_hero(Hero::new(i as u8, HeroClass::Knight, &hero_name, hero_pos, team_id));
         state.set_city_owner(hero_pos, Some(team_id));
     }
 

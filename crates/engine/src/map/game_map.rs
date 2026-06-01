@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::EngineError;
 use crate::game_state::GameState;
 use crate::hero::Hero;
+use crate::hero_class::HeroClass;
 use crate::map::tile::Tile;
 use crate::spawn;
 use crate::team::Team;
@@ -133,13 +134,13 @@ impl GameMap {
 
         let offset =
             MapCoord::new(spawns.player.x.saturating_add(1).min(map_width - 1), spawns.player.y);
-        state.add_hero(Hero::new(0, "Red Hero", 120, 22, 12, 15, spawns.player, player_team_id));
-        state.add_hero(Hero::new(1, "Orange Hero", 90, 25, 8, 18, offset, player_team_id));
+        state.add_hero(Hero::new(0, HeroClass::Knight, "Red Hero", spawns.player, player_team_id));
+        state.add_hero(Hero::new(1, HeroClass::Rogue, "Orange Hero", offset, player_team_id));
 
         let enemy_offset =
             MapCoord::new(spawns.enemy.x.saturating_add(1).min(map_width - 1), spawns.enemy.y);
-        state.add_hero(Hero::new(2, "Enemy 1", 85, 16, 8, 12, spawns.enemy, enemy_team_id));
-        state.add_hero(Hero::new(3, "Big Boss", 150, 14, 20, 10, enemy_offset, enemy_team_id));
+        state.add_hero(Hero::new(2, HeroClass::Warrior, "Enemy 1", spawns.enemy, enemy_team_id));
+        state.add_hero(Hero::new(3, HeroClass::Paladin, "Big Boss", enemy_offset, enemy_team_id));
         let _ = state.set_city_owner(spawns.player, Some(player_team_id));
         let _ = state.on_turn();
         Ok(state)

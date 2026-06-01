@@ -213,6 +213,6 @@ fn update_random_map(
 
 fn exit_random_map(mut commands: Commands, query: Query<Entity, With<RandomMapRoot>>) {
     for entity in query.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_children().despawn();
     }
 }

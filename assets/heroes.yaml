@@ -1,0 +1,259 @@
+# Hero class definitions.
+#
+# Each hero class defines:
+#   - class_id: stable numeric ID (0-23)
+#   - atlas_index: sprite index in the 49-column tile atlas (1_main.png)
+#     Rows are: 24-31 (row 0), 73-80 (row 1), 122-129 (row 2)
+#     Column formula: atlas_index = row * 49 + col_within_row
+#   - name: display name
+#   - hp, atk, def, spd: base stats (movement = 20 + spd)
+#   - description: short flavour text
+#
+# The atlas layout distributes 8 classes per row across 3 rows:
+#   - Tanks & defenders   (row 0: atlas 24-31)
+#   - Fighters & attackers(row 1: atlas 73-80)
+#   - Specialists & mages(row 2: atlas 122-129)
+
+heroes:
+  # ── Row 0: Tanks & Defenders ──────────────────────────────────────
+  knight:
+    class_id: 0
+    atlas_index: 24
+    name: "Knight"
+    hp: 120
+    atk: 15
+    def: 25
+    spd: 8
+    description: "Stalwart defender with heavy armour"
+
+  paladin:
+    class_id: 1
+    atlas_index: 25
+    name: "Paladin"
+    hp: 130
+    atk: 12
+    def: 28
+    spd: 6
+    description: "Holy warrior, toughest in the realm"
+
+  guardian:
+    class_id: 2
+    atlas_index: 26
+    name: "Guardian"
+    hp: 140
+    atk: 10
+    def: 30
+    spd: 5
+    description: "Immovable shield of therealm"
+
+  hoplite:
+    class_id: 3
+    atlas_index: 27
+    name: "Hoplite"
+    hp: 110
+    atk: 18
+    def: 22
+    spd: 10
+    description: "Disciplined phalanx fighter"
+
+  warden:
+    class_id: 4
+    atlas_index: 28
+    name: "Warden"
+    hp: 125
+    atk: 14
+    def: 26
+    spd: 7
+    description: "Nature's unbreakable protector"
+
+  templar:
+    class_id: 5
+    atlas_index: 29
+    name: "Templar"
+    hp: 115
+    atk: 20
+    def: 20
+    spd: 11
+    description: "Faith and steel in equal measure"
+
+  shieldbearer:
+    class_id: 6
+    atlas_index: 30
+    name: "Shieldbearer"
+    hp: 135
+    atk: 8
+    def: 32
+    spd: 4
+    description: "Wall of iron, will of stone"
+
+  sentinel:
+    class_id: 7
+    atlas_index: 31
+    name: "Sentinel"
+    hp: 120
+    atk: 16
+    def: 24
+    spd: 9
+    description: "Vigilant watchman, ever ready"
+
+  # ── Row 1: Fighters & Attackers ───────────────────────────────────
+  warrior:
+    class_id: 8
+    atlas_index: 73
+    name: "Warrior"
+    hp: 100
+    atk: 28
+    def: 12
+    spd: 12
+    description: "Battle-hardened berserker"
+
+  berserker:
+    class_id: 9
+    atlas_index: 74
+    name: "Berserker"
+    hp: 90
+    atk: 32
+    def: 8
+    spd: 14
+    description: "Rage-fuelled devastation"
+
+  samurai:
+    class_id: 10
+    atlas_index: 75
+    name: "Samurai"
+    hp: 95
+    atk: 30
+    def: 10
+    spd: 13
+    description: "Blade strikes with deadly precision"
+
+  gladiator:
+    class_id: 11
+    atlas_index: 76
+    name: "Gladiator"
+    hp: 105
+    atk: 26
+    def: 14
+    spd: 11
+    description: "Arena champion, crowd favourite"
+
+  rogue:
+    class_id: 12
+    atlas_index: 77
+    name: "Rogue"
+    hp: 80
+    atk: 24
+    def: 6
+    spd: 18
+    description: "Swift shadow, deadly backstab"
+
+  assassin:
+    class_id: 13
+    atlas_index: 78
+    name: "Assassin"
+    hp: 75
+    atk: 28
+    def: 4
+    spd: 20
+    description: "One strike, one kill"
+
+  ranger:
+    class_id: 14
+    atlas_index: 79
+    name: "Ranger"
+    hp: 85
+    atk: 20
+    def: 10
+    spd: 16
+    description: "Wilderness hunter, bow master"
+
+  scout:
+    class_id: 15
+    atlas_index: 80
+    name: "Scout"
+    hp: 78
+    atk: 18
+    def: 8
+    spd: 22
+    description: "Eyes everywhere, fastest on the field"
+
+  # ── Row 2: Specialists & Mages ────────────────────────────────────
+  mage:
+    class_id: 16
+    atlas_index: 122
+    name: "Mage"
+    hp: 70
+    atk: 30
+    def: 6
+    spd: 12
+    description: "Arcane devastator, glass cannon"
+
+  necromancer:
+    class_id: 17
+    atlas_index: 123
+    name: "Necromancer"
+    hp: 65
+    atk: 28
+    def: 4
+    spd: 14
+    description: "Commands the dead, drains the living"
+
+  healer:
+    class_id: 18
+    atlas_index: 124
+    name: "Healer"
+    hp: 85
+    atk: 8
+    def: 14
+    spd: 10
+    description: "Mends wounds, sustains allies"
+
+  priest:
+    class_id: 19
+    atlas_index: 125
+    name: "Priest"
+    hp: 90
+    atk: 10
+    def: 16
+    spd: 8
+    description: "Divine blessing, purifying light"
+
+  enchanter:
+    class_id: 20
+    atlas_index: 126
+    name: "Enchanter"
+    hp: 75
+    atk: 22
+    def: 8
+    spd: 15
+    description: "Buffs allies, hexes foes"
+
+  alchemist:
+    class_id: 21
+    atlas_index: 127
+    name: "Alchemist"
+    hp: 80
+    atk: 18
+    def: 10
+    spd: 13
+    description: "Potions and explosions in equal measure"
+
+  druid:
+    class_id: 22
+    atlas_index: 128
+    name: "Druid"
+    hp: 88
+    atk: 14
+    def: 18
+    spd: 9
+    description: "Nature's wrath made manifest"
+
+  sorcerer:
+    class_id: 23
+    atlas_index: 129
+    name: "Sorcerer"
+    hp: 68
+    atk: 34
+    def: 2
+    spd: 11
+    description: "Raw elemental power incarnate"

@@ -88,6 +88,6 @@ fn update_hero(mut next_state: ResMut<NextState<AppState>>, mut reader: MessageR
 
 fn exit_hero(mut commands: Commands, query: Query<Entity, With<HeroRoot>>) {
     for entity in query.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_children().despawn();
     }
 }

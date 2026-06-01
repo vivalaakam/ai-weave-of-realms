@@ -5,6 +5,7 @@ use bevy::prelude::Resource;
 use engine::error::EngineError;
 use engine::game_state::GameState;
 use engine::hero::Hero;
+use engine::hero_class::HeroClass;
 use engine::map::game_map::{GameMap, MapCoord};
 use engine::team::Team;
 use helpers::ListEntry;
@@ -265,7 +266,7 @@ pub fn build_state_with_teams(
         // AI-controlled teams get a hero immediately.
         if !cfg.player_controlled {
             let hero_name = cfg.name.to_string();
-            state.add_hero(Hero::new(i as u8, &hero_name, 100, 20, 10, 15, hero_pos, team_id));
+            state.add_hero(Hero::new(i as u8, HeroClass::Knight, &hero_name, hero_pos, team_id));
         }
 
         // The city always belongs to the team regardless of whether a hero is placed.

@@ -158,5 +158,6 @@ fn select_hero(state: &GameState) -> Option<HeroId> {
         .and_then(|team_id| state.get_active_hero(team_id))
         .or_else(|| active_team.and_then(|team_id| state.get_next_hero(team_id)))
         .or_else(|| state.living_heroes(true).first().map(|hero| hero.get_id()))
-        .or_else(|| state.living_heroes(false).first().map(|hero| hero.get_id()))
+        // Do NOT fall back to AI heroes — if the player team has no heroes,
+        // selected_hero_id stays None and the UI shows "hire hero" prompt.
 }

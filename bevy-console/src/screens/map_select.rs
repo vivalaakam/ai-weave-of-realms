@@ -216,6 +216,6 @@ fn update_map_select(
 
 fn exit_map_select(mut commands: Commands, query: Query<Entity, With<MapSelectRoot>>) {
     for entity in query.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_children().despawn();
     }
 }

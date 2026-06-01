@@ -18,6 +18,7 @@ use tracing::{error, info, warn};
 
 use engine::game_state::GameState;
 use engine::hero::Hero;
+use engine::hero_class::HeroClass;
 use engine::map::game_map::GameMap;
 use engine::map::tile::Tiles;
 use engine::spawn;
@@ -335,7 +336,7 @@ fn save_rpgs(
     let team_id = state.add_team(Team::new(0, "Red", (220, 50, 50), true));
     state.add_team(Team::new(1, "Blue", (220, 50, 50), true));
     state.add_team(Team::new(2, "Enemy", (150, 80, 200), false));
-    state.add_hero(Hero::new(0, "Hero", 100, 20, 10, 15, spawn, team_id));
+    state.add_hero(Hero::new(0, HeroClass::Knight, "Hero", spawn, team_id));
     state.set_city_owner(spawn, Some(team_id));
     let _ = state.on_turn();
 

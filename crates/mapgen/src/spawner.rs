@@ -15,6 +15,7 @@ use mlua::{Function, Lua, Table, Value};
 use tracing::{debug, instrument};
 
 use engine::hero::{Hero, TeamId};
+use engine::hero_class::HeroClass;
 use engine::map::game_map::{GameMap, MapCoord};
 
 use crate::error::MapgenError;
@@ -47,8 +48,9 @@ impl EnemySpawn {
     /// `team_id` must correspond to a [`rpg_engine::team::Team`] registered
     /// in the active [`GameState`].
     pub fn into_hero(self, team_id: TeamId) -> Hero {
-        Hero::new(
+        Hero::new_with_stats(
             self.id as u8,
+            HeroClass::Warrior,
             format!("Enemy {}", self.id),
             self.hp,
             self.atk,

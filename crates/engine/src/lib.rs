@@ -28,6 +28,7 @@ pub mod config;
 pub mod error;
 pub mod game_state;
 pub mod hero;
+pub mod hero_class;
 pub mod map;
 pub mod movement;
 pub mod rng;

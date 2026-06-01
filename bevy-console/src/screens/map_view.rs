@@ -2,6 +2,7 @@ use crate::input::{InputCooldown, UiAction};
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
 use bevy::prelude::*;
+use engine::hero_class::HeroClass;
 use engine::map::game_map::MapCoord;
 use engine::map::tile::Tiles;
 use game::input::InputEvent;
@@ -41,6 +42,10 @@ pub struct MapViewState {
     pub pause_overlay: bool,
     pub pause_selected: usize,
     pub last_mouse_tile: Option<(usize, usize)>,
+    /// Handle to the tile atlas image (1_main.png).
+    pub atlas_image: Handle<Image>,
+    /// Handle to the tile atlas layout.
+    pub atlas_layout: Handle<TextureAtlasLayout>,
 }
 
 const TEXT_COLOR: Color = Color::srgb(0.85, 0.85, 0.88);
@@ -64,13 +69,8 @@ const ATLAS_ROWS: u32 = 22;
 const ATLAS_TILE_W: u32 = 16;
 const ATLAS_TILE_H: u32 = 16;
 
-/// Atlas index for the hero sprite silhouette (matches embedded-graphics `tile_atlas_mask(25)`).
-const HERO_ATLAS_INDEX: usize = 25;
-/// Atlas index for the selected hero sprite (currently same silhouette, different colour).
-const SELECTED_HERO_ATLAS_INDEX: usize = 25;
-
+/// Fallback color for heroes whose team is not found.
 const HERO_COLOR: Color = Color::srgb(1.0, 1.0, 1.0);
-const SELECTED_HERO_COLOR: Color = Color::srgb(1.0, 1.0, 0.47);
 
 pub struct MapViewPlugin;
 
@@ -96,6 +96,8 @@ impl Default for MapViewState {
             pause_overlay: false,
             pause_selected: 0,
             last_mouse_tile: None,
+            atlas_image: Handle::default(),
+            atlas_layout: Handle::default(),
         }
     }
 }
@@ -259,6 +261,11 @@ fn spawn_map_view_entities(
         None,
     );
     let layout_handle = atlas_layouts.add(layout);
+
+    // Store handles in MapViewState so other systems (e.g. hero selection)
+    // can reuse the same atlas.
+    map_view_state.atlas_image = atlas_handle.clone();
+    map_view_state.atlas_layout = layout_handle.clone();
 
     for row in 0..visible_rows {
         for col in 0..visible_cols {
@@ -877,10 +884,26 @@ fn update_map_view(
             // Check for hero on this tile first — hero sprite takes priority.
             if let Some(hero) = session.state().hero_at(coord) {
                 let is_selected = selected_hero_id == Some(hero.get_id());
-                sprite.color = if is_selected { SELECTED_HERO_COLOR } else { HERO_COLOR };
+                // Color: team color for selected, 50% alpha team color for others.
+                let team_color = session
+                    .state()
+                    .get_team(hero.get_team_id())
+                    .map(|t| {
+                        let (r, g, b) = t.color;
+                        Color::srgb(
+                            r as f32 / 255.0,
+                            g as f32 / 255.0,
+                            b as f32 / 255.0,
+                        )
+                    })
+                    .unwrap_or(HERO_COLOR);
+                sprite.color = if is_selected {
+                    team_color
+                } else {
+                    team_color.with_alpha(0.5)
+                };
                 if let Some(atlas) = sprite.texture_atlas.as_mut() {
-                    atlas.index =
-                        if is_selected { SELECTED_HERO_ATLAS_INDEX } else { HERO_ATLAS_INDEX };
+                    atlas.index = hero.class.atlas_index();
                 }
                 continue;
             }

@@ -25,6 +25,7 @@ use tracing::{info, instrument};
 use crate::combat::{self, CombatResult};
 use crate::error::EngineError;
 use crate::hero::{Hero, HeroId, TeamId};
+use crate::hero_class::HeroClass;
 use crate::map::game_map::{Direction, GameMap, MapCoord};
 use crate::map::tile::Tiles;
 use crate::rng::SeededRng;
@@ -684,12 +685,12 @@ mod tests {
 
     // team_id=0 = Team::red() at index 0 (default active team); spd=10 → mov=30
     fn player(pos: MapCoord) -> Hero {
-        Hero::new(0, "Player", 100, 20, 10, 10, pos, 0)
+        Hero::new_with_stats(0, HeroClass::Knight, "Player", 100, 20, 10, 10, pos, 0)
     }
 
     // team_id=2 = Team::enemy() (non-player-controlled); spd=5 → mov=25
     fn enemy(pos: MapCoord) -> Hero {
-        Hero::new(0, "Enemy", 30, 10, 5, 5, pos, 2)
+        Hero::new_with_stats(0, HeroClass::Knight, "Enemy", 30, 10, 5, 5, pos, 2)
     }
 
     #[test]
@@ -782,8 +783,8 @@ mod tests {
     fn defeated_enemy_awards_score() {
         let map = meadow_map(5, 5);
         let mut state = make_state(map);
-        let pid = state.add_hero(Hero::new(0, "P", 100, 200, 0, 10, MapCoord::new(0, 0), 0));
-        let eid = state.add_hero(Hero::new(0, "E", 1, 1, 0, 1, MapCoord::new(1, 0), 2));
+        let pid = state.add_hero(Hero::new_with_stats(0, HeroClass::Knight, "P", 100, 200, 0, 10, MapCoord::new(0, 0), 0));
+        let eid = state.add_hero(Hero::new_with_stats(0, HeroClass::Knight, "E", 1, 1, 0, 1, MapCoord::new(1, 0), 2));
         state.attack_hero(pid, eid).unwrap();
         assert!(state.score.total() > 0);
     }
@@ -845,9 +846,9 @@ mod tests {
 
     fn make_state_with_heroes(map: GameMap) -> (GameState, HeroId, HeroId, HeroId) {
         let mut state = make_state(map);
-        let pid = state.add_hero(Hero::new(0, "P", 100, 200, 0, 10, MapCoord::new(0, 0), 0));
-        let bid = state.add_hero(Hero::new(1, "P2", 100, 200, 0, 10, MapCoord::new(2, 0), 1));
-        let eid = state.add_hero(Hero::new(2, "E", 1, 1, 0, 1, MapCoord::new(1, 0), 2));
+        let pid = state.add_hero(Hero::new_with_stats(0, HeroClass::Knight, "P", 100, 200, 0, 10, MapCoord::new(0, 0), 0));
+        let bid = state.add_hero(Hero::new_with_stats(1, HeroClass::Knight, "P2", 100, 200, 0, 10, MapCoord::new(2, 0), 1));
+        let eid = state.add_hero(Hero::new_with_stats(2, HeroClass::Knight, "E", 1, 1, 0, 1, MapCoord::new(1, 0), 2));
         (state, pid, bid, eid)
     }
 

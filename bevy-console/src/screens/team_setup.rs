@@ -199,7 +199,7 @@ fn rebuild_team_setup_ui(
 
     // Despawn existing root (and its children via hierarchy)
     if let Some(root) = root_q.iter().next() {
-        commands.entity(root).despawn();
+        commands.entity(root).despawn_children().despawn();
     }
 
     let sel = state.selected;
@@ -432,6 +432,12 @@ fn update_team_setup(
 
     if confirm {
         if let Some(pending) = pending {
+            // Ensure at least one team is player-controlled.
+            let has_player = state.teams.iter().any(|t| t.player_controlled);
+            if !has_player && !state.teams.is_empty() {
+                state.teams[0].player_controlled = true;
+            }
+
             let team_cfgs: Vec<TeamConfig> = state
                 .teams
                 .iter()
@@ -481,6 +487,6 @@ pub struct LoadedSession {
 
 fn exit_team_setup(mut commands: Commands, query: Query<Entity, With<TeamSetupRoot>>) {
     for entity in query.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_children().despawn();
     }
 }

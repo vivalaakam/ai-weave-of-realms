@@ -75,6 +75,6 @@ fn update_city(mut next_state: ResMut<NextState<AppState>>, mut reader: MessageR
 
 fn exit_city(mut commands: Commands, query: Query<Entity, With<CityRoot>>) {
     for entity in query.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_children().despawn();
     }
 }

@@ -1,6 +1,7 @@
 use crate::error::EngineError;
 use crate::game_state::GameState;
 use crate::hero::{Hero, HeroId, TeamId};
+use crate::hero_class::HeroClass;
 use crate::map::game_map::{GameMap, MapCoord};
 use crate::map::tile::Tiles;
 use crate::rng::SeededRng;
@@ -279,7 +280,7 @@ pub(crate) fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
         if rng_position > 32 {
             return Err(save_error("invalid hero RNG position"));
         }
-        let mut hero = Hero::new(hero_id, name, hp, atk, def, spd, MapCoord::new(x, y), team_id);
+        let mut hero = Hero::new_with_stats(hero_id, HeroClass::Knight, name, hp, atk, def, spd, MapCoord::new(x, y), team_id);
         hero.max_hp = max_hp;
         hero.mov = mov;
         hero.mov_remaining = mov_remaining;

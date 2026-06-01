@@ -4,6 +4,7 @@ use alloc::{format, string::String};
 
 use serde::{Deserialize, Serialize};
 
+use crate::hero_class::HeroClass;
 use crate::map::game_map::MapCoord;
 use crate::rng::SeededRng;
 
@@ -33,6 +34,8 @@ pub type TeamId = u8;
 pub struct Hero {
     /// Unique identifier within the game session; equals the hero's index in [`GameState::heroes`].
     id: HeroId,
+    /// Hero class — determines sprite, base stats, and identity.
+    pub class: HeroClass,
     /// Display name.
     pub name: String,
     /// Current hit points.
@@ -87,25 +90,27 @@ impl Hero {
 
     /// Creates a new hero with full HP and full movement points.
     ///
-    /// Movement is derived automatically from `spd` via [`Hero::movement_for_spd`].
+    /// Stats (hp, atk, def, spd) are taken from the hero class via
+    /// [`HeroClass::base_hp`], etc. The provided `spd` parameter is **ignored**
+    /// in favour of the class base — use [`Hero::new_with_stats`] to override.
     ///
-    /// `rng` should be derived from the session RNG via
-    /// [`SeededRng::derive_for_hero`] so that each hero has an independent,
-    /// reproducible random stream tied to the session seed.
+    /// Movement is derived automatically from spd via [`Hero::movement_for_spd`].
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: HeroId,
+        class: HeroClass,
         name: impl Into<String>,
-        hp: u32,
-        atk: u32,
-        def: u32,
-        spd: u32,
         position: MapCoord,
         team_id: TeamId,
     ) -> Self {
+        let hp = class.base_hp();
+        let atk = class.base_atk();
+        let def = class.base_def();
+        let spd = class.base_spd();
         let mov = Self::movement_for_spd(spd);
         Self {
             id,
+            class,
             name: name.into(),
             hp,
             max_hp: hp,
@@ -134,6 +139,39 @@ impl Hero {
     pub fn reset_movement(&mut self) {
         self.mov_remaining = self.mov;
     }
+
+    /// Creates a hero with **custom stats** overriding the class defaults.
+    ///
+    /// Use this in tests and save-file loading where stats must be precise.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_stats(
+        id: HeroId,
+        class: HeroClass,
+        name: impl Into<String>,
+        hp: u32,
+        atk: u32,
+        def: u32,
+        spd: u32,
+        position: MapCoord,
+        team_id: TeamId,
+    ) -> Self {
+        let mov = Self::movement_for_spd(spd);
+        Self {
+            id,
+            class,
+            name: name.into(),
+            hp,
+            max_hp: hp,
+            atk,
+            def,
+            spd,
+            mov,
+            mov_remaining: mov,
+            position,
+            team_id,
+            rng: SeededRng::new("default"),
+        }
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -143,7 +181,7 @@ mod tests {
     use super::*;
 
     fn hero() -> Hero {
-        Hero::new(0, "Arthur", 100, 20, 10, 15, MapCoord::new(0, 0), 1)
+        Hero::new(0, HeroClass::Knight, "Arthur", MapCoord::new(0, 0), 1)
     }
 
     #[test]

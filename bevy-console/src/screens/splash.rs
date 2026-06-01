@@ -209,6 +209,6 @@ fn update_splash(
 
 fn exit_splash(mut commands: Commands, query: Query<Entity, With<SplashRoot>>) {
     for entity in query.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_children().despawn();
     }
 }
