@@ -140,12 +140,14 @@ fn handle_exit_confirm(
         state.selected = if state.selected == 0 { 1 } else { 0 };
     }
 
-    // Gamepad: D-pad or sticks for navigation, South (A) to confirm, East (B) to cancel.
+    // Gamepad: D-pad and left stick for navigation, South (A) to confirm, East (B) to cancel.
+    let stick_deadzone = 0.5;
     for gamepad in gamepads.iter() {
-        if gamepad.pressed(GamepadButton::DPadLeft) || gamepad.pressed(GamepadButton::DPadUp) {
+        let ls = gamepad.left_stick();
+        if gamepad.pressed(GamepadButton::DPadLeft) || gamepad.pressed(GamepadButton::DPadUp) || ls.y > stick_deadzone {
             state.selected = state.selected.saturating_sub(1);
         }
-        if gamepad.pressed(GamepadButton::DPadRight) || gamepad.pressed(GamepadButton::DPadDown) {
+        if gamepad.pressed(GamepadButton::DPadRight) || gamepad.pressed(GamepadButton::DPadDown) || ls.y < -stick_deadzone {
             state.selected = (state.selected + 1).min(1);
         }
         if gamepad.just_pressed(GamepadButton::South) {
@@ -223,6 +225,7 @@ fn spawn_overlay(mut commands: Commands) {
                 ..default()
             },
             BackgroundColor(OVERLAY_BG),
+            GlobalZIndex(100),
             ExitConfirmOverlay,
         ))
         .with_children(|parent| {

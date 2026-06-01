@@ -525,7 +525,9 @@ fn collect_ui_actions(
         }
     }
 
-    // Debounce left stick axes → map cursor actions. D-pad remains hero movement.
+    // Debounce left stick axes → map cursor actions.
+    // D-pad remains hero movement; left stick moves cursor on the map
+    // and also works as menu navigation via CursorUp/Down/ etc.
     let axis_deadzone = 0.5;
     let axis_actions = [
         (

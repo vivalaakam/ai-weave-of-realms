@@ -1,5 +1,6 @@
 use crate::input::UiAction;
 use crate::screens::AppState;
+use bevy::app::AppExit;
 use bevy::prelude::*;
 
 // ===== Theme constants (embedded-style flat UI) =====
@@ -25,13 +26,18 @@ struct NewGameButton;
 #[derive(Component)]
 struct LoadGameButton;
 
+#[derive(Component)]
+struct QuitButton;
+
 #[derive(Resource, Default)]
 struct SplashState {
     selected: usize,
 }
 
-const SPLASH_OPTIONS: [&str; 2] = ["New Game", "Load Game"];
-const SPLASH_FOOTER: &str = "Enter: select  W/S: move";
+/// Number of menu options on the splash screen.
+const NUM_OPTIONS: usize = 3;
+
+const SPLASH_FOOTER: &str = "Enter: select  \u{2191}\u{2193}/W/S: move";
 
 pub struct SplashPlugin;
 
@@ -111,9 +117,22 @@ fn enter_splash(mut commands: Commands) {
                 )],
             ));
 
+            // Quit — framed flat button
+            parent.spawn((
+                Button,
+                QuitButton,
+                button_node(200.0, 50.0),
+                BackgroundColor(BTN_BG),
+                BorderColor::all(BTN_BORDER),
+                children![(
+                    Text::new("Quit"),
+                    TextFont { font_size: FontSize::Px(22.0), ..default() },
+                    TextColor(TEXT_COLOR),
+                )],
+            ));
+
             parent
                 .spawn((Node { height: Val::Px(24.0), ..default() }, BackgroundColor(Color::NONE)));
-
             parent.spawn((
                 Text::new(SPLASH_FOOTER),
                 TextFont { font_size: FontSize::Px(14.0), ..default() },
@@ -124,12 +143,14 @@ fn enter_splash(mut commands: Commands) {
 
 #[allow(clippy::type_complexity)]
 fn update_splash(
+    mut app_exit: MessageWriter<AppExit>,
     mut next_state: ResMut<NextState<AppState>>,
     mut splash_state: ResMut<SplashState>,
     mut reader: MessageReader<UiAction>,
     mut query: Query<(
         Option<&NewGameButton>,
         Option<&LoadGameButton>,
+        Option<&QuitButton>,
         &mut BackgroundColor,
         &mut BorderColor,
         &Interaction,
@@ -139,20 +160,21 @@ fn update_splash(
     let actions: Vec<UiAction> = reader.read().copied().collect();
     let has = |action: UiAction| actions.contains(&action);
 
-    // Keyboard / gamepad navigation
-    if has(UiAction::Up) {
+    // Keyboard / gamepad / left-stick navigation
+    if has(UiAction::Up) || has(UiAction::CursorUp) {
         splash_state.selected = splash_state.selected.saturating_sub(1);
     }
-    if has(UiAction::Down) {
-        splash_state.selected = (splash_state.selected + 1).min(SPLASH_OPTIONS.len() - 1);
+    if has(UiAction::Down) || has(UiAction::CursorDown) {
+        splash_state.selected = (splash_state.selected + 1).min(NUM_OPTIONS - 1);
     }
 
     let selected = splash_state.selected;
 
-    for (new_game_opt, load_game_opt, mut bg, mut border, interaction) in query.iter_mut() {
-        let is_selected = match (new_game_opt, load_game_opt) {
-            (Some(_), None) => selected == 0,
-            (None, Some(_)) => selected == 1,
+    for (new_game_opt, load_game_opt, quit_opt, mut bg, mut border, interaction) in query.iter_mut() {
+        let is_selected = match (new_game_opt, load_game_opt, quit_opt) {
+            (Some(_), None, None) => selected == 0,
+            (None, Some(_), None) => selected == 1,
+            (None, None, Some(_)) => selected == 2,
             _ => continue,
         };
 
@@ -176,8 +198,10 @@ fn update_splash(
         if (is_selected && has(UiAction::Confirm)) || pressed {
             if new_game_opt.is_some() {
                 next_state.set(AppState::MapSelect);
-            } else {
+            } else if load_game_opt.is_some() {
                 next_state.set(AppState::SaveSelect);
+            } else if quit_opt.is_some() {
+                app_exit.write(AppExit::Success);
             }
         }
     }

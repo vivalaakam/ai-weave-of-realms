@@ -222,6 +222,15 @@ fn enter_map_view_impl(
         &asset_server,
         &mut atlas_layouts,
     );
+
+    // Center camera on the selected hero on first entry.
+    // Must run after spawn_map_view_entities which computes visible_cols/rows.
+    let vc = map_view_state.visible_cols;
+    let vr = map_view_state.visible_rows;
+    if let Some(ref mut mv) = map_view_state.map_view {
+        mv.sync_cursor_to_hero();
+        mv.center_on_hero(vc, vr);
+    }
 }
 
 fn spawn_map_view_entities(
@@ -524,10 +533,10 @@ fn update_map_view(
     if map_view_state.pause_overlay {
         let selected = map_view_state.pause_selected;
 
-        if frame(UiAction::Up) {
+        if frame(UiAction::Up) || frame(UiAction::CursorUp) {
             map_view_state.pause_selected = selected.saturating_sub(1);
         }
-        if frame(UiAction::Down) {
+        if frame(UiAction::Down) || frame(UiAction::CursorDown) {
             map_view_state.pause_selected = (selected + 1).min(1);
         }
 
@@ -569,6 +578,11 @@ fn update_map_view(
                     return;
                 }
                 if quit_opt.is_some() {
+                    if let Some(entity) = pause_q.iter().next() {
+                        commands.entity(entity).despawn();
+                    }
+                    map_view_state.pause_overlay = false;
+                    map_view_state.pause_selected = 0;
                     next_state.set(AppState::Splash);
                     map_view_state.map_view = Some(map_view_box);
                     return;
@@ -584,10 +598,10 @@ fn update_map_view(
     if map_view_state.end_turn_overlay {
         let selected = map_view_state.end_turn_selected;
 
-        if frame(UiAction::Up) {
+        if frame(UiAction::Up) || frame(UiAction::CursorUp) {
             map_view_state.end_turn_selected = selected.saturating_sub(1);
         }
-        if frame(UiAction::Down) {
+        if frame(UiAction::Down) || frame(UiAction::CursorDown) {
             map_view_state.end_turn_selected = (selected + 1).min(1);
         }
 
@@ -617,6 +631,8 @@ fn update_map_view(
                     map_view.set_status(Some(e.to_string()));
                 }
             }
+            map_view.sync_cursor_to_hero();
+            map_view.center_on_hero(visible_cols, visible_rows);
             map_view_state.needs_initial_draw = true;
             map_view_state.map_view = Some(map_view_box);
             return;
@@ -653,6 +669,8 @@ fn update_map_view(
                             map_view.set_status(Some(e.to_string()));
                         }
                     }
+                    map_view.sync_cursor_to_hero();
+                    map_view.center_on_hero(visible_cols, visible_rows);
                     map_view_state.needs_initial_draw = true;
                     map_view_state.map_view = Some(map_view_box);
                     return;
@@ -917,6 +935,9 @@ fn exit_map_view(
     query: Query<Entity, With<MapViewRoot>>,
     tile_query: Query<Entity, With<MapTile>>,
     cursor_query: Query<Entity, With<CursorOverlay>>,
+    pause_query: Query<Entity, With<PauseOverlay>>,
+    end_turn_query: Query<Entity, With<EndTurnOverlay>>,
+    mut map_view_state: ResMut<MapViewState>,
 ) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
@@ -927,4 +948,12 @@ fn exit_map_view(
     for entity in cursor_query.iter() {
         commands.entity(entity).despawn();
     }
+    for entity in pause_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    for entity in end_turn_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    map_view_state.pause_overlay = false;
+    map_view_state.end_turn_overlay = false;
 }

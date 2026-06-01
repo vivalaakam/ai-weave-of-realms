@@ -538,7 +538,7 @@ impl MapViewApp {
         }
     }
 
-    fn center_on_hero(&mut self, visible_cols: usize, visible_rows: usize) -> bool {
+    pub fn center_on_hero(&mut self, visible_cols: usize, visible_rows: usize) -> bool {
         let hero = self.session.selected_hero_position();
         let hero_x = hero.x as usize;
         let hero_y = hero.y as usize;

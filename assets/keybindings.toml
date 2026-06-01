@@ -35,5 +35,5 @@ left = ["DPadLeft"]
 right = ["DPadRight"]
 confirm = ["South"]       # A / Cross
 cancel = ["East"]         # B / Circle
-next_hero = ["LeftThumb"]  # L3
+next_hero = ["LeftThumb", "RightTrigger"]  # L3 or R1
 next_turn = ["Start"]

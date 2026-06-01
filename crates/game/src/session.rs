@@ -82,16 +82,25 @@ impl GameSession {
     /// Cycles to the next living player-controlled hero.
     ///
     /// If the current hero is the only living player hero, it stays selected.
+    /// Updates both `selected_hero_id` and the engine's `active_hero` map so
+    /// that subsequent cycles start from the correct position.
     pub fn cycle_selected_hero(&mut self) {
         let player_team = self.state.hero(self.selected_hero_id).map(|h| h.team_id);
         if let Some(team_id) = player_team {
             if let Some(next) = self.state.get_next_hero(team_id) {
                 self.selected_hero_id = next;
+                self.state.set_active_hero(team_id, Some(next));
             }
         }
     }
 
-    /// Ends the current turn, advances to the next team, and selects its first hero.
+    /// Ends the current team's turn, advances to the next team, and selects
+    /// its first hero.
+    ///
+    /// If the next team is player-controlled, the player gains control of it.
+    /// If it is AI-controlled, the turn advances automatically again until a
+    /// player team's turn is reached (or all teams have acted, completing a
+    /// full round).
     ///
     /// # Returns
     /// A status summary string after the turn transition.
@@ -99,13 +108,21 @@ impl GameSession {
     /// # Errors
     /// Returns any engine error from `on_turn`.
     pub fn end_turn(&mut self) -> Result<String, EngineError> {
+        // Finish the current team's turn (reset movement, increment turn counter).
         self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
-        let new_team = self.state.get_active_team_id().ok().copied();
-        if let Some(team_id) = new_team {
-            if let Some(next) = self.state.get_next_hero(team_id) {
-                self.selected_hero_id = next;
-            }
+
+        // Rotate to the next player-controlled team.
+        let next_team = self.state.get_next_active_team().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
+
+        // Start the new team's turn (reset movement, increment turn counter).
+        self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
+
+        // Select the first hero of the new team.
+        if let Some(next) = self.state.get_next_hero(next_team) {
+            self.selected_hero_id = next;
+            self.state.set_active_hero(next_team, Some(next));
         }
+
         Ok(self.summary())
     }
 

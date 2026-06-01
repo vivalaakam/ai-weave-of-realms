@@ -154,10 +154,10 @@ fn update_map_select(
     let old = state.selected;
     let actions: Vec<UiAction> = reader.read().copied().collect();
     let has = |action: UiAction| actions.contains(&action);
-    if has(UiAction::Up) {
+    if has(UiAction::Up) || has(UiAction::CursorUp) {
         state.selected = state.selected.saturating_sub(1);
     }
-    if has(UiAction::Down) {
+    if has(UiAction::Down) || has(UiAction::CursorDown) {
         let max = state.entries.len().saturating_sub(1);
         state.selected = (state.selected + 1).min(max);
     }

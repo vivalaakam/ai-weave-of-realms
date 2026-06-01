@@ -386,11 +386,11 @@ fn update_team_setup(
         return;
     }
 
-    if actions.contains(&UiAction::Up) {
+    if actions.contains(&UiAction::Up) || actions.contains(&UiAction::CursorUp) {
         state.selected = state.selected.saturating_sub(1);
         changed = true;
     }
-    if actions.contains(&UiAction::Down) {
+    if actions.contains(&UiAction::Down) || actions.contains(&UiAction::CursorDown) {
         state.selected = (state.selected + 1).min(max_sel);
         changed = true;
     }
