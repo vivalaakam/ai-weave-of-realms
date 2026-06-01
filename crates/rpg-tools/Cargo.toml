@@ -26,7 +26,6 @@ tokenizers = "0.23.1"
 hf-hub = "0.5.0"
 serde_json = { workspace = true }
 
-candle-core = { version = "0.10.2", features = ["metal", "accelerate"] }
-candle-metal-kernels = "0.10.2"
-candle-nn = { version = "0.10.2", features = ["metal", "accelerate"] }
-candle-transformers = { version = "0.10.2", features = ["metal", "accelerate"] }
+candle-core = "0.10.2"
+candle-nn = "0.10.2"
+candle-transformers = "0.10.2"

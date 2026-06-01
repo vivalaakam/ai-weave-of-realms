@@ -6,8 +6,6 @@ members = [
     "crates/tiled",
     "crates/rpg-tools",
     "crates/helpers",
-    "sixel-console",
-    "sdl2-console",
     "bevy-console"
 ]
 
