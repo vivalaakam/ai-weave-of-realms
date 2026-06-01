@@ -18,21 +18,18 @@ impl Plugin for HeroPlugin {
 
 fn enter_hero(mut commands: Commands, map_view_state: Res<MapViewState>) {
     // Resolve the hero standing under the cursor from the shared map view.
-    let hero_lines = map_view_state
-        .map_view
-        .as_ref()
-        .and_then(|map_view| {
-            let coord = map_view.cursor_coord()?;
-            map_view.session().state().hero_at(coord).map(|hero| {
-                (
-                    hero.name.clone(),
-                    format!("HP: {}/{}", hero.hp, hero.max_hp),
-                    format!("ATK: {}   DEF: {}   SPD: {}", hero.atk, hero.def, hero.spd),
-                    format!("MOV: {}/{}", hero.mov_remaining, hero.mov),
-                    format!("Position: {},{}", hero.position.x, hero.position.y),
-                )
-            })
-        });
+    let hero_lines = map_view_state.map_view.as_ref().and_then(|map_view| {
+        let coord = map_view.cursor_coord()?;
+        map_view.session().state().hero_at(coord).map(|hero| {
+            (
+                hero.name.clone(),
+                format!("HP: {}/{}", hero.hp, hero.max_hp),
+                format!("ATK: {}   DEF: {}   SPD: {}", hero.atk, hero.def, hero.spd),
+                format!("MOV: {}/{}", hero.mov_remaining, hero.mov),
+                format!("Position: {},{}", hero.position.x, hero.position.y),
+            )
+        })
+    });
 
     let (title, hp, stats, mov, pos) = hero_lines.unwrap_or_else(|| {
         (

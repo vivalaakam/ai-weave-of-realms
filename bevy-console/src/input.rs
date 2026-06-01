@@ -14,9 +14,9 @@
 //! from an empty slot. We now pick the **first connected gamepad** that
 //! reports non-zero input and use it exclusively, avoiding the overwrite bug.
 use crate::screens;
+use bevy::input::InputSystems;
 use bevy::input::gamepad::{GamepadConnection, GamepadConnectionEvent, RawGamepadAxisChangedEvent};
 use bevy::input::mouse::AccumulatedMouseMotion;
-use bevy::input::InputSystems;
 use bevy::prelude::*;
 use bevy::window::CursorOptions;
 use serde::{Deserialize, Serialize};
@@ -404,21 +404,13 @@ fn pick_active_gamepad(
 
         // Remember the first gamepad as fallback.
         if first_values.is_none() {
-            first_values = Some(GamepadValues {
-                pressed_buttons: pressed_buttons.clone(),
-                ls,
-                rs,
-            });
+            first_values = Some(GamepadValues { pressed_buttons: pressed_buttons.clone(), ls, rs });
         }
 
         if any_button || any_stick || any_dpad {
             // Use the first active gamepad we find.
             if active_values.is_none() {
-                active_values = Some(GamepadValues {
-                    pressed_buttons,
-                    ls,
-                    rs,
-                });
+                active_values = Some(GamepadValues { pressed_buttons, ls, rs });
             }
         }
     }
@@ -605,16 +597,10 @@ fn log_gamepad_events(
     for event in connection_events.read() {
         match &event.connection {
             GamepadConnection::Connected { name, .. } => {
-                tracing::info!(
-                    "Gamepad connected: entity={:?} name=\"{name}\"",
-                    event.gamepad,
-                );
+                tracing::info!("Gamepad connected: entity={:?} name=\"{name}\"", event.gamepad,);
             }
             GamepadConnection::Disconnected => {
-                tracing::info!(
-                    "Gamepad disconnected: entity={:?}",
-                    event.gamepad,
-                );
+                tracing::info!("Gamepad disconnected: entity={:?}", event.gamepad,);
             }
         }
     }
@@ -674,11 +660,7 @@ enum InputMethod {
 
 impl Default for CursorVisibility {
     fn default() -> Self {
-        Self {
-            method: InputMethod::default(),
-            seconds_since_mouse: 0.0,
-            hide_after_secs: 3.0,
-        }
+        Self { method: InputMethod::default(), seconds_since_mouse: 0.0, hide_after_secs: 3.0 }
     }
 }
 

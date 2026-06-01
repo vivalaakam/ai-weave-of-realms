@@ -573,16 +573,26 @@ fn run(args: Args) -> Result<()> {
     let dtype = if use_f16 { DType::F16 } else { DType::F32 };
     let sd_config = match sd_version {
         StableDiffusionVersion::V1_5 | StableDiffusionVersion::V1_5Inpaint => {
-            stable_diffusion::StableDiffusionConfig::v1_5(sliced_attention_size, Some(height), Some(width))
+            stable_diffusion::StableDiffusionConfig::v1_5(
+                sliced_attention_size,
+                Some(height),
+                Some(width),
+            )
         }
         StableDiffusionVersion::V2_1 | StableDiffusionVersion::V2Inpaint => {
-            stable_diffusion::StableDiffusionConfig::v2_1(sliced_attention_size, Some(height), Some(width))
+            stable_diffusion::StableDiffusionConfig::v2_1(
+                sliced_attention_size,
+                Some(height),
+                Some(width),
+            )
         }
         StableDiffusionVersion::Xl
         | StableDiffusionVersion::XlInpaint
-        | StableDiffusionVersion::IllustriousV40 => {
-            stable_diffusion::StableDiffusionConfig::sdxl(sliced_attention_size, Some(height), Some(width))
-        }
+        | StableDiffusionVersion::IllustriousV40 => stable_diffusion::StableDiffusionConfig::sdxl(
+            sliced_attention_size,
+            Some(height),
+            Some(width),
+        ),
         StableDiffusionVersion::Turbo => stable_diffusion::StableDiffusionConfig::sdxl_turbo(
             sliced_attention_size,
             Some(height),

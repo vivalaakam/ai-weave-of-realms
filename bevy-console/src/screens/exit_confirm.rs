@@ -65,7 +65,9 @@ fn check_ctrl_q(
     mut commands: Commands,
     overlay_q: Query<Entity, With<ExitConfirmOverlay>>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyQ) || !keys.pressed(KeyCode::ControlLeft) && !keys.pressed(KeyCode::ControlRight) {
+    if !keys.just_pressed(KeyCode::KeyQ)
+        || !keys.pressed(KeyCode::ControlLeft) && !keys.pressed(KeyCode::ControlRight)
+    {
         return;
     }
 
