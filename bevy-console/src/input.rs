@@ -5,7 +5,17 @@
 //! a button must be held for `DEBOUNCE_FRAMES` consecutive frames before
 //! emitting a UiAction. This filters out phantom presses from macOS
 //! virtual gamepads with broken gilrs default mappings.
+//!
+//! ## Gamepad selection
+//!
+//! On devices with multiple gamepad slots (e.g. GPD Win 4 with its built-in
+//! controller appearing on a non-zero slot), iterating all `Gamepad`
+//! entities and overwriting stick values would clobber real input with zeroes
+//! from an empty slot. We now pick the **first connected gamepad** that
+//! reports non-zero input and use it exclusively, avoiding the overwrite bug.
 use crate::screens;
+use bevy::input::gamepad::{GamepadConnection, GamepadConnectionEvent, RawGamepadAxisChangedEvent};
+use bevy::input::InputSystems;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -208,6 +218,12 @@ impl InputMapping {
             right_stick_pan: config.gamepad.enabled,
         }
     }
+
+    /// Returns the list of mapped gamepad buttons as a Vec for passing
+    /// to `pick_active_gamepad`.
+    fn gamepad_map_keys(&self) -> Vec<GamepadButton> {
+        self.gamepad_map.keys().copied().collect()
+    }
 }
 
 // ── Parsing helpers ──────────────────────────────────────────────────
@@ -332,6 +348,7 @@ impl Plugin for InputPlugin {
             .init_resource::<InputCooldown>()
             .add_message::<UiAction>()
             .add_systems(PreUpdate, collect_ui_actions)
+            .add_systems(PreUpdate, log_gamepad_events.after(InputSystems))
             .add_systems(OnEnter(screens::AppState::Splash), trigger_input_cooldown)
             .add_systems(OnEnter(screens::AppState::MapSelect), trigger_input_cooldown)
             .add_systems(OnEnter(screens::AppState::SaveSelect), trigger_input_cooldown)
@@ -340,6 +357,78 @@ impl Plugin for InputPlugin {
             .add_systems(OnEnter(screens::AppState::MapView), trigger_input_cooldown)
             .add_systems(OnEnter(screens::AppState::City), trigger_input_cooldown);
     }
+}
+
+/// Pick the best gamepad from a query.
+///
+/// On devices with multiple gamepad slots (e.g. GPD Win 4 — built-in
+/// controller + possible external gamepads, or desktops with virtual gamepads),
+/// iterating ALL of them and overwriting stick values on each pass would
+/// clobber real stick input with zeroes from empty/disconnected slots.
+///
+/// This function picks the gamepad that reports any activity (pressed
+/// buttons, non-zero stick axes, D-pad), preferring it over silent gamepads.
+/// If no gamepad is active, falls back to the first one (covers idle state).
+fn pick_active_gamepad(
+    gamepads: &Query<&Gamepad>,
+    mapped_buttons: &[GamepadButton],
+) -> Option<GamepadValues> {
+    let mut first_values: Option<GamepadValues> = None;
+    let mut active_values: Option<GamepadValues> = None;
+
+    for gamepad in gamepads {
+        let ls = gamepad.left_stick();
+        let rs = gamepad.right_stick();
+        let dpad = gamepad.dpad();
+
+        // Snapshot pressed state for mapped buttons.
+        let mut pressed_buttons: Vec<GamepadButton> = Vec::new();
+        for &gb in mapped_buttons {
+            if gamepad.pressed(gb) {
+                pressed_buttons.push(gb);
+            }
+        }
+
+        // Check if this gamepad shows any activity.
+        let any_button = !pressed_buttons.is_empty();
+        let threshold = 0.04; // Below Bevy's default axis deadzone (0.05)
+        let any_stick = ls.x.abs() > threshold
+            || ls.y.abs() > threshold
+            || rs.x.abs() > threshold
+            || rs.y.abs() > threshold;
+        let any_dpad = dpad.x.abs() > 0.0 || dpad.y.abs() > 0.0;
+
+        // Remember the first gamepad as fallback.
+        if first_values.is_none() {
+            first_values = Some(GamepadValues {
+                pressed_buttons: pressed_buttons.clone(),
+                ls,
+                rs,
+            });
+        }
+
+        if any_button || any_stick || any_dpad {
+            // Use the first active gamepad we find.
+            if active_values.is_none() {
+                active_values = Some(GamepadValues {
+                    pressed_buttons,
+                    ls,
+                    rs,
+                });
+            }
+        }
+    }
+
+    // Prefer an active gamepad; fall back to the first one if idle.
+    active_values.or(first_values)
+}
+
+/// Snapshot of gamepad values extracted from a single `Gamepad` component.
+/// Avoids holding a reference into the query that causes lifetime issues.
+struct GamepadValues {
+    pressed_buttons: Vec<GamepadButton>,
+    ls: Vec2,
+    rs: Vec2,
 }
 
 /// Read keyboard state + debounced gamepad state and emit `UiAction` messages.
@@ -372,27 +461,31 @@ fn collect_ui_actions(
         return;
     }
 
-    // Collect currently-pressed buttons across all gamepads.
-    let mut currently_pressed: HashMap<GamepadButton, bool> = HashMap::new();
-    let mut left_stick_x = 0.0f32;
-    let mut left_stick_y = 0.0f32;
-    let mut right_stick_x = 0.0f32;
-    let mut right_stick_y = 0.0f32;
+    // Pick the best gamepad. Avoids the old bug where iterating all
+    // gamepads and overwriting stick values clobbered real input with
+    // zeroes from empty slots (e.g. GPD Win 4 built-in controller).
+    let Some(gv) = pick_active_gamepad(&gamepads, &mapping.gamepad_map_keys()) else {
+        return;
+    };
 
-    for gamepad in gamepads.iter() {
-        for &gb in mapping.gamepad_map.keys() {
-            if gamepad.pressed(gb) {
-                currently_pressed.insert(gb, true);
-            }
+    // Collect currently-pressed buttons from the active gamepad only.
+    let mut currently_pressed: HashMap<GamepadButton, bool> = HashMap::new();
+    for &gb in mapping.gamepad_map.keys() {
+        if gv.pressed_buttons.contains(&gb) {
+            currently_pressed.insert(gb, true);
         }
-        let ls = gamepad.left_stick();
-        left_stick_x = ls.x;
-        left_stick_y = ls.y;
-        if mapping.right_stick_pan {
-            let rs = gamepad.right_stick();
-            right_stick_x = rs.x;
-            right_stick_y = rs.y;
-        }
+    }
+
+    let left_stick_x = gv.ls.x;
+    let left_stick_y = gv.ls.y;
+    let right_stick_x;
+    let right_stick_y;
+    if mapping.right_stick_pan {
+        right_stick_x = gv.rs.x;
+        right_stick_y = gv.rs.y;
+    } else {
+        right_stick_x = 0.0;
+        right_stick_y = 0.0;
     }
 
     // Debounce: emit action only when a button has been held for
@@ -487,6 +580,42 @@ fn collect_ui_actions(
         } else if right_stick_y < -stick_deadzone {
             writer.write(UiAction::PanDown);
         }
+    }
+}
+
+/// Log gamepad connection/disconnection events.
+/// Helps diagnose multi-slot issues (e.g. GPD Win 4).
+fn log_gamepad_events(
+    mut connection_events: MessageReader<GamepadConnectionEvent>,
+    mut axis_events: MessageReader<RawGamepadAxisChangedEvent>,
+) {
+    for event in connection_events.read() {
+        match &event.connection {
+            GamepadConnection::Connected { name, .. } => {
+                tracing::info!(
+                    "Gamepad connected: entity={:?} name=\"{name}\"",
+                    event.gamepad,
+                );
+            }
+            GamepadConnection::Disconnected => {
+                tracing::info!(
+                    "Gamepad disconnected: entity={:?}",
+                    event.gamepad,
+                );
+            }
+        }
+    }
+    // Log raw axis changes at debug level so stick input is visible
+    // in RUST_LOG=weave_of_realms_bevy=debug logs. This is crucial for
+    // diagnosing devices like GPD Win 4 where gilrs may not correctly
+    // map stick axes.
+    for event in axis_events.read() {
+        tracing::debug!(
+            "Raw axis: entity={:?} axis={:?} value={:.4}",
+            event.gamepad,
+            event.axis,
+            event.value,
+        );
     }
 }
 
