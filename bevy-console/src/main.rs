@@ -103,6 +103,7 @@ fn main() {
         .add_plugins(screens::city::CityPlugin)
         .add_plugins(screens::city_entrance::CityEntrancePlugin)
         .add_plugins(screens::hero::HeroPlugin)
+        .add_plugins(screens::exit_confirm::ExitConfirmPlugin)
         .add_systems(Startup, setup_camera)
         .run();
 }

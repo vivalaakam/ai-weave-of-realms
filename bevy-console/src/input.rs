@@ -15,8 +15,10 @@
 //! reports non-zero input and use it exclusively, avoiding the overwrite bug.
 use crate::screens;
 use bevy::input::gamepad::{GamepadConnection, GamepadConnectionEvent, RawGamepadAxisChangedEvent};
+use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::input::InputSystems;
 use bevy::prelude::*;
+use bevy::window::CursorOptions;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -346,9 +348,11 @@ impl Plugin for InputPlugin {
         app.insert_resource(mapping)
             .init_resource::<GamepadDebounce>()
             .init_resource::<InputCooldown>()
+            .init_resource::<CursorVisibility>()
             .add_message::<UiAction>()
             .add_systems(PreUpdate, collect_ui_actions)
             .add_systems(PreUpdate, log_gamepad_events.after(InputSystems))
+            .add_systems(PreUpdate, update_cursor_visibility.after(collect_ui_actions))
             .add_systems(OnEnter(screens::AppState::Splash), trigger_input_cooldown)
             .add_systems(OnEnter(screens::AppState::MapSelect), trigger_input_cooldown)
             .add_systems(OnEnter(screens::AppState::SaveSelect), trigger_input_cooldown)
@@ -439,11 +443,20 @@ fn collect_ui_actions(
     mapping: Res<InputMapping>,
     mut debounce: ResMut<GamepadDebounce>,
     cooldown: ResMut<InputCooldown>,
+    exit_state: Res<crate::screens::exit_confirm::ExitConfirmState>,
     mut writer: MessageWriter<UiAction>,
 ) {
     // ── Cooldown check ────────────────────────────────────────
     let now = time.elapsed_secs_f64();
     if cooldown.is_cooling_down(now) {
+        return;
+    }
+
+    // When the exit-confirmation overlay is open, suppress all
+    // UiAction messages so screen-specific input handlers don't
+    // react. The exit-confirm system reads UiAction directly via
+    // its own MessageReader.
+    if exit_state.showing {
         return;
     }
 
@@ -630,4 +643,96 @@ fn trigger_input_cooldown(
 ) {
     *cooldown = InputCooldown::trigger(time.elapsed_secs_f64(), COOLDOWN_DURATION);
     actions.clear();
+}
+
+// ── Cursor visibility ────────────────────────────────────────────────
+
+/// Tracks whether the OS cursor should be visible.
+///
+/// The cursor is shown when the player uses the mouse (move or click)
+/// and hidden after a short idle timeout or when the player uses keyboard
+/// or gamepad. On devices like the GPD Win 4 where a gamepad is always
+/// present, we only hide the cursor when the gamepad actually produces a
+/// `UiAction`, not on any stick drift.
+#[derive(Resource)]
+pub struct CursorVisibility {
+    /// Which input method was last active.
+    method: InputMethod,
+    /// Seconds since the last mouse activity. Used to auto-hide after idle.
+    seconds_since_mouse: f32,
+    /// How long the mouse can be idle before we hide the cursor.
+    hide_after_secs: f32,
+}
+
+/// Which input method was used most recently.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum InputMethod {
+    #[default]
+    KeyboardGamepad,
+    Mouse,
+}
+
+impl Default for CursorVisibility {
+    fn default() -> Self {
+        Self {
+            method: InputMethod::default(),
+            seconds_since_mouse: 0.0,
+            hide_after_secs: 3.0,
+        }
+    }
+}
+
+/// Show the OS cursor when the mouse moves or clicks, hide it when the
+/// player uses keyboard/gamepad (or after the mouse has been idle for
+/// `hide_after_secs` seconds).
+fn update_cursor_visibility(
+    accumulated_motion: Res<AccumulatedMouseMotion>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    mut cursor: Query<&mut CursorOptions>,
+    mut state: ResMut<CursorVisibility>,
+    ui_actions: Res<Messages<UiAction>>,
+) {
+    let dt = time.delta_secs();
+
+    // Mouse activity: any movement (delta above 1px threshold to filter
+    // out sub-pixel jitter on some devices) or any button click.
+    let mouse_moved = accumulated_motion.delta.length_squared() > 1.0;
+    let mouse_clicked = mouse_buttons.just_pressed(MouseButton::Left)
+        || mouse_buttons.just_pressed(MouseButton::Right)
+        || mouse_buttons.just_pressed(MouseButton::Middle);
+
+    // Any keyboard key pressed this frame → non-mouse input.
+    let keyboard_active = keys.get_just_pressed().next().is_some();
+
+    // Gamepad produced a UiAction this frame → non-mouse input.
+    // We check UiAction messages instead of raw gamepad state because on
+    // devices like GPD Win 4 the built-in controller is always "active"
+    // and raw stick readings would permanently suppress the cursor.
+    let gamepad_active = !ui_actions.is_empty();
+
+    if mouse_moved || mouse_clicked {
+        state.method = InputMethod::Mouse;
+        state.seconds_since_mouse = 0.0;
+    }
+
+    if keyboard_active || gamepad_active {
+        state.method = InputMethod::KeyboardGamepad;
+    }
+
+    // Tick the idle timer.
+    if state.method == InputMethod::Mouse {
+        state.seconds_since_mouse += dt;
+    }
+
+    // Decide visibility: show cursor while mouse is active and within
+    // the idle window. Hide it the moment keyboard/gamepad takes over,
+    // or after the mouse has been idle too long.
+    let show_cursor =
+        state.method == InputMethod::Mouse && state.seconds_since_mouse < state.hide_after_secs;
+
+    for mut cursor_opts in cursor.iter_mut() {
+        cursor_opts.visible = show_cursor;
+    }
 }

@@ -16,6 +16,7 @@ pub enum AppState {
 
 pub mod city;
 pub mod city_entrance;
+pub mod exit_confirm;
 pub mod hero;
 pub mod map_select;
 pub mod map_view;
