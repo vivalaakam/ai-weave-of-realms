@@ -260,8 +260,15 @@ pub fn build_state_with_teams(
         let team_id =
             state.add_team(Team::new(i as u8, &cfg.name, cfg.color, cfg.player_controlled));
         let hero_pos = entrance_spawns.get(i).copied().unwrap_or_else(|| MapCoord::new(0, 0));
-        let hero_name = cfg.name.to_string();
-        state.add_hero(Hero::new(i as u8, &hero_name, 100, 20, 10, 15, hero_pos, team_id));
+
+        // Player-controlled teams start without a hero — they must hire one at a city entrance.
+        // AI-controlled teams get a hero immediately.
+        if !cfg.player_controlled {
+            let hero_name = cfg.name.to_string();
+            state.add_hero(Hero::new(i as u8, &hero_name, 100, 20, 10, 15, hero_pos, team_id));
+        }
+
+        // The city always belongs to the team regardless of whether a hero is placed.
         state.set_city_owner(hero_pos, Some(team_id));
     }
     let _ = state.on_turn();

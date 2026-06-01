@@ -359,7 +359,9 @@ impl Plugin for InputPlugin {
             .add_systems(OnEnter(screens::AppState::RandomMap), trigger_input_cooldown)
             .add_systems(OnEnter(screens::AppState::TeamSetup), trigger_input_cooldown)
             .add_systems(OnEnter(screens::AppState::MapView), trigger_input_cooldown)
-            .add_systems(OnEnter(screens::AppState::City), trigger_input_cooldown);
+            .add_systems(OnEnter(screens::AppState::City), trigger_input_cooldown)
+            .add_systems(OnEnter(screens::AppState::CityEntrance), trigger_input_cooldown)
+            .add_systems(OnEnter(screens::AppState::Hero), trigger_input_cooldown);
     }
 }
 

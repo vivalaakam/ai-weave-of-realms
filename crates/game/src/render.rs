@@ -1448,13 +1448,15 @@ fn draw_cell<D, C>(
     }
 
     if let Some(hero) = map_view.session().state().hero_at(coord) {
-        draw_hero_marker(
-            display,
-            hero.get_id(),
-            map_view.session().selected_hero_id(),
-            top_left,
-            theme,
-        );
+        if let Some(sel_id) = map_view.session().selected_hero_id() {
+            draw_hero_marker(
+                display,
+                hero.get_id(),
+                sel_id,
+                top_left,
+                theme,
+            );
+        }
     }
 }
 

@@ -2,6 +2,7 @@ use crate::input::UiAction;
 use crate::screens::AppState;
 use crate::screens::map_view::MapViewState;
 use bevy::prelude::*;
+use engine::hero::Hero;
 
 const TEXT_COLOR: Color = Color::srgb(0.92, 0.92, 0.88);
 const SUBTLE_COLOR: Color = Color::srgb(0.72, 0.72, 0.76);
@@ -42,12 +43,57 @@ fn button_node(w: f32, h: f32) -> Node {
     }
 }
 
+/// Decide what to show based on whether the entrance is occupied
+/// and whether the player's team owns the city.
+enum EntranceInfo {
+    /// A hero is stationed here — show hero name.
+    Occupied { name: String },
+    /// No hero — and the player's team owns the city, so they can hire.
+    CanHire,
+    /// No hero — but the player doesn't own the city.
+    NoOwnership,
+}
+
+fn get_entrance_info(map_view_state: &MapViewState) -> Option<EntranceInfo> {
+    let map_view = map_view_state.map_view.as_ref()?;
+    let coord = map_view.cursor_coord()?;
+    let state = map_view.session().state();
+
+    // Check if a hero is already on the tile.
+    if let Some(hero) = state.hero_at(coord) {
+        return Some(EntranceInfo::Occupied { name: hero.name.clone() });
+    }
+
+    // Check city ownership.
+    let active_team_id = state.get_active_team_id().copied().ok()?;
+    let owner = state.city_owner(coord);
+
+    if owner == Some(active_team_id) {
+        Some(EntranceInfo::CanHire)
+    } else {
+        Some(EntranceInfo::NoOwnership)
+    }
+}
+
 fn enter_city_entrance(mut commands: Commands, map_view_state: Res<MapViewState>) {
-    // The squad cell is the tile under the cursor (the city entrance).
-    let hero_name = map_view_state.map_view.as_ref().and_then(|map_view| {
-        let coord = map_view.cursor_coord()?;
-        map_view.session().state().hero_at(coord).map(|hero| hero.name.clone())
-    });
+    let info = get_entrance_info(&map_view_state);
+
+    let (hero_text, show_hire_button, footer_text) = match info {
+        Some(EntranceInfo::Occupied { name }) => {
+            (name, false, "Enter/Cross: select   Esc/Circle: back")
+        }
+        Some(EntranceInfo::CanHire) => (
+            "No hero stationed here".to_string(),
+            true,
+            "Enter/Cross: hire hero   Esc/Circle: back",
+        ),
+        Some(EntranceInfo::NoOwnership) => (
+            "No hero stationed here\n(You don't own this city)".to_string(),
+            false,
+            "Esc/Circle: back",
+        ),
+        None => ("Unknown".to_string(), false, "Esc/Circle: back"),
+    };
 
     commands
         .spawn((
@@ -70,39 +116,29 @@ fn enter_city_entrance(mut commands: Commands, map_view_state: Res<MapViewState>
                 TextColor(TEXT_COLOR),
             ));
 
-            match hero_name {
-                // A hero already garrisons the entrance — show its name.
-                Some(name) => {
-                    parent.spawn((
-                        Text::new(name),
-                        TextFont { font_size: FontSize::Px(24.0), ..default() },
-                        TextColor(SUBTLE_COLOR),
-                    ));
-                }
-                // Empty cell — offer to hire a hero.
-                None => {
-                    parent.spawn((
-                        Text::new("No hero stationed here"),
+            parent.spawn((
+                Text::new(hero_text),
+                TextFont { font_size: FontSize::Px(20.0), ..default() },
+                TextColor(SUBTLE_COLOR),
+            ));
+
+            if show_hire_button {
+                parent.spawn((
+                    Button,
+                    HireHeroButton,
+                    button_node(220.0, 50.0),
+                    BackgroundColor(BTN_BG_SELECTED),
+                    BorderColor::all(BTN_BORDER_SELECTED),
+                    children![(
+                        Text::new("Hire Hero"),
                         TextFont { font_size: FontSize::Px(20.0), ..default() },
-                        TextColor(SUBTLE_COLOR),
-                    ));
-                    parent.spawn((
-                        Button,
-                        HireHeroButton,
-                        button_node(220.0, 50.0),
-                        BackgroundColor(BTN_BG_SELECTED),
-                        BorderColor::all(BTN_BORDER_SELECTED),
-                        children![(
-                            Text::new("Hire Hero"),
-                            TextFont { font_size: FontSize::Px(20.0), ..default() },
-                            TextColor(TEXT_COLOR),
-                        )],
-                    ));
-                }
+                        TextColor(TEXT_COLOR),
+                    )],
+                ));
             }
 
             parent.spawn((
-                Text::new("Enter/Cross: select   Esc/Circle: back"),
+                Text::new(footer_text),
                 TextFont { font_size: FontSize::Px(14.0), ..default() },
                 TextColor(FOOTER_COLOR),
             ));
@@ -128,7 +164,7 @@ fn update_city_entrance(
         return;
     }
 
-    // When the cell is empty the Hire button is present and always selected.
+    // Hire button interaction.
     let mut hire_triggered = false;
     for (mut bg, mut border, interaction) in buttons.iter_mut() {
         let pressed = matches!(interaction, Interaction::Pressed);
@@ -149,9 +185,47 @@ fn update_city_entrance(
     }
 
     if hire_triggered {
-        // TODO: implement actual hero recruitment in the engine.
         if let Some(map_view) = map_view_state.map_view.as_mut() {
-            map_view.set_status(Some("Recruitment not implemented yet".to_string()));
+            let coord = map_view.cursor_coord();
+            let team_id = map_view.session().state().get_active_team_id().copied();
+
+            if let (Some(coord), Ok(team_id)) = (coord, team_id) {
+                // Check if the team already has a selected hero before mutating.
+                let had_no_hero = map_view.session().selected_hero_id().is_none();
+
+                let state = map_view.session_mut().state_mut();
+                // Only hire if the tile is unoccupied and the player owns the city.
+                let can_hire =
+                    state.hero_at(coord).is_none() && state.city_owner(coord) == Some(team_id);
+
+                if can_hire {
+                    // Generate a unique name for the hired hero.
+                    let hero_count = state.get_team_heroes(team_id).len();
+                    let name = format!("Hero {}", hero_count + 1);
+
+                    let hero = Hero::new(
+                        0, // placeholder — add_hero assigns real ID
+                        name,
+                        100, // hp
+                        20,  // atk
+                        10,  // def
+                        15,  // spd → mov = 20 + 15 = 35
+                        coord,
+                        team_id,
+                    );
+                    let new_id = state.add_hero(hero);
+
+                    // If this is the team's first hero, select it immediately.
+                    if had_no_hero {
+                        map_view.session_mut().set_selected_hero_id(new_id);
+                        map_view.sync_cursor_to_hero();
+                    }
+
+                    map_view.set_status(Some("Hero hired!".to_string()));
+                } else {
+                    map_view.set_status(Some("Cannot hire here".to_string()));
+                }
+            }
         }
         next_state.set(AppState::MapView);
         return;

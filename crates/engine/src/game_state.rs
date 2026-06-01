@@ -278,6 +278,27 @@ impl GameState {
         self.city_owners.get(&coord).copied()
     }
 
+    /// Returns the first city entrance tile owned by `team_id`.
+    ///
+    /// Useful for centering the camera when the team has no hero yet.
+    pub fn city_entrance_for_team(&self, team_id: TeamId) -> Option<MapCoord> {
+        self.city_owners
+            .iter()
+            .filter(|(coord, &owner)| owner == team_id)
+            .find_map(|(coord, _)| {
+                let tile = self.map.get_tile(*coord).ok()?;
+                if tile.kind == Tiles::CityEntrance { Some(*coord) } else { None }
+            })
+    }
+
+    /// Returns any city tile owned by the given team.
+    pub fn city_owner_for_team(&self, team_id: TeamId) -> Option<MapCoord> {
+        self.city_owners
+            .iter()
+            .find(|(_, &owner)| owner == team_id)
+            .map(|(coord, _)| *coord)
+    }
+
     /// Returns the last active hero ID for `team_id`, or `None` if not set.
     pub fn get_active_hero(&self, team_id: TeamId) -> Option<HeroId> {
         self.active_hero.get(&team_id).copied().flatten()

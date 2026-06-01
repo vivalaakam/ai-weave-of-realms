@@ -833,8 +833,7 @@ fn map_view_from_loaded(
     view_y: usize,
     status: Option<String>,
 ) -> Result<MapViewScreen, String> {
-    let session = GameSession::from_state(loaded.map_name, loaded.state)
-        .map_err(|error| error.to_string())?;
+    let session = GameSession::from_state(loaded.map_name, loaded.state);
 
     Ok(MapViewScreen {
         app: MapViewApp::new(session, view_x, view_y, status.clone()),

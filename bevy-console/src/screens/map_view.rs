@@ -1,4 +1,4 @@
-use crate::input::UiAction;
+use crate::input::{InputCooldown, UiAction};
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
 use bevy::prelude::*;
@@ -205,12 +205,7 @@ fn enter_map_view_impl(
             return;
         };
 
-        let session = match GameSession::from_state(loaded.map_name.clone(), state) {
-            Ok(s) => s,
-            Err(_e) => {
-                return;
-            }
-        };
+        let session = GameSession::from_state(loaded.map_name.clone(), state);
 
         map_view_state.map_view = Some(Box::new(MapViewApp::new(session, 0, 0, None)));
     }
@@ -497,6 +492,9 @@ fn update_map_view(
     mut status_query: Query<&mut Text>,
     mut tile_query: Query<(&MapTilePos, &mut Sprite), (With<MapTile>, Without<CursorOverlay>)>,
     mut cursor_query: Query<(&mut Transform, &mut Sprite), (With<CursorOverlay>, Without<MapTile>)>,
+    cooldown: Res<InputCooldown>,
+    time: Res<Time>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
     window: Single<&Window>,
     end_turn_q: Query<Entity, With<EndTurnOverlay>>,
     pause_q: Query<Entity, With<PauseOverlay>>,
@@ -777,6 +775,13 @@ fn update_map_view(
                 needs_redraw = true;
             }
             map_view_state.last_mouse_tile = Some(target_tile);
+
+            // Mouse click on the tile under the cursor acts as Enter,
+            // but only if the input cooldown has elapsed (prevents stale clicks
+            // after a state transition from bleeding through).
+            if mouse_buttons.just_pressed(MouseButton::Left) && !cooldown.is_cooling_down(time.elapsed_secs_f64()) {
+                events.push(InputEvent::Enter);
+            }
         } else {
             map_view_state.last_mouse_tile = None;
         }
@@ -805,12 +810,12 @@ fn update_map_view(
                 return;
             }
             MapViewOutcome::OpenStructureOverlay { name } => match name.as_str() {
-                "City" => {
-                    next_state.set(AppState::City);
-                    map_view_state.map_view = Some(map_view_box);
-                    return;
-                }
-                "City Entrance" => {
+                "City" | "City Entrance" => {
+                    // Find the nearest CityEntrance tile within the city structure
+                    // so we can show the hire-hero screen.
+                    if let Some(entrance) = map_view.find_city_entrance_at_cursor() {
+                        map_view.set_cursor_pos(entrance.x, entrance.y);
+                    }
                     next_state.set(AppState::CityEntrance);
                     map_view_state.map_view = Some(map_view_box);
                     return;
@@ -871,7 +876,7 @@ fn update_map_view(
 
             // Check for hero on this tile first — hero sprite takes priority.
             if let Some(hero) = session.state().hero_at(coord) {
-                let is_selected = hero.get_id() == selected_hero_id;
+                let is_selected = selected_hero_id == Some(hero.get_id());
                 sprite.color = if is_selected { SELECTED_HERO_COLOR } else { HERO_COLOR };
                 if let Some(atlas) = sprite.texture_atlas.as_mut() {
                     atlas.index =

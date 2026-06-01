@@ -154,9 +154,31 @@ impl MapViewApp {
 
     /// Sync cursor position to the currently selected hero.
     pub fn sync_cursor_to_hero(&mut self) {
-        let hero = self.session.selected_hero_position();
-        self.cursor_x = hero.x as isize;
-        self.cursor_y = hero.y as isize;
+        if let Some(id) = self.session.selected_hero_id() {
+            if let Some(hero) = self.session.state().hero(id) {
+                self.cursor_x = hero.position.x as isize;
+                self.cursor_y = hero.position.y as isize;
+                return;
+            }
+        }
+        // No hero — center on the team's city instead.
+        if let Ok(team_id) = self.session.state().get_active_team_id() {
+            // Prefer city entrance (where heroes can be hired).
+            if let Some(coord) = self.session.state().city_entrance_for_team(*team_id) {
+                self.cursor_x = coord.x as isize;
+                self.cursor_y = coord.y as isize;
+                return;
+            }
+            // Fall back to any owned city tile.
+            if let Some(coord) = self.session.state().city_owner_for_team(*team_id) {
+                self.cursor_x = coord.x as isize;
+                self.cursor_y = coord.y as isize;
+                return;
+            }
+        }
+        // Absolute fallback — (0, 0).
+        self.cursor_x = 0;
+        self.cursor_y = 0;
     }
 
     /// Returns the current footer status line.
@@ -179,6 +201,12 @@ impl MapViewApp {
     /// Places the cursor at an absolute map coordinate and applies city snapping.
     ///
     /// Returns `true` when the resulting cursor position changed.
+    /// Sets the cursor position to the given map coordinates.
+    pub fn set_cursor_pos(&mut self, x: u32, y: u32) {
+        self.cursor_x = x as isize;
+        self.cursor_y = y as isize;
+    }
+
     pub fn set_cursor_from_pointer(
         &mut self,
         x: usize,
@@ -216,6 +244,35 @@ impl MapViewApp {
             changed = true;
         }
         changed
+    }
+
+    /// Finds the nearest `CityEntrance` tile within the city structure under the cursor.
+    ///
+    /// Uses flood fill from the cursor position to discover all connected city/entrance
+    /// tiles, then returns the `CityEntrance` closest to the cursor (Manhattan distance).
+    /// Returns `None` if the cursor is not on a city tile or no entrance exists.
+    pub fn find_city_entrance_at_cursor(&self) -> Option<MapCoord> {
+        use engine::state_flood::flood_city;
+        use engine::map::tile::Tiles;
+
+        let coord = MapCoord::new(
+            self.cursor_x.max(0) as u32,
+            self.cursor_y.max(0) as u32,
+        );
+        let city_tiles = flood_city(&self.session.state().map, coord);
+        let cursor = MapCoord::new(coord.x, coord.y);
+        city_tiles
+            .iter()
+            .filter(|c| {
+                self.session.state().map.get_tile(**c)
+                    .map(|t| t.kind == Tiles::CityEntrance)
+                    .unwrap_or(false)
+            })
+            .min_by_key(|c| {
+                (c.x as i32).abs_diff(cursor.x as i32)
+                    + (c.y as i32).abs_diff(cursor.y as i32)
+            })
+            .copied()
     }
 
     /// Detects what structure (if any) is under the cursor.
@@ -538,19 +595,20 @@ impl MapViewApp {
         }
     }
 
+    /// Centers the view on the cursor position (which tracks the selected hero
+    /// or the team's city when no hero exists).
     pub fn center_on_hero(&mut self, visible_cols: usize, visible_rows: usize) -> bool {
-        let hero = self.session.selected_hero_position();
-        let hero_x = hero.x as usize;
-        let hero_y = hero.y as usize;
+        let cx = self.cursor_x.max(0) as usize;
+        let cy = self.cursor_y.max(0) as usize;
 
         let map = &self.session.state().map;
         let max_x = map.tile_width().saturating_sub(visible_cols as u32) as usize;
         let max_y = map.tile_height().saturating_sub(visible_rows as u32) as usize;
 
         let target_x =
-            if hero_x >= visible_cols / 2 { (hero_x - visible_cols / 2).min(max_x) } else { 0 };
+            if cx >= visible_cols / 2 { (cx - visible_cols / 2).min(max_x) } else { 0 };
         let target_y =
-            if hero_y >= visible_rows / 2 { (hero_y - visible_rows / 2).min(max_y) } else { 0 };
+            if cy >= visible_rows / 2 { (cy - visible_rows / 2).min(max_y) } else { 0 };
 
         let changed = self.view_x != target_x || self.view_y != target_y;
         self.view_x = target_x;

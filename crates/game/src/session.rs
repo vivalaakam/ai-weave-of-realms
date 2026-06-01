@@ -15,7 +15,7 @@ use engine::Direction;
 pub struct GameSession {
     map_name: String,
     state: GameState,
-    selected_hero_id: HeroId,
+    selected_hero_id: Option<HeroId>,
 }
 
 impl GameSession {
@@ -25,15 +25,16 @@ impl GameSession {
     /// * `map_name` - Display name of the loaded map or save.
     /// * `state` - Loaded engine state.
     ///
-    /// # Returns
-    /// A new [`GameSession`] ready for rendering and input.
-    ///
-    /// # Errors
-    /// Returns [`EngineError::InvalidTiles`] if the state has no heroes to select.
-    pub fn from_state(map_name: String, state: GameState) -> Result<Self, EngineError> {
-        let selected_hero_id = select_hero(&state)
-            .ok_or_else(|| EngineError::InvalidTiles("save has no heroes".to_string()))?;
-        Ok(Self { map_name, state, selected_hero_id })
+    /// # Note
+    /// If no heroes exist yet (e.g. player teams need to hire their first hero),
+    /// `selected_hero_id` is set to `None`.
+    pub fn from_state(map_name: String, state: GameState) -> Self {
+        let selected_hero_id = select_hero(&state);
+        Self {
+            map_name,
+            state,
+            selected_hero_id,
+        }
     }
 
     /// Returns the display name of the loaded map.
@@ -51,44 +52,46 @@ impl GameSession {
         &mut self.state
     }
 
-    /// Returns the selected hero id.
-    pub fn selected_hero_id(&self) -> HeroId {
+    /// Returns the selected hero id, if any.
+    pub fn selected_hero_id(&self) -> Option<HeroId> {
         self.selected_hero_id
     }
 
-    /// Returns the selected hero position.
+    /// Sets the selected hero id (e.g. after hiring the first hero).
+    pub fn set_selected_hero_id(&mut self, id: HeroId) {
+        self.selected_hero_id = Some(id);
+    }
+
+    /// Returns the selected hero position, or a default (0,0) if no hero selected.
     pub fn selected_hero_position(&self) -> MapCoord {
-        self.state
-            .hero(self.selected_hero_id)
-            .map(|hero| hero.position)
+        self.selected_hero_id
+            .and_then(|id| self.state.hero(id).map(|hero| hero.position))
             .unwrap_or(MapCoord::new(0, 0))
     }
 
     /// Moves the selected hero by one tile using the shared engine logic.
     ///
-    /// # Arguments
-    /// * `direction` - Single-step movement direction.
-    ///
-    /// # Returns
-    /// The new hero position after a successful move.
-    ///
     /// # Errors
-    /// Returns any engine move error such as impassable terrain or zero movement points.
+    /// Returns any engine move error such as impassable terrain or zero movement points,
+    /// or if no hero is currently selected.
     pub fn move_selected_hero(&mut self, direction: Direction) -> Result<MapCoord, EngineError> {
-        self.state.move_hero(self.selected_hero_id, direction)?;
+        let id = self.selected_hero_id.ok_or_else(|| {
+            EngineError::InvalidTiles("no hero selected".to_string())
+        })?;
+        self.state.move_hero(id, direction)?;
         Ok(self.selected_hero_position())
     }
 
     /// Cycles to the next living player-controlled hero.
     ///
     /// If the current hero is the only living player hero, it stays selected.
-    /// Updates both `selected_hero_id` and the engine's `active_hero` map so
-    /// that subsequent cycles start from the correct position.
+    /// Does nothing if no hero is currently selected.
     pub fn cycle_selected_hero(&mut self) {
-        let player_team = self.state.hero(self.selected_hero_id).map(|h| h.team_id);
+        let Some(id) = self.selected_hero_id else { return };
+        let player_team = self.state.hero(id).map(|h| h.team_id);
         if let Some(team_id) = player_team {
             if let Some(next) = self.state.get_next_hero(team_id) {
-                self.selected_hero_id = next;
+                self.selected_hero_id = Some(next);
                 self.state.set_active_hero(team_id, Some(next));
             }
         }
@@ -97,16 +100,8 @@ impl GameSession {
     /// Ends the current team's turn, advances to the next team, and selects
     /// its first hero.
     ///
-    /// If the next team is player-controlled, the player gains control of it.
-    /// If it is AI-controlled, the turn advances automatically again until a
-    /// player team's turn is reached (or all teams have acted, completing a
-    /// full round).
-    ///
-    /// # Returns
-    /// A status summary string after the turn transition.
-    ///
-    /// # Errors
-    /// Returns any engine error from `on_turn`.
+    /// If the next team has no heroes yet (e.g. player needs to hire one),
+    /// `selected_hero_id` becomes `None`.
     pub fn end_turn(&mut self) -> Result<String, EngineError> {
         // Finish the current team's turn (reset movement, increment turn counter).
         self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
@@ -117,9 +112,9 @@ impl GameSession {
         // Start the new team's turn (reset movement, increment turn counter).
         self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
 
-        // Select the first hero of the new team.
-        if let Some(next) = self.state.get_next_hero(next_team) {
-            self.selected_hero_id = next;
+        // Select the first hero of the new team, if one exists.
+        self.selected_hero_id = self.state.get_next_hero(next_team);
+        if let Some(next) = self.selected_hero_id {
             self.state.set_active_hero(next_team, Some(next));
         }
 
@@ -128,13 +123,16 @@ impl GameSession {
 
     /// Returns a short one-line status summary for HUD rendering.
     pub fn summary(&self) -> String {
-        let Some(hero) = self.state.hero(self.selected_hero_id) else {
+        let Some(id) = self.selected_hero_id else {
+            return "No hero – hire one at a city entrance".to_string();
+        };
+        let Some(hero) = self.state.hero(id) else {
             return "?".to_string();
         };
         let team_heroes = self.state.get_team_alive_heroes_ids(hero.team_id);
         let hero_index = team_heroes
             .iter()
-            .position(|&id| id == self.selected_hero_id)
+            .position(|&hid| hid == id)
             .unwrap_or(0)
             .saturating_add(1);
         let total_team = team_heroes.len();

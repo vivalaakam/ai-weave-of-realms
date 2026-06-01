@@ -36,6 +36,6 @@ pub mod spawn;
 pub mod team;
 
 mod save;
-mod state_flood;
+pub mod state_flood;
 #[cfg(test)]
 pub mod test_utils;
