@@ -2,7 +2,7 @@ use crate::error::EngineError;
 use crate::game_state::GameState;
 use crate::hero::{Hero, HeroId, TeamId};
 use crate::hero_class::HeroClass;
-use crate::map::game_map::{GameMap, MapCoord, ResourceKind, ResourceNode};
+use crate::map::game_map::{GameMap, MapCoord, ResourceKind, ResourceNode, RESOURCE_KIND_COUNT};
 use crate::map::tile::Tiles;
 use crate::rng::SeededRng;
 use crate::score::{ScoreBoard, ScoreEvent};
@@ -13,7 +13,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 const SAVE_MAGIC: [u8; 4] = *b"RPGS";
-const SAVE_VERSION: u16 = 4;
+const SAVE_VERSION: u16 = 5;
 
 pub(crate) fn to_save_bytes(
     map: &GameMap,
@@ -109,6 +109,11 @@ pub(crate) fn to_save_bytes_with_name(
         writer.push_u8(team.color.2);
         writer.push_u8(if team.is_player_controlled() { 1 } else { 0 });
         writer.push_u32(team.get_turn());
+        // Treasury (save version 5+).
+        writer.push_u32(team.gold());
+        for amount in team.resources() {
+            writer.push_u32(amount);
+        }
     }
 
     let order_count = to_u32(teams_order.len(), "teams order")?;
@@ -295,6 +300,13 @@ pub(crate) fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
         let turn = reader.read_u32()?;
         let mut team = Team::new(id, name, (r, g, b), player_controlled);
         team.set_turn(turn);
+        // Treasury (save version 5+).
+        if version >= 5 {
+            team.set_gold(reader.read_u32()?);
+            for index in 0..RESOURCE_KIND_COUNT {
+                team.set_resource(index, reader.read_u32()?);
+            }
+        }
         teams.insert(id, team);
     }
 

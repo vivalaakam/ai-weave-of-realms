@@ -7,6 +7,7 @@
 #     Column formula: atlas_index = row * 49 + col_within_row
 #   - name: display name
 #   - hp, atk, def, spd: base stats (movement = 20 + spd)
+#   - cost: gold price to hire (multiple of 5, in the 40-60 range)
 #   - description: short flavour text
 #
 # The atlas layout distributes 8 classes per row across 3 rows:
@@ -24,6 +25,7 @@ heroes:
     atk: 15
     def: 25
     spd: 8
+    cost: 45
     description: "Stalwart defender with heavy armour"
 
   paladin:
@@ -34,6 +36,7 @@ heroes:
     atk: 12
     def: 28
     spd: 6
+    cost: 55
     description: "Holy warrior, toughest in the realm"
 
   guardian:
@@ -44,6 +47,7 @@ heroes:
     atk: 10
     def: 30
     spd: 5
+    cost: 50
     description: "Immovable shield of therealm"
 
   hoplite:
@@ -54,6 +58,7 @@ heroes:
     atk: 18
     def: 22
     spd: 10
+    cost: 50
     description: "Disciplined phalanx fighter"
 
   warden:
@@ -64,6 +69,7 @@ heroes:
     atk: 14
     def: 26
     spd: 7
+    cost: 50
     description: "Nature's unbreakable protector"
 
   templar:
@@ -74,6 +80,7 @@ heroes:
     atk: 20
     def: 20
     spd: 11
+    cost: 55
     description: "Faith and steel in equal measure"
 
   shieldbearer:
@@ -84,6 +91,7 @@ heroes:
     atk: 8
     def: 32
     spd: 4
+    cost: 50
     description: "Wall of iron, will of stone"
 
   sentinel:
@@ -94,6 +102,7 @@ heroes:
     atk: 16
     def: 24
     spd: 9
+    cost: 50
     description: "Vigilant watchman, ever ready"
 
   # ── Row 1: Fighters & Attackers ───────────────────────────────────
@@ -105,6 +114,7 @@ heroes:
     atk: 28
     def: 12
     spd: 12
+    cost: 45
     description: "Battle-hardened berserker"
 
   berserker:
@@ -115,6 +125,7 @@ heroes:
     atk: 32
     def: 8
     spd: 14
+    cost: 55
     description: "Rage-fuelled devastation"
 
   samurai:
@@ -125,6 +136,7 @@ heroes:
     atk: 30
     def: 10
     spd: 13
+    cost: 60
     description: "Blade strikes with deadly precision"
 
   gladiator:
@@ -135,6 +147,7 @@ heroes:
     atk: 26
     def: 14
     spd: 11
+    cost: 50
     description: "Arena champion, crowd favourite"
 
   rogue:
@@ -145,6 +158,7 @@ heroes:
     atk: 24
     def: 6
     spd: 18
+    cost: 45
     description: "Swift shadow, deadly backstab"
 
   assassin:
@@ -155,6 +169,7 @@ heroes:
     atk: 28
     def: 4
     spd: 20
+    cost: 60
     description: "One strike, one kill"
 
   ranger:
@@ -165,6 +180,7 @@ heroes:
     atk: 20
     def: 10
     spd: 16
+    cost: 55
     description: "Wilderness hunter, bow master"
 
   scout:
@@ -175,6 +191,7 @@ heroes:
     atk: 18
     def: 8
     spd: 22
+    cost: 40
     description: "Eyes everywhere, fastest on the field"
 
   # ── Row 2: Specialists & Mages ────────────────────────────────────
@@ -186,6 +203,7 @@ heroes:
     atk: 30
     def: 6
     spd: 12
+    cost: 60
     description: "Arcane devastator, glass cannon"
 
   necromancer:
@@ -196,6 +214,7 @@ heroes:
     atk: 28
     def: 4
     spd: 14
+    cost: 60
     description: "Commands the dead, drains the living"
 
   healer:
@@ -206,6 +225,7 @@ heroes:
     atk: 8
     def: 14
     spd: 10
+    cost: 50
     description: "Mends wounds, sustains allies"
 
   priest:
@@ -216,6 +236,7 @@ heroes:
     atk: 10
     def: 16
     spd: 8
+    cost: 50
     description: "Divine blessing, purifying light"
 
   enchanter:
@@ -226,6 +247,7 @@ heroes:
     atk: 22
     def: 8
     spd: 15
+    cost: 55
     description: "Buffs allies, hexes foes"
 
   alchemist:
@@ -236,6 +258,7 @@ heroes:
     atk: 18
     def: 10
     spd: 13
+    cost: 55
     description: "Potions and explosions in equal measure"
 
   druid:
@@ -246,6 +269,7 @@ heroes:
     atk: 14
     def: 18
     spd: 9
+    cost: 55
     description: "Nature's wrath made manifest"
 
   sorcerer:
@@ -256,4 +280,5 @@ heroes:
     atk: 34
     def: 2
     spd: 11
+    cost: 60
     description: "Raw elemental power incarnate"

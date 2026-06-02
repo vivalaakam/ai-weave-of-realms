@@ -112,6 +112,9 @@ impl GameSession {
         // Start the new team's turn (reset movement, increment turn counter).
         self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
 
+        // Grant the new team its start-of-turn income (base gold + mine output).
+        self.state.grant_turn_income(next_team);
+
         // Select the first hero of the new team, if one exists.
         self.selected_hero_id = self.state.get_next_hero(next_team);
         if let Some(next) = self.selected_hero_id {

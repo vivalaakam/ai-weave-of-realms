@@ -65,7 +65,22 @@ impl ResourceKind {
             _ => Err(EngineError::InvalidTileKind(format!("unknown resource kind {id}"))),
         }
     }
+
+    /// Treasury slot index (0–3) for the four common resources, or `None` for
+    /// gold mines (which pay into the gold balance instead).
+    pub fn resource_index(self) -> Option<usize> {
+        match self {
+            Self::Resource1 => Some(0),
+            Self::Resource2 => Some(1),
+            Self::Resource3 => Some(2),
+            Self::Resource4 => Some(3),
+            Self::GoldMine => None,
+        }
+    }
 }
+
+/// Number of distinct common (non-gold) resource types a team can stockpile.
+pub const RESOURCE_KIND_COUNT: usize = 4;
 
 /// A resource point placed on the world map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

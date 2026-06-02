@@ -255,5 +255,9 @@ pub fn build_state_with_teams(
         state.set_city_owner(hero_pos, Some(team_id));
     }
     let _ = state.on_turn();
+    // Grant the first active team its start-of-turn income.
+    if let Ok(team_id) = state.get_active_team_id().copied() {
+        let _ = state.grant_turn_income(team_id);
+    }
     Ok(state)
 }

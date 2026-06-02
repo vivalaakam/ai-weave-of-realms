@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, VecDeque};
 
 use engine::Direction;
+use engine::game_state::ROD_COST;
 use engine::hero::HeroId;
 use engine::map::game_map::Direction as MapDir;
 use engine::map::game_map::{GameMap, MapCoord};
@@ -382,7 +383,7 @@ impl MapViewApp {
                     self.cursor_x = pos.x as isize;
                     self.cursor_y = pos.y as isize;
                     self.scroll_cursor_into_view(visible_cols, visible_rows);
-                    self.status = Some(self.session.summary());
+                    self.status = Some(format!("Resource rod placed (-{ROD_COST} gold)"));
                     MapViewOutcome::Changed
                 }
                 Err(e) => {

@@ -59,4 +59,12 @@ pub enum EngineError {
     ActiveTeamNotFound(TeamId),
     #[error("spawn error: {0}")]
     SpawnError(#[from] SpawnError),
+    /// A purchase was attempted without enough gold to cover its cost.
+    #[error("not enough gold: need {needed}, have {have}")]
+    InsufficientGold {
+        /// Gold required for the action.
+        needed: u32,
+        /// Gold currently available to the team.
+        have: u32,
+    },
 }

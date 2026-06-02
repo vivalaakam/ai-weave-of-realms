@@ -7,8 +7,8 @@ use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use engine::config::{TeamLogo, get_team_catalog};
-use engine::map::game_map::{MapCoord, ResourceKind};
+use engine::config::{TeamLogo, get_team_catalog, get_tile_config};
+use engine::map::game_map::{MapCoord, RESOURCE_KIND_COUNT, ResourceKind};
 use engine::map::tile::Tiles;
 
 #[derive(Component)]
@@ -31,6 +31,45 @@ pub struct PauseResumeButton;
 
 #[derive(Component)]
 pub struct PauseQuitButton;
+
+/// Marker for the bottom status-bar text (scopes the status update query).
+#[derive(Component)]
+pub struct StatusText;
+
+/// Marker for the top resource/turn HUD bar root.
+#[derive(Component)]
+pub struct TopBarRoot;
+
+/// Identifies which treasury value a top-bar text entity displays.
+#[derive(Component, Clone, Copy)]
+pub enum TopBarField {
+    /// Current team turn number.
+    Turn,
+    /// Gold balance.
+    Gold,
+    /// Stockpile of the resource at this index (0–3).
+    Resource(usize),
+}
+
+/// Tint for gold values in the HUD.
+const GOLD_COLOR: Color = Color::srgb(0.96, 0.82, 0.30);
+
+/// Atlas index of the gold pictogram, sourced from `tiles.yaml` (`gold` tile).
+fn gold_icon_index() -> usize {
+    get_tile_config().atlas_index("gold").unwrap_or(0) as usize
+}
+
+/// Atlas indices of the four resource pictograms, sourced from `tiles.yaml`
+/// (`resource` tile variants, in declaration order).
+fn resource_icon_indices() -> [usize; RESOURCE_KIND_COUNT] {
+    let mut icons = [0usize; RESOURCE_KIND_COUNT];
+    if let Some(indexes) = get_tile_config().atlas_indexes("resource") {
+        for (slot, index) in icons.iter_mut().zip(indexes) {
+            *slot = index as usize;
+        }
+    }
+    icons
+}
 
 #[derive(Resource)]
 pub struct MapViewState {
@@ -410,7 +449,103 @@ fn spawn_map_view_entities(
                 Text::new(""),
                 TextFont { font_size: FontSize::Px(14.0), ..default() },
                 TextColor(TEXT_COLOR),
+                StatusText,
             ));
+        });
+
+    spawn_top_bar(commands, atlas_handle, layout_handle);
+}
+
+/// Spawns the top HUD bar: current turn number, gold balance, and the four
+/// resource stockpiles, each labelled with its atlas pictogram. The text
+/// entities are tagged with [`TopBarField`] so [`update_map_view`] can refresh
+/// their values every redraw.
+fn spawn_top_bar(
+    commands: &mut Commands,
+    atlas_image: Handle<Image>,
+    atlas_layout: Handle<TextureAtlasLayout>,
+) {
+    // One labelled cell: optional pictogram + value text tagged with `field`.
+    fn cell(
+        parent: &mut ChildSpawnerCommands,
+        atlas_image: &Handle<Image>,
+        atlas_layout: &Handle<TextureAtlasLayout>,
+        icon: Option<usize>,
+        field: TopBarField,
+        color: Color,
+    ) {
+        parent
+            .spawn((Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                ..default()
+            },))
+            .with_children(|cell| {
+                if let Some(index) = icon {
+                    cell.spawn((
+                        ImageNode {
+                            image: atlas_image.clone(),
+                            texture_atlas: Some(TextureAtlas {
+                                layout: atlas_layout.clone(),
+                                index,
+                            }),
+                            ..default()
+                        },
+                        Node { width: Val::Px(18.0), height: Val::Px(18.0), ..default() },
+                    ));
+                }
+                cell.spawn((
+                    Text::new("0"),
+                    TextFont { font_size: FontSize::Px(15.0), ..default() },
+                    TextColor(color),
+                    field,
+                ));
+            });
+    }
+
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Px(32.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::FlexStart,
+                column_gap: Val::Px(18.0),
+                padding: UiRect::horizontal(Val::Px(12.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.1, 0.1, 0.14)),
+            TopBarRoot,
+        ))
+        .with_children(|parent| {
+            let resource_icons = resource_icon_indices();
+            // Turn number (no icon, plain text label baked into the value).
+            cell(parent, &atlas_image, &atlas_layout, None, TopBarField::Turn, TEXT_COLOR);
+            // Gold balance.
+            cell(
+                parent,
+                &atlas_image,
+                &atlas_layout,
+                Some(gold_icon_index()),
+                TopBarField::Gold,
+                GOLD_COLOR,
+            );
+            // Four resource stockpiles.
+            for (idx, &icon) in resource_icons.iter().enumerate() {
+                cell(
+                    parent,
+                    &atlas_image,
+                    &atlas_layout,
+                    Some(icon),
+                    TopBarField::Resource(idx),
+                    TEXT_COLOR,
+                );
+            }
         });
 }
 
@@ -643,7 +778,8 @@ fn update_map_view(
     mut map_view_state: ResMut<MapViewState>,
     mut next_state: ResMut<NextState<AppState>>,
     mut reader: MessageReader<UiAction>,
-    mut status_query: Query<&mut Text>,
+    mut status_query: Query<&mut Text, (With<StatusText>, Without<TopBarField>)>,
+    mut top_bar_query: Query<(&mut Text, &TopBarField), Without<StatusText>>,
     mut layers: TileLayers,
     mut cursor_query: Query<
         (&mut Transform, &mut Sprite),
@@ -1020,6 +1156,22 @@ fn update_map_view(
         let cursor_y = map_view.cursor_y();
         let selected_hero_id = session.selected_hero_id();
 
+        // Refresh the top HUD bar (turn number, gold, resources) for the active team.
+        if let Ok(team) = session.state().get_active_team() {
+            let turn = team.get_turn();
+            let gold = team.gold();
+            let resources = team.resources();
+            for (mut text, field) in top_bar_query.iter_mut() {
+                text.0 = match *field {
+                    TopBarField::Turn => format!("Turn {turn}"),
+                    TopBarField::Gold => format!("{gold}"),
+                    TopBarField::Resource(idx) => {
+                        format!("{}", resources.get(idx).copied().unwrap_or(0))
+                    }
+                };
+            }
+        }
+
         let city_cursor = if cursor_x >= 0 && cursor_y >= 0 {
             let cursor_coord = MapCoord::new(cursor_x as u32, cursor_y as u32);
             map.get_tile(cursor_coord).map(|tile| is_city_core_tile(tile.kind)).unwrap_or(false)
@@ -1220,6 +1372,7 @@ fn update_map_view(
 fn exit_map_view(
     mut commands: Commands,
     query: Query<Entity, With<MapViewRoot>>,
+    top_bar_query: Query<Entity, With<TopBarRoot>>,
     tile_query: Query<Entity, With<MapTile>>,
     land_query: Query<Entity, With<LandOwnerTile>>,
     rod_query: Query<Entity, With<ResourceRodTile>>,
@@ -1230,6 +1383,9 @@ fn exit_map_view(
     mut map_view_state: ResMut<MapViewState>,
 ) {
     for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+    for entity in top_bar_query.iter() {
         commands.entity(entity).despawn();
     }
     for entity in tile_query.iter() {

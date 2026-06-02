@@ -25,7 +25,8 @@ use tracing::{info, instrument};
 use crate::combat::{self, CombatResult};
 use crate::error::EngineError;
 use crate::hero::{Hero, HeroId, TeamId};
-use crate::map::game_map::{Direction, GameMap, MapCoord};
+use crate::hero_class::HeroClass;
+use crate::map::game_map::{Direction, GameMap, MapCoord, ResourceKind};
 use crate::map::tile::Tiles;
 use crate::rng::SeededRng;
 use crate::save;
@@ -50,6 +51,17 @@ pub enum GameOutcome {
     /// All heroes of every player team are dead.
     Defeat,
 }
+
+// ─── Economy ────────────────────────────────────────────────────────────────
+
+/// Gold granted to a team at the start of each of its turns.
+pub const TURN_GOLD_INCOME: u32 = 50;
+/// Gold cost to place a resource-control rod.
+pub const ROD_COST: u32 = 50;
+/// Gold earned per turn from each owned gold mine.
+pub const GOLD_MINE_INCOME: u32 = 25;
+/// Resource units earned per turn from each owned resource mine.
+pub const RESOURCE_MINE_INCOME: u32 = 10;
 
 // ─── TurnEvent ────────────────────────────────────────────────────────────────
 
@@ -76,6 +88,8 @@ pub enum TurnEvent {
     TurnAdvanced { turn: u32 },
     /// A team's per-team turn counter advanced (emitted at the start of that team's turn).
     TeamTurnStarted { team_id: TeamId, turn: u32 },
+    /// A team collected its start-of-turn income (base gold plus mine output).
+    TeamIncomeCollected { team_id: TeamId, gold: u32 },
 }
 
 // ─── GameState ────────────────────────────────────────────────────────────────
@@ -140,6 +154,34 @@ impl GameState {
         self.hero_pointer += 1;
         info!(hero_id = next_hero_id, "Added hero");
         next_hero_id
+    }
+
+    /// Hires a hero of `class` for `team_id` at `coord`, charging the class's
+    /// [`hire_cost`](HeroClass::hire_cost) from the team's gold.
+    ///
+    /// The tile must be a city owned by the team and free of other heroes.
+    ///
+    /// # Errors
+    /// - [`EngineError::InvalidTiles`] if the tile is occupied or not an owned city.
+    /// - [`EngineError::InsufficientGold`] if the team cannot afford the hire.
+    pub fn hire_hero(
+        &mut self,
+        team_id: TeamId,
+        class: HeroClass,
+        coord: MapCoord,
+        name: impl Into<String>,
+    ) -> Result<HeroId, EngineError> {
+        if self.hero_at(coord).is_some() || self.city_owner(coord) != Some(team_id) {
+            return Err(EngineError::InvalidTiles("cannot hire on this tile".into()));
+        }
+
+        let cost = class.hire_cost();
+        let team = self.teams.get_mut(&team_id).ok_or(EngineError::ActiveTeamNotFound(team_id))?;
+        if !team.spend_gold(cost) {
+            return Err(EngineError::InsufficientGold { needed: cost, have: team.gold() });
+        }
+
+        Ok(self.add_hero(Hero::new(0, class, name, coord, team_id)))
     }
 
     pub fn get_hero(&self, id: HeroId) -> Option<&Hero> {
@@ -255,6 +297,56 @@ impl GameState {
         }
 
         Ok(TurnEvent::TeamTurnStarted { team_id, turn })
+    }
+
+    /// Grants `team_id` its start-of-turn income: a flat gold stipend plus the
+    /// output of every mine the team owns. Gold mines pay gold; resource mines
+    /// add to the matching resource stockpile.
+    ///
+    /// Call this once when a team's turn begins (after [`on_turn`](Self::on_turn)).
+    pub fn grant_turn_income(&mut self, team_id: TeamId) -> TurnEvent {
+        // Tally mine output first to avoid borrowing the team while reading the map.
+        let mut gold = TURN_GOLD_INCOME;
+        let mut resources = [0u32; 4];
+        for (&coord, &owner) in self.resource_owners.iter() {
+            if owner != team_id {
+                continue;
+            }
+            match self.resource_income_kind(coord) {
+                Some(kind) if kind.is_gold() => gold += GOLD_MINE_INCOME,
+                Some(kind) => {
+                    if let Some(idx) = kind.resource_index() {
+                        resources[idx] += RESOURCE_MINE_INCOME;
+                    }
+                }
+                None => {}
+            }
+        }
+
+        if let Some(team) = self.teams.get_mut(&team_id) {
+            team.add_gold(gold);
+            for (idx, amount) in resources.iter().enumerate() {
+                if *amount > 0 {
+                    team.add_resource(idx, *amount);
+                }
+            }
+        }
+
+        TurnEvent::TeamIncomeCollected { team_id, gold }
+    }
+
+    /// Returns the resource kind produced by the mine at `coord`, falling back
+    /// to the tile kind for maps (e.g. Tiled imports) that carry no resource
+    /// nodes. Returns `None` when the tile is not a mine at all.
+    fn resource_income_kind(&self, coord: MapCoord) -> Option<ResourceKind> {
+        if let Some(node) = self.map.resource_node_at(coord) {
+            return Some(node.kind);
+        }
+        match self.map.get_tile(coord).map(|t| t.kind) {
+            Ok(Tiles::Gold) => Some(ResourceKind::GoldMine),
+            Ok(Tiles::Resource) => Some(ResourceKind::Resource1),
+            _ => None,
+        }
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -552,6 +644,11 @@ impl GameState {
         let Some(new_position) = self.first_available_adjacent_tile(rod_coord, hero_id) else {
             return Err(EngineError::InvalidTiles("no adjacent passable tile for hero".into()));
         };
+
+        let team = self.teams.get_mut(&team_id).ok_or(EngineError::ActiveTeamNotFound(team_id))?;
+        if !team.spend_gold(ROD_COST) {
+            return Err(EngineError::InsufficientGold { needed: ROD_COST, have: team.gold() });
+        }
 
         self.resource_rods.insert(rod_coord, team_id);
         self.heroes.get_mut(&hero_id).unwrap().position = new_position;
@@ -851,6 +948,7 @@ mod tests {
     use crate::hero_class::HeroClass;
     use crate::map::game_map::{ResourceKind, ResourceNode};
     use crate::map::tile::Tile;
+    use crate::team::STARTING_GOLD;
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
         let tiles = vec![Tile { kind: Tiles::Meadow }; (w * h) as usize];
@@ -958,6 +1056,79 @@ mod tests {
         assert_eq!(state.resource_owner(gold), Some(0));
         assert_eq!(state.land_owner(gold), Some(0));
         assert_eq!(state.land_owner(MapCoord::new(4, 3)), Some(0));
+    }
+
+    #[test]
+    fn place_resource_rod_charges_gold() {
+        let map = meadow_map(5, 5);
+        let mut state = make_state(map);
+        let hero_id = state.add_hero(player(MapCoord::new(2, 2)));
+        let before = state.get_team(0).unwrap().gold();
+
+        state.place_resource_rod(hero_id).unwrap();
+
+        assert_eq!(state.get_team(0).unwrap().gold(), before - ROD_COST);
+    }
+
+    #[test]
+    fn place_resource_rod_fails_without_gold() {
+        let map = meadow_map(5, 5);
+        let mut state = make_state(map);
+        let hero_id = state.add_hero(player(MapCoord::new(2, 2)));
+        state.teams.get_mut(&0).unwrap().spend_gold(STARTING_GOLD);
+
+        let err = state.place_resource_rod(hero_id).unwrap_err();
+
+        assert!(matches!(err, EngineError::InsufficientGold { needed: ROD_COST, .. }));
+        // No rod placed, no gold spent below zero.
+        assert_eq!(state.resource_rod_owner(MapCoord::new(2, 2)), None);
+        assert_eq!(state.get_team(0).unwrap().gold(), 0);
+    }
+
+    #[test]
+    fn grant_turn_income_pays_base_plus_mine_output() {
+        let mut map = meadow_map(5, 5);
+        let gold_mine = MapCoord::new(1, 1);
+        let resource_mine = MapCoord::new(3, 3);
+        map.set_resource_nodes(vec![
+            ResourceNode { coord: gold_mine, kind: ResourceKind::GoldMine },
+            ResourceNode { coord: resource_mine, kind: ResourceKind::Resource2 },
+        ])
+        .unwrap();
+        let mut state = make_state(map);
+        state.set_resource_owner(gold_mine, Some(0));
+        state.set_resource_owner(resource_mine, Some(0));
+        let before = state.get_team(0).unwrap().gold();
+
+        let event = state.grant_turn_income(0);
+
+        let team = state.get_team(0).unwrap();
+        assert_eq!(team.gold(), before + TURN_GOLD_INCOME + GOLD_MINE_INCOME);
+        // Resource2 maps to treasury slot index 1.
+        assert_eq!(team.resource(1), RESOURCE_MINE_INCOME);
+        assert!(matches!(event, TurnEvent::TeamIncomeCollected { team_id: 0, .. }));
+    }
+
+    #[test]
+    fn hire_hero_charges_cost_and_blocks_when_poor() {
+        let map = meadow_map(5, 5);
+        let coord = MapCoord::new(2, 2);
+        let second = MapCoord::new(2, 3);
+        let mut state = make_state(map);
+        state.set_city_owner(coord, Some(0));
+        state.set_city_owner(second, Some(0));
+
+        let cost = HeroClass::Mage.hire_cost();
+        let before = state.get_team(0).unwrap().gold();
+        let hero_id = state.hire_hero(0, HeroClass::Mage, coord, "Gandalf").unwrap();
+        assert_eq!(state.get_hero(hero_id).unwrap().team_id, 0);
+        assert_eq!(state.get_team(0).unwrap().gold(), before - cost);
+
+        // Drain the treasury and confirm a second hire is rejected.
+        let remaining = state.get_team(0).unwrap().gold();
+        state.teams.get_mut(&0).unwrap().spend_gold(remaining);
+        let err = state.hire_hero(0, HeroClass::Mage, second, "Broke").unwrap_err();
+        assert!(matches!(err, EngineError::InsufficientGold { .. }));
     }
 
     #[test]

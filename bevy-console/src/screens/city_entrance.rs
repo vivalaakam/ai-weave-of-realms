@@ -2,8 +2,17 @@ use crate::input::UiAction;
 use crate::screens::AppState;
 use crate::screens::map_view::MapViewState;
 use bevy::prelude::*;
+use engine::error::EngineError;
 use engine::hero::Hero;
 use engine::hero_class::HeroClass;
+
+/// Tint for gold cost labels.
+const GOLD_COLOR: Color = Color::srgb(0.96, 0.82, 0.30);
+
+/// Atlas index of the gold pictogram, sourced from `tiles.yaml` (`gold` tile).
+fn gold_icon_index() -> usize {
+    engine::config::get_tile_config().atlas_index("gold").unwrap_or(0) as usize
+}
 
 const TEXT_COLOR: Color = Color::srgb(0.92, 0.92, 0.88);
 const SUBTLE_COLOR: Color = Color::srgb(0.72, 0.72, 0.76);
@@ -346,6 +355,36 @@ fn spawn_hero_select(
                                 TextFont { font_size: FontSize::Px(12.0), ..default() },
                                 TextColor(SUBTLE_COLOR),
                             ));
+                            // Hire cost: gold-mine pictogram + price.
+                            text_col
+                                .spawn((Node {
+                                    flex_direction: FlexDirection::Row,
+                                    align_items: AlignItems::Center,
+                                    column_gap: Val::Px(4.0),
+                                    ..default()
+                                },))
+                                .with_children(|cost_row| {
+                                    cost_row.spawn((
+                                        ImageNode {
+                                            image: atlas_image.clone(),
+                                            texture_atlas: Some(TextureAtlas {
+                                                layout: atlas_layout.clone(),
+                                                index: gold_icon_index(),
+                                            }),
+                                            ..default()
+                                        },
+                                        Node {
+                                            width: Val::Px(16.0),
+                                            height: Val::Px(16.0),
+                                            ..default()
+                                        },
+                                    ));
+                                    cost_row.spawn((
+                                        Text::new(format!("{}", class.hire_cost())),
+                                        TextFont { font_size: FontSize::Px(13.0), ..default() },
+                                        TextColor(GOLD_COLOR),
+                                    ));
+                                });
                         });
                 })
                 .id();
@@ -543,22 +582,23 @@ fn hire_hero_of_class(map_view_state: &mut ResMut<MapViewState>, class: HeroClas
 
         if let (Some(coord), Ok(team_id)) = (coord, team_id) {
             let state = map_view.session_mut().state_mut();
-            let can_hire =
-                state.hero_at(coord).is_none() && state.city_owner(coord) == Some(team_id);
-            if can_hire {
-                let hero_count = state.get_team_heroes(team_id).len();
-                let name = format!("{} {}", class.display_name(), hero_count + 1);
+            let hero_count = state.get_team_heroes(team_id).len();
+            let name = format!("{} {}", class.display_name(), hero_count + 1);
 
-                let hero = Hero::new(0, class, name, coord, team_id);
-                let new_id = state.add_hero(hero);
-
-                // Always make the newly hired hero the active hero.
-                map_view.session_mut().set_selected_hero_id(new_id);
-                map_view.sync_cursor_to_hero();
-
-                map_view.set_status(Some("Hero hired!".to_string()));
-            } else {
-                map_view.set_status(Some("Cannot hire here".to_string()));
+            match state.hire_hero(team_id, class, coord, name) {
+                Ok(new_id) => {
+                    // Always make the newly hired hero the active hero.
+                    map_view.session_mut().set_selected_hero_id(new_id);
+                    map_view.sync_cursor_to_hero();
+                    map_view.set_status(Some(format!("Hero hired! (-{} gold)", class.hire_cost())));
+                }
+                Err(EngineError::InsufficientGold { needed, have }) => {
+                    map_view
+                        .set_status(Some(format!("Not enough gold: need {needed}, have {have}")));
+                }
+                Err(_) => {
+                    map_view.set_status(Some("Cannot hire here".to_string()));
+                }
             }
         }
     }

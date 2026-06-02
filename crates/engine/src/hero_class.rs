@@ -101,6 +101,48 @@ impl HeroClass {
         }
     }
 
+    /// Gold cost to hire a hero of this class.
+    ///
+    /// Sourced from `assets/heroes.yaml` via the global hero catalogue. When the
+    /// catalogue has not been initialised (e.g. in unit tests), falls back to
+    /// [`default_hire_cost`](Self::default_hire_cost).
+    pub fn hire_cost(self) -> u32 {
+        crate::config::get_hero_catalog()
+            .and_then(|catalog| catalog.hire_cost(self as u8))
+            .unwrap_or_else(|| self.default_hire_cost())
+    }
+
+    /// Built-in fallback hire cost (multiple of 5, in the 40–60 range), used
+    /// when no hero catalogue is loaded. Mirrors the values in `heroes.yaml`.
+    fn default_hire_cost(self) -> u32 {
+        match self {
+            HeroClass::Knight => 45,
+            HeroClass::Paladin => 55,
+            HeroClass::Guardian => 50,
+            HeroClass::Hoplite => 50,
+            HeroClass::Warden => 50,
+            HeroClass::Templar => 55,
+            HeroClass::Shieldbearer => 50,
+            HeroClass::Sentinel => 50,
+            HeroClass::Warrior => 45,
+            HeroClass::Berserker => 55,
+            HeroClass::Samurai => 60,
+            HeroClass::Gladiator => 50,
+            HeroClass::Rogue => 45,
+            HeroClass::Assassin => 60,
+            HeroClass::Ranger => 55,
+            HeroClass::Scout => 40,
+            HeroClass::Mage => 60,
+            HeroClass::Necromancer => 60,
+            HeroClass::Healer => 50,
+            HeroClass::Priest => 50,
+            HeroClass::Enchanter => 55,
+            HeroClass::Alchemist => 55,
+            HeroClass::Druid => 55,
+            HeroClass::Sorcerer => 60,
+        }
+    }
+
     /// Display name for this hero class.
     pub fn display_name(self) -> &'static str {
         match self {
