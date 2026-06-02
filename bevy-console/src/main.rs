@@ -8,6 +8,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 mod app_host;
+mod atlas;
 mod frontend;
 mod input;
 mod screens;
@@ -67,6 +68,11 @@ fn main() {
         std::process::exit(1);
     }
 
+    if let Err(error) = engine::config::init_team_catalog(include_str!("../../assets/teams.yaml")) {
+        eprintln!("failed to load team catalog: {error}");
+        std::process::exit(1);
+    }
+
     let window_mode = if args.window_mode {
         WindowMode::Windowed
     } else {
@@ -94,6 +100,7 @@ fn main() {
             evaluator: args.evaluator,
         })
         .init_state::<screens::AppState>()
+        .add_plugins(atlas::TileAtlasPlugin)
         .add_plugins(input::InputPlugin)
         .add_plugins(screens::splash::SplashPlugin)
         .add_plugins(screens::map_select::MapSelectPlugin)

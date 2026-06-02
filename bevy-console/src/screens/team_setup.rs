@@ -1,123 +1,146 @@
 use crate::app_host::{PendingMapData, TeamConfig, build_state_with_teams};
+use crate::atlas::{TeamLogoImages, TileAtlas};
 use crate::input::UiAction;
 use crate::screens::AppState;
 use bevy::prelude::*;
+use engine::config::{TeamKind, TeamLogo, get_team_catalog};
 use engine::game_state::GameState;
 use std::collections::HashSet;
 
 #[derive(Component)]
 pub struct TeamSetupRoot;
 
+/// How a team is controlled in the upcoming game.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TeamControl {
+    /// Not part of the game.
+    Off,
+    /// Controlled by a human player (hot-seat allows several).
+    Human,
+    /// Controlled by the computer.
+    Cpu,
+}
+
+impl TeamControl {
+    /// Cycles to the next control state. `playable` teams may be Human; factions
+    /// can only be CPU, so they skip the Human state.
+    fn next(self, playable: bool) -> Self {
+        match (self, playable) {
+            (TeamControl::Off, true) => TeamControl::Human,
+            (TeamControl::Human, _) => TeamControl::Cpu,
+            (TeamControl::Cpu, _) => TeamControl::Off,
+            (TeamControl::Off, false) => TeamControl::Cpu,
+        }
+    }
+
+    /// Cycles to the previous control state (reverse of [`next`](Self::next)).
+    fn prev(self, playable: bool) -> Self {
+        match (self, playable) {
+            (TeamControl::Off, true) => TeamControl::Cpu,
+            (TeamControl::Cpu, true) => TeamControl::Human,
+            (TeamControl::Human, _) => TeamControl::Off,
+            (TeamControl::Off, false) => TeamControl::Cpu,
+            (TeamControl::Cpu, false) => TeamControl::Off,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            TeamControl::Off => "—",
+            TeamControl::Human => "Human",
+            TeamControl::Cpu => "CPU",
+        }
+    }
+
+    fn color(self) -> Color {
+        match self {
+            TeamControl::Off => CTRL_OFF,
+            TeamControl::Human => CTRL_HUMAN,
+            TeamControl::Cpu => CTRL_CPU,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct TeamRow {
+    pub name: String,
+    pub color: (u8, u8, u8),
+    pub kind: TeamKind,
+    pub logo: TeamLogo,
+    pub control: TeamControl,
+}
+
 #[derive(Resource)]
 pub struct TeamSetupState {
-    pub count: usize,
+    /// Currently highlighted row (0 = races selector, 1..=teams = team rows,
+    /// teams+1 = Play button).
     pub selected: usize,
     pub teams: Vec<TeamRow>,
+    /// How many hostile races to add to the game.
+    pub num_races: usize,
+    /// Maximum number of races available in the catalogue.
+    pub max_races: usize,
     pub status: Option<String>,
     pub needs_rebuild: bool,
 }
 
 impl Default for TeamSetupState {
     fn default() -> Self {
-        Self::new(2)
+        Self::from_catalog()
     }
 }
 
 impl TeamSetupState {
-    pub fn new(count: usize) -> Self {
-        let count = count.clamp(1, 8);
-        Self {
-            count,
-            selected: 0,
-            teams: (0..count)
-                .map(|i| TeamRow {
-                    name: generate_team_name(i),
-                    color: generate_team_color(i, count),
-                    player_controlled: i == 0,
-                })
-                .collect(),
-            status: None,
-            needs_rebuild: true,
-        }
-    }
+    fn from_catalog() -> Self {
+        let mut teams = Vec::new();
+        let mut max_races = 0;
 
-    pub fn rebuild(&mut self, new_count: usize) {
-        let new_count = new_count.clamp(1, 8);
-        let old = std::mem::take(&mut self.teams);
-        let mut new = Vec::with_capacity(new_count);
-        for i in 0..new_count {
-            if i < old.len() {
-                new.push(old[i].clone());
-            } else {
-                new.push(TeamRow {
-                    name: generate_team_name(i),
-                    color: generate_team_color(i, new_count),
-                    player_controlled: false,
+        if let Some(catalog) = get_team_catalog() {
+            // Playable teams first, then factions. The first playable team
+            // defaults to Human; everything else starts disabled.
+            for (i, def) in catalog.playable().into_iter().enumerate() {
+                teams.push(TeamRow {
+                    name: def.name.clone(),
+                    color: def.color,
+                    kind: def.kind,
+                    logo: def.logo.clone(),
+                    control: if i == 0 { TeamControl::Human } else { TeamControl::Off },
                 });
             }
+            for def in catalog.factions() {
+                teams.push(TeamRow {
+                    name: def.name.clone(),
+                    color: def.color,
+                    kind: def.kind,
+                    logo: def.logo.clone(),
+                    control: TeamControl::Off,
+                });
+            }
+            max_races = catalog.races().len();
         }
-        // Ensure at least one player-controlled team
-        let has_player = new.iter().any(|t| t.player_controlled);
-        if !has_player && !new.is_empty() {
-            new[0].player_controlled = true;
-        }
-        self.teams = new;
-        self.count = new_count;
-        if self.selected > self.count {
-            self.selected = self.count;
-        }
-    }
-}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TeamRow {
-    pub name: String,
-    pub color: (u8, u8, u8),
-    pub player_controlled: bool,
+        // Fallback when no catalogue is loaded (e.g. tests): one Human team.
+        if teams.is_empty() {
+            teams.push(TeamRow {
+                name: "Red".to_string(),
+                color: (220, 50, 50),
+                kind: TeamKind::Playable,
+                logo: TeamLogo::Tile(0),
+                control: TeamControl::Human,
+            });
+        }
+
+        Self { selected: 0, teams, num_races: 0, max_races, status: None, needs_rebuild: true }
+    }
+
+    /// Number of selectable rows below the races selector and above Play.
+    fn team_count(&self) -> usize {
+        self.teams.len()
+    }
 }
 
 const TITLE: &str = "Team Setup";
 const FOOTER: &str = "Up/Down: move | Left/Right: adjust | Enter: confirm | Esc: back";
-
-const ADJECTIVES: [&str; 30] = [
-    "Ember", "Crimson", "Azure", "Golden", "Shadow", "Iron", "Silver", "Storm", "Frost", "Blood",
-    "Dragon", "Phoenix", "Thunder", "Night", "Dawn", "Eternal", "Sacred", "Ancient", "Noble",
-    "Savage", "Wild", "Dark", "Bright", "Royal", "Venom", "Crystal", "Flame", "Phantom", "Solar",
-    "Void",
-];
-
-const NOUNS: [&str; 30] = [
-    "Legion",
-    "Vanguard",
-    "Order",
-    "Clan",
-    "Guild",
-    "Empire",
-    "Kingdom",
-    "Horde",
-    "Tribe",
-    "Covenant",
-    "Alliance",
-    "Fellowship",
-    "Brotherhood",
-    "Dominion",
-    "Republic",
-    "Dynasty",
-    "Host",
-    "Swarm",
-    "Collective",
-    "Circle",
-    "Syndicate",
-    "Cult",
-    "Squad",
-    "Brigade",
-    "Regiment",
-    "Battalion",
-    "Phalanx",
-    "Guard",
-    "Watch",
-    "Sentinels",
-];
 
 // Theme
 const BG_COLOR: Color = Color::srgb(0.08, 0.08, 0.12);
@@ -129,45 +152,14 @@ const ROW_BG_SELECTED: Color = Color::srgb(0.24, 0.24, 0.32);
 const ROW_BORDER: Color = Color::srgb(0.35, 0.35, 0.42);
 const ROW_BORDER_SELECTED: Color = Color::srgb(0.6, 0.6, 0.68);
 const CTRL_HUMAN: Color = Color::srgb(0.6, 0.85, 0.6);
-const CTRL_CPU: Color = Color::srgb(0.55, 0.55, 0.6);
+const CTRL_CPU: Color = Color::srgb(0.55, 0.6, 0.85);
+const CTRL_OFF: Color = Color::srgb(0.45, 0.45, 0.5);
+const KIND_FACTION: Color = Color::srgb(0.8, 0.65, 0.45);
 const STATUS_ERROR: Color = Color::srgb(0.9, 0.5, 0.5);
 const PLAY_BG: Color = Color::srgb(0.14, 0.14, 0.18);
 const PLAY_BORDER: Color = Color::srgb(0.4, 0.4, 0.48);
 const PLAY_BG_SELECTED: Color = Color::srgb(0.3, 0.3, 0.38);
 const PLAY_BORDER_SELECTED: Color = Color::srgb(0.7, 0.7, 0.78);
-
-fn generate_team_name(index: usize) -> String {
-    let adj = ADJECTIVES[index % ADJECTIVES.len()];
-    let noun = NOUNS[(index / ADJECTIVES.len()) % NOUNS.len()];
-    format!("{} {}", adj, noun)
-}
-
-fn generate_team_color(index: usize, total: usize) -> (u8, u8, u8) {
-    let hue = if total > 0 { (index as f64 / total as f64 * 360.0) as u16 % 360 } else { 0 };
-    hsl_to_rgb(hue, 75, 55)
-}
-
-fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (u8, u8, u8) {
-    let h = h as f64 / 360.0;
-    let s = s as f64 / 100.0;
-    let l = l as f64 / 100.0;
-    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let x = c * (1.0 - ((h * 6.0) % 2.0 - 1.0).abs());
-    let m = l - c / 2.0;
-    let (r1, g1, b1) = match (h * 6.0) as u8 {
-        0 | 1 => (c, x, 0.0),
-        2 => (x, c, 0.0),
-        3 => (0.0, c, x),
-        4 => (0.0, x, c),
-        5 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-    (
-        ((r1 + m) * 255.0).clamp(0.0, 255.0) as u8,
-        ((g1 + m) * 255.0).clamp(0.0, 255.0) as u8,
-        ((b1 + m) * 255.0).clamp(0.0, 255.0) as u8,
-    )
-}
 
 pub struct TeamSetupPlugin;
 
@@ -187,24 +179,66 @@ fn enter_team_setup(mut state: ResMut<TeamSetupState>) {
     state.needs_rebuild = true;
 }
 
+fn rgb(color: (u8, u8, u8)) -> Color {
+    Color::srgb(color.0 as f32 / 255.0, color.1 as f32 / 255.0, color.2 as f32 / 255.0)
+}
+
+/// Spawns the logo node (atlas tile or generated bitmap image) tinted by the
+/// team colour.
+fn spawn_logo(
+    row: &mut ChildSpawnerCommands,
+    team: &TeamRow,
+    atlas: &TileAtlas,
+    logo_images: &mut TeamLogoImages,
+    images: &mut Assets<Image>,
+) {
+    let tint = rgb(team.color);
+    let node = Node { width: Val::Px(22.0), height: Val::Px(22.0), ..default() };
+    match &team.logo {
+        TeamLogo::Tile(index) => {
+            row.spawn((
+                ImageNode {
+                    image: atlas.image.clone(),
+                    texture_atlas: Some(TextureAtlas {
+                        layout: atlas.layout.clone(),
+                        index: *index as usize,
+                    }),
+                    color: tint,
+                    ..default()
+                },
+                node,
+            ));
+        }
+        TeamLogo::Bitmap(_) => {
+            if let Some(handle) = logo_images.handle(images, &team.name, &team.logo) {
+                row.spawn((ImageNode { image: handle, color: tint, ..default() }, node));
+            } else {
+                row.spawn((node, BackgroundColor(tint)));
+            }
+        }
+    }
+}
+
 fn rebuild_team_setup_ui(
     mut commands: Commands,
     mut state: ResMut<TeamSetupState>,
     root_q: Query<Entity, With<TeamSetupRoot>>,
+    atlas: Res<TileAtlas>,
+    mut logo_images: ResMut<TeamLogoImages>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     if !state.needs_rebuild {
         return;
     }
     state.needs_rebuild = false;
 
-    // Despawn existing root (and its children via hierarchy)
     if let Some(root) = root_q.iter().next() {
         commands.entity(root).despawn_children().despawn();
     }
 
     let sel = state.selected;
-    let row_count = state.count + 1; // +1 for team count selector
-    let play_selected = sel == row_count;
+    let play_row = state.team_count() + 1;
+    let play_selected = sel == play_row;
 
     commands
         .spawn((
@@ -214,7 +248,7 @@ fn rebuild_team_setup_ui(
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(10.0),
+                row_gap: Val::Px(8.0),
                 ..default()
             },
             BackgroundColor(BG_COLOR),
@@ -229,60 +263,50 @@ fn rebuild_team_setup_ui(
 
             parent.spawn((Node::default(), BackgroundColor(Color::NONE)));
 
-            // Team count selector (row 0)
-            let count_bg = if sel == 0 { ROW_BG_SELECTED } else { ROW_BG };
-            let count_border = if sel == 0 { ROW_BORDER_SELECTED } else { ROW_BORDER };
+            // Races selector (row 0).
+            let races_bg = if sel == 0 { ROW_BG_SELECTED } else { ROW_BG };
+            let races_border = if sel == 0 { ROW_BORDER_SELECTED } else { ROW_BORDER };
             parent
                 .spawn((
                     Node {
-                        width: Val::Px(480.0),
-                        height: Val::Px(40.0),
+                        width: Val::Px(520.0),
+                        height: Val::Px(38.0),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(12.0),
                         border: UiRect::all(Val::Px(2.0)),
                         ..default()
                     },
-                    BackgroundColor(count_bg),
-                    BorderColor::all(count_border),
+                    BackgroundColor(races_bg),
+                    BorderColor::all(races_border),
                 ))
                 .with_children(|row| {
-                    let label = if sel == 0 {
-                        format!("Teams: {}", state.count)
-                    } else {
-                        format!("  Teams: {}", state.count)
-                    };
                     row.spawn((
-                        Text::new(label),
-                        TextFont { font_size: FontSize::Px(18.0), ..default() },
+                        Text::new(format!(
+                            "Hostile races: {} / {}",
+                            state.num_races, state.max_races
+                        )),
+                        TextFont { font_size: FontSize::Px(16.0), ..default() },
                         TextColor(TEXT_COLOR),
                     ));
                 });
 
-            // Team rows
+            // Team rows.
             for (i, team) in state.teams.iter().enumerate() {
                 let row_idx = i + 1;
-                let color = Color::srgb(
-                    team.color.0 as f32 / 255.0,
-                    team.color.1 as f32 / 255.0,
-                    team.color.2 as f32 / 255.0,
-                );
                 let is_sel = row_idx == sel;
                 let bg = if is_sel { ROW_BG_SELECTED } else { ROW_BG };
                 let border = if is_sel { ROW_BORDER_SELECTED } else { ROW_BORDER };
-                let ctrl_label = if team.player_controlled { "Human" } else { "CPU" };
-                let ctrl_color = if team.player_controlled { CTRL_HUMAN } else { CTRL_CPU };
 
                 parent
                     .spawn((
                         Node {
-                            width: Val::Px(480.0),
-                            height: Val::Px(40.0),
-                            justify_content: JustifyContent::Center,
+                            width: Val::Px(520.0),
+                            height: Val::Px(38.0),
+                            justify_content: JustifyContent::FlexStart,
                             align_items: AlignItems::Center,
                             flex_direction: FlexDirection::Row,
                             column_gap: Val::Px(12.0),
+                            padding: UiRect::horizontal(Val::Px(14.0)),
                             border: UiRect::all(Val::Px(2.0)),
                             ..default()
                         },
@@ -290,26 +314,42 @@ fn rebuild_team_setup_ui(
                         BorderColor::all(border),
                     ))
                     .with_children(|row| {
+                        // Colour swatch.
                         row.spawn((
-                            Node { width: Val::Px(20.0), height: Val::Px(20.0), ..default() },
-                            BackgroundColor(color),
+                            Node { width: Val::Px(18.0), height: Val::Px(18.0), ..default() },
+                            BackgroundColor(rgb(team.color)),
                         ));
+                        // Logo.
+                        spawn_logo(row, team, &atlas, &mut logo_images, &mut images);
+                        // Name (grows to push control to the right).
                         row.spawn((
-                            Text::new(team.name.clone()),
-                            TextFont { font_size: FontSize::Px(16.0), ..default() },
-                            TextColor(TEXT_COLOR),
+                            Node { flex_grow: 1.0, ..default() },
+                            children![(
+                                Text::new(team.name.clone()),
+                                TextFont { font_size: FontSize::Px(16.0), ..default() },
+                                TextColor(TEXT_COLOR),
+                            )],
                         ));
+                        // Faction tag.
+                        if team.kind == TeamKind::Faction {
+                            row.spawn((
+                                Text::new("Faction"),
+                                TextFont { font_size: FontSize::Px(12.0), ..default() },
+                                TextColor(KIND_FACTION),
+                            ));
+                        }
+                        // Control state.
                         row.spawn((
-                            Text::new(ctrl_label.to_string()),
+                            Text::new(team.control.label().to_string()),
                             TextFont { font_size: FontSize::Px(14.0), ..default() },
-                            TextColor(ctrl_color),
+                            TextColor(team.control.color()),
                         ));
                     });
             }
 
             parent.spawn((Node::default(), BackgroundColor(Color::NONE)));
 
-            // Play button
+            // Play button.
             let play_bg = if play_selected { PLAY_BG_SELECTED } else { PLAY_BG };
             let play_border = if play_selected { PLAY_BORDER_SELECTED } else { PLAY_BORDER };
             parent
@@ -334,12 +374,12 @@ fn rebuild_team_setup_ui(
                     ));
                 });
 
-            // Status message
+            // Status message.
             let status_text = state.status.clone().unwrap_or_default();
             parent
                 .spawn((
                     Node {
-                        width: Val::Px(480.0),
+                        width: Val::Px(520.0),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
@@ -372,11 +412,10 @@ fn update_team_setup(
     buttons: Query<&Interaction, With<Button>>,
     pending: Option<Res<PendingMapData>>,
 ) {
-    // Collect all UiAction messages for this frame into a set for O(1) lookups.
     let actions: HashSet<UiAction> = reader.read().copied().collect();
 
-    let row_count = state.count + 1; // +1 for count selector
-    let max_sel = row_count; // last row is play button
+    let play_row = state.team_count() + 1;
+    let max_sel = play_row;
 
     let mut changed = false;
 
@@ -395,35 +434,25 @@ fn update_team_setup(
         changed = true;
     }
 
-    if actions.contains(&UiAction::Left) {
-        if state.selected == 0 {
-            let new_count = state.count.saturating_sub(1).max(1);
-            if new_count != state.count {
-                state.rebuild(new_count);
-                changed = true;
+    let adjust_left = actions.contains(&UiAction::Left);
+    let adjust_right = actions.contains(&UiAction::Right);
+    if adjust_left || adjust_right {
+        let sel = state.selected;
+        if sel == 0 {
+            // Races selector.
+            if adjust_left {
+                state.num_races = state.num_races.saturating_sub(1);
+            } else if state.num_races < state.max_races {
+                state.num_races += 1;
             }
-        } else if state.selected > 0 && state.selected <= state.count {
-            let idx = state.selected - 1;
-            if let Some(team) = state.teams.get_mut(idx) {
-                team.player_controlled = !team.player_controlled;
-                changed = true;
-            }
-        }
-    }
-
-    if actions.contains(&UiAction::Right) {
-        if state.selected == 0 {
-            let new_count = (state.count + 1).min(8);
-            if new_count != state.count {
-                state.rebuild(new_count);
-                changed = true;
-            }
-        } else if state.selected > 0 && state.selected <= state.count {
-            let idx = state.selected - 1;
-            if let Some(team) = state.teams.get_mut(idx) {
-                team.player_controlled = !team.player_controlled;
-                changed = true;
-            }
+            changed = true;
+        } else if sel >= 1 && sel <= state.team_count() {
+            let idx = sel - 1;
+            let playable = state.teams[idx].kind == TeamKind::Playable;
+            let cur = state.teams[idx].control;
+            state.teams[idx].control =
+                if adjust_right { cur.next(playable) } else { cur.prev(playable) };
+            changed = true;
         }
     }
 
@@ -432,21 +461,33 @@ fn update_team_setup(
 
     if confirm {
         if let Some(pending) = pending {
-            // Ensure at least one team is player-controlled.
-            let has_player = state.teams.iter().any(|t| t.player_controlled);
-            if !has_player && !state.teams.is_empty() {
-                state.teams[0].player_controlled = true;
-            }
-
-            let team_cfgs: Vec<TeamConfig> = state
+            let mut team_cfgs: Vec<TeamConfig> = state
                 .teams
                 .iter()
+                .filter(|t| t.control != TeamControl::Off)
                 .map(|t| TeamConfig {
                     name: t.name.clone(),
                     color: t.color,
-                    player_controlled: t.player_controlled,
+                    player_controlled: t.control == TeamControl::Human,
                 })
                 .collect();
+
+            // Append the chosen number of hostile races (always CPU/non-player).
+            if let Some(catalog) = get_team_catalog() {
+                for def in catalog.races().into_iter().take(state.num_races) {
+                    team_cfgs.push(TeamConfig {
+                        name: def.name.clone(),
+                        color: def.color,
+                        player_controlled: false,
+                    });
+                }
+            }
+
+            if !team_cfgs.iter().any(|t| t.player_controlled) {
+                state.status = Some("Select at least one Human team".to_string());
+                state.needs_rebuild = true;
+                return;
+            }
 
             if let Some(map) = &pending.map {
                 match build_state_with_teams(map.clone(), &pending.map_name, &team_cfgs) {

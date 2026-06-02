@@ -1,10 +1,13 @@
+use crate::atlas::{TeamLogoImages, TileAtlas};
 use crate::frontend::input::InputEvent;
 use crate::frontend::map_view::{MapViewApp, MapViewOutcome};
 use crate::frontend::session::GameSession;
 use crate::input::{InputCooldown, UiAction};
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use engine::config::{TeamLogo, get_team_catalog};
 use engine::map::game_map::{MapCoord, ResourceKind};
 use engine::map::tile::Tiles;
 
@@ -63,10 +66,6 @@ const BTN_BORDER_HOVER: Color = Color::srgb(0.55, 0.55, 0.62);
 const BTN_BORDER_SELECTED: Color = Color::srgb(0.7, 0.7, 0.78);
 const BTN_BORDER_PRESSED: Color = Color::srgb(0.65, 0.65, 0.72);
 
-const ATLAS_COLS: u32 = 49;
-const ATLAS_ROWS: u32 = 23;
-const ATLAS_TILE_W: u32 = 16;
-const ATLAS_TILE_H: u32 = 16;
 const RESOURCE_ROD_ATLAS_INDEX: usize = 344;
 
 /// Fallback color for heroes whose team is not found.
@@ -165,6 +164,10 @@ pub struct LandOwnerTile;
 #[derive(Component)]
 pub struct ResourceRodTile;
 
+/// Overlay sprite that draws the owning team's logo on a city core tile.
+#[derive(Component)]
+pub struct CityLogoTile;
+
 #[derive(Component)]
 pub struct MapTilePos {
     pub col: usize,
@@ -176,14 +179,58 @@ fn enter_map_view(
     map_view_state: ResMut<MapViewState>,
     loaded: Option<ResMut<LoadedSession>>,
     window: Single<&Window>,
-    asset_server: Res<AssetServer>,
-    atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    atlas: Res<TileAtlas>,
 ) {
-    enter_map_view_impl(commands, map_view_state, loaded, window, asset_server, atlas_layouts);
+    enter_map_view_impl(commands, map_view_state, loaded, window, atlas);
 }
 
 fn is_city_core_tile(kind: Tiles) -> bool {
     matches!(kind, Tiles::City)
+}
+
+/// Returns the single centre cell of every owned city.
+///
+/// `set_city_owner` floods the whole connected city block, so ownership covers
+/// every city tile. To draw a team logo on just one cell, we flood each city
+/// once and pick the core (`City`) cell nearest the block's centroid.
+fn owned_city_centers(
+    state: &engine::game_state::GameState,
+) -> std::collections::HashSet<MapCoord> {
+    use std::collections::HashSet;
+    let map = &state.map;
+    let mut visited: HashSet<MapCoord> = HashSet::new();
+    let mut centers: HashSet<MapCoord> = HashSet::new();
+    for &coord in state.city_owners.keys() {
+        if !visited.insert(coord) {
+            continue;
+        }
+        let cells = engine::state_flood::flood_city(map, coord);
+        for &c in &cells {
+            visited.insert(c);
+        }
+        let cores: Vec<MapCoord> = cells
+            .iter()
+            .copied()
+            .filter(|c| map.get_tile(*c).map(|t| is_city_core_tile(t.kind)).unwrap_or(false))
+            .collect();
+        if cores.is_empty() {
+            continue;
+        }
+        let cx = cores.iter().map(|c| c.x as u64).sum::<u64>() / cores.len() as u64;
+        let cy = cores.iter().map(|c| c.y as u64).sum::<u64>() / cores.len() as u64;
+        if let Some(center) = cores.iter().copied().min_by_key(|c| {
+            let dx = c.x as i64 - cx as i64;
+            let dy = c.y as i64 - cy as i64;
+            dx * dx + dy * dy
+        }) {
+            // Drop the logo one cell below the centroid when that cell is still
+            // part of the city — it reads better than sitting at the top.
+            let below = MapCoord::new(center.x, center.y + 1);
+            let center = if cores.contains(&below) { below } else { center };
+            centers.insert(center);
+        }
+    }
+    centers
 }
 
 fn mouse_visible_tile(
@@ -212,8 +259,7 @@ fn enter_map_view_impl(
     mut map_view_state: ResMut<MapViewState>,
     mut loaded: Option<ResMut<LoadedSession>>,
     window: Single<&Window>,
-    asset_server: Res<AssetServer>,
-    mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    atlas: Res<TileAtlas>,
 ) {
     if map_view_state.map_view.is_none() {
         let Some(mut loaded) = loaded.take() else {
@@ -229,13 +275,7 @@ fn enter_map_view_impl(
         map_view_state.map_view = Some(Box::new(MapViewApp::new(session, 0, 0, None)));
     }
 
-    spawn_map_view_entities(
-        &mut commands,
-        &mut map_view_state,
-        &window,
-        &asset_server,
-        &mut atlas_layouts,
-    );
+    spawn_map_view_entities(&mut commands, &mut map_view_state, &window, &atlas);
 
     // Center camera on the selected hero on first entry.
     // Must run after spawn_map_view_entities which computes visible_cols/rows.
@@ -251,8 +291,7 @@ fn spawn_map_view_entities(
     commands: &mut Commands,
     map_view_state: &mut MapViewState,
     window: &Window,
-    asset_server: &AssetServer,
-    atlas_layouts: &mut Assets<TextureAtlasLayout>,
+    atlas: &TileAtlas,
 ) {
     let tile_size = map_view_state.tile_size;
     let map_h = window.height() - 40.0;
@@ -269,15 +308,8 @@ fn spawn_map_view_entities(
     let offset_x = -total_w / 2.0 + tile_size / 2.0;
     let offset_y = total_h / 2.0 - tile_size / 2.0;
 
-    let atlas_handle: Handle<Image> = asset_server.load("1_main.png");
-    let layout = TextureAtlasLayout::from_grid(
-        UVec2::new(ATLAS_TILE_W, ATLAS_TILE_H),
-        ATLAS_COLS,
-        ATLAS_ROWS,
-        None,
-        None,
-    );
-    let layout_handle = atlas_layouts.add(layout);
+    let atlas_handle = atlas.image.clone();
+    let layout_handle = atlas.layout.clone();
 
     // Store handles in MapViewState so other systems (e.g. hero selection)
     // can reuse the same atlas.
@@ -324,6 +356,19 @@ fn spawn_map_view_entities(
                 },
                 Transform::from_xyz(x, y, 0.2),
                 ResourceRodTile,
+                MapTilePos { col, row },
+            ));
+
+            commands.spawn((
+                Sprite {
+                    image: atlas_handle.clone(),
+                    texture_atlas: Some(TextureAtlas { layout: layout_handle.clone(), index: 0 }),
+                    color: Color::NONE,
+                    custom_size: Some(Vec2::splat(tile_size)),
+                    ..Default::default()
+                },
+                Transform::from_xyz(x, y, 0.25),
+                CityLogoTile,
                 MapTilePos { col, row },
             ));
         }
@@ -534,6 +579,63 @@ fn update_button_style(
     }
 }
 
+/// Per-tile sprite layers plus the assets needed to draw team logos, bundled to
+/// keep [`update_map_view`] under the system parameter limit.
+#[derive(SystemParam)]
+struct TileLayers<'w, 's> {
+    tiles: Query<
+        'w,
+        's,
+        (&'static MapTilePos, &'static mut Sprite),
+        (
+            With<MapTile>,
+            Without<LandOwnerTile>,
+            Without<ResourceRodTile>,
+            Without<CityLogoTile>,
+            Without<CursorOverlay>,
+        ),
+    >,
+    land: Query<
+        'w,
+        's,
+        (&'static MapTilePos, &'static mut Sprite),
+        (
+            With<LandOwnerTile>,
+            Without<MapTile>,
+            Without<ResourceRodTile>,
+            Without<CityLogoTile>,
+            Without<CursorOverlay>,
+        ),
+    >,
+    rod: Query<
+        'w,
+        's,
+        (&'static MapTilePos, &'static mut Sprite),
+        (
+            With<ResourceRodTile>,
+            Without<MapTile>,
+            Without<LandOwnerTile>,
+            Without<CityLogoTile>,
+            Without<CursorOverlay>,
+        ),
+    >,
+    logo: Query<
+        'w,
+        's,
+        (&'static MapTilePos, &'static mut Sprite),
+        (
+            With<CityLogoTile>,
+            Without<MapTile>,
+            Without<LandOwnerTile>,
+            Without<ResourceRodTile>,
+            Without<CursorOverlay>,
+        ),
+    >,
+    atlas: Res<'w, TileAtlas>,
+    logo_images: ResMut<'w, TeamLogoImages>,
+    images: ResMut<'w, Assets<Image>>,
+}
+
 #[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
 fn update_map_view(
@@ -542,21 +644,16 @@ fn update_map_view(
     mut next_state: ResMut<NextState<AppState>>,
     mut reader: MessageReader<UiAction>,
     mut status_query: Query<&mut Text>,
-    mut tile_query: Query<
-        (&MapTilePos, &mut Sprite),
-        (With<MapTile>, Without<LandOwnerTile>, Without<ResourceRodTile>, Without<CursorOverlay>),
-    >,
-    mut land_query: Query<
-        (&MapTilePos, &mut Sprite),
-        (With<LandOwnerTile>, Without<MapTile>, Without<ResourceRodTile>, Without<CursorOverlay>),
-    >,
-    mut rod_query: Query<
-        (&MapTilePos, &mut Sprite),
-        (With<ResourceRodTile>, Without<MapTile>, Without<LandOwnerTile>, Without<CursorOverlay>),
-    >,
+    mut layers: TileLayers,
     mut cursor_query: Query<
         (&mut Transform, &mut Sprite),
-        (With<CursorOverlay>, Without<MapTile>, Without<LandOwnerTile>, Without<ResourceRodTile>),
+        (
+            With<CursorOverlay>,
+            Without<MapTile>,
+            Without<LandOwnerTile>,
+            Without<ResourceRodTile>,
+            Without<CityLogoTile>,
+        ),
     >,
     cooldown: Res<InputCooldown>,
     time: Res<Time>,
@@ -916,6 +1013,7 @@ fn update_map_view(
     if needs_redraw {
         let session = map_view.session();
         let map = &session.state().map;
+        let city_centers = owned_city_centers(session.state());
         let view_x = map_view.view_x();
         let view_y = map_view.view_y();
         let cursor_x = map_view.cursor_x();
@@ -929,7 +1027,7 @@ fn update_map_view(
             false
         };
 
-        for (tile_pos, mut sprite) in tile_query.iter_mut() {
+        for (tile_pos, mut sprite) in layers.tiles.iter_mut() {
             let tx = view_x + tile_pos.col;
             let ty = view_y + tile_pos.row;
             let coord = MapCoord::new(tx as u32, ty as u32);
@@ -971,6 +1069,10 @@ fn update_map_view(
                 },
                 (Some(t), None) if is_city_tile(t.kind) => {
                     match session.state().city_owner(coord) {
+                        // The owned city centre cell is hidden so the team logo
+                        // overlay (CityLogoTile layer) takes its place; the rest of
+                        // the city keeps its owner-tinted castle tiles.
+                        Some(_) if city_centers.contains(&coord) => Color::NONE,
                         Some(team_id) => session
                             .state()
                             .get_team(team_id)
@@ -994,7 +1096,7 @@ fn update_map_view(
             }
         }
 
-        for (tile_pos, mut sprite) in land_query.iter_mut() {
+        for (tile_pos, mut sprite) in layers.land.iter_mut() {
             let tx = view_x + tile_pos.col;
             let ty = view_y + tile_pos.row;
             let coord = MapCoord::new(tx as u32, ty as u32);
@@ -1010,7 +1112,7 @@ fn update_map_view(
                 .unwrap_or(Color::NONE);
         }
 
-        for (tile_pos, mut sprite) in rod_query.iter_mut() {
+        for (tile_pos, mut sprite) in layers.rod.iter_mut() {
             let tx = view_x + tile_pos.col;
             let ty = view_y + tile_pos.row;
             let coord = MapCoord::new(tx as u32, ty as u32);
@@ -1026,6 +1128,59 @@ fn update_map_view(
                 .unwrap_or(Color::NONE);
             if let Some(atlas) = sprite.texture_atlas.as_mut() {
                 atlas.index = RESOURCE_ROD_ATLAS_INDEX;
+            }
+        }
+
+        // City logo overlay: draw the owning team's logo on its city core tile.
+        let catalog = get_team_catalog();
+        for (tile_pos, mut sprite) in layers.logo.iter_mut() {
+            let tx = view_x + tile_pos.col;
+            let ty = view_y + tile_pos.row;
+            let coord = MapCoord::new(tx as u32, ty as u32);
+            sprite.custom_size = Some(Vec2::splat(map_view_state.tile_size));
+
+            // Resolve a logo only for a city centre cell with no hero on it.
+            let is_center = city_centers.contains(&coord);
+            let resolved = if is_center && session.state().hero_at(coord).is_none() {
+                session
+                    .state()
+                    .city_owner(coord)
+                    .and_then(|team_id| session.state().get_team(team_id))
+                    .and_then(|team| {
+                        catalog
+                            .as_ref()
+                            .and_then(|cat| cat.by_name(&team.name))
+                            .map(|def| (def.logo.clone(), team.name.clone(), team.color))
+                    })
+            } else {
+                None
+            };
+
+            match resolved {
+                Some((logo, name, (r, g, b))) => {
+                    let tint = rgb_color(r, g, b);
+                    match &logo {
+                        TeamLogo::Tile(index) => {
+                            sprite.image = layers.atlas.image.clone();
+                            sprite.texture_atlas = Some(TextureAtlas {
+                                layout: layers.atlas.layout.clone(),
+                                index: *index as usize,
+                            });
+                            sprite.color = tint;
+                        }
+                        TeamLogo::Bitmap(_) => {
+                            match layers.logo_images.handle(&mut layers.images, &name, &logo) {
+                                Some(handle) => {
+                                    sprite.image = handle;
+                                    sprite.texture_atlas = None;
+                                    sprite.color = tint;
+                                }
+                                None => sprite.color = Color::NONE,
+                            }
+                        }
+                    }
+                }
+                None => sprite.color = Color::NONE,
             }
         }
 
@@ -1062,6 +1217,7 @@ fn exit_map_view(
     tile_query: Query<Entity, With<MapTile>>,
     land_query: Query<Entity, With<LandOwnerTile>>,
     rod_query: Query<Entity, With<ResourceRodTile>>,
+    logo_query: Query<Entity, With<CityLogoTile>>,
     cursor_query: Query<Entity, With<CursorOverlay>>,
     pause_query: Query<Entity, With<PauseOverlay>>,
     end_turn_query: Query<Entity, With<EndTurnOverlay>>,
@@ -1077,6 +1233,9 @@ fn exit_map_view(
         commands.entity(entity).despawn();
     }
     for entity in rod_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    for entity in logo_query.iter() {
         commands.entity(entity).despawn();
     }
     for entity in cursor_query.iter() {

@@ -149,7 +149,7 @@ impl TileEntry {
 }
 
 /// Parse a `"#RRGGBB"` or `"RRGGBB"` string into a `(r, g, b)` triple.
-fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
+pub(crate) fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
     let hex = hex.trim_start_matches('#');
     if hex.len() != 6 {
         return None;

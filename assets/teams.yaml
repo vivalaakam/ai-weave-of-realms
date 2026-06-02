@@ -1,0 +1,129 @@
+# Team definitions for the game session.
+#
+# Each team entry defines:
+#   - name:  display name (also the stable key used to resolve the logo at render
+#            time, so names must be unique across the whole catalogue)
+#   - color: hex "#RRGGBB" — team colour used for tinting heroes, cities and logos
+#   - kind:  one of
+#       playable — the player may choose to control this team (Human or CPU);
+#                  several playable teams may be Human at once (hot-seat)
+#       faction  — equivalent AI-only team, never selectable by the player
+#       race     — "against everyone" non-playable team (goblins, undead, …);
+#                  the number of races in a game is chosen on the setup screen
+#   - logo:  exactly one of
+#       tile:   <atlas index>        — sprite from the tile atlas (1_main.png)
+#       bitmap: <64 hex chars>       — 256-bit / 16x16 monochrome bitmap,
+#                                      row-major, bit `y*16 + x`, 1 = filled.
+#                                      Rendered in the team colour.
+#
+# Ready-made logos live on the last atlas row (49 cols x 23 rows), columns 0-11,
+# i.e. atlas indexes 22*49 + col = 1078..1089.
+
+teams:
+  # ── Playable teams (8) — logos: atlas 1078..1085 ──────────────────────────
+  red:
+    name: "Red"
+    color: "#dc3232"
+    kind: playable
+    logo:
+      tile: 1078
+
+  blue:
+    name: "Blue"
+    color: "#3250dc"
+    kind: playable
+    logo:
+      tile: 1079
+
+  green:
+    name: "Green"
+    color: "#32b432"
+    kind: playable
+    logo:
+      tile: 1080
+
+  yellow:
+    name: "Yellow"
+    color: "#dcc832"
+    kind: playable
+    logo:
+      tile: 1081
+
+  purple:
+    name: "Purple"
+    color: "#9632dc"
+    kind: playable
+    logo:
+      tile: 1082
+
+  orange:
+    name: "Orange"
+    color: "#e0781e"
+    kind: playable
+    logo:
+      tile: 1083
+
+  teal:
+    name: "Teal"
+    color: "#1ec8b4"
+    kind: playable
+    logo:
+      tile: 1084
+
+  pink:
+    name: "Pink"
+    color: "#e664a0"
+    kind: playable
+    logo:
+      tile: 1085
+
+  # ── AI-only factions (4) — logos: atlas 1086..1089 ────────────────────────
+  empire:
+    name: "Empire"
+    color: "#c8c8d2"
+    kind: faction
+    logo:
+      tile: 1086
+
+  horde:
+    name: "Horde"
+    color: "#8c2a1e"
+    kind: faction
+    logo:
+      tile: 1087
+
+  covenant:
+    name: "Covenant"
+    color: "#2a6e8c"
+    kind: faction
+    logo:
+      tile: 1088
+
+  dominion:
+    name: "Dominion"
+    color: "#5a3c8c"
+    kind: faction
+    logo:
+      tile: 1089
+
+  # ── Hostile races (against everyone) — bitmap logos ───────────────────────
+  goblins:
+    name: "Goblins"
+    color: "#5a8a3c"
+    kind: race
+    logo:
+      bitmap: "000003c007e00db00ff01bd81ff80ff005a00db01998318c6186c18302400000"
+
+  undead:
+    name: "Undead"
+    color: "#9aa0a6"
+    kind: race
+    logo:
+      bitmap: "000007e00ff01ff83c3c37b637b63ffc1ff80db00ff005a003c005a002400000"
+
+  beasts:
+    name: "Beasts"
+    color: "#a06a32"
+    kind: race
+    logo:
+      bitmap: "0000300c781e781e3ffc7ffec3c3dbdbc3c3fffd7ffe3ffc1ff80c3018180000"
