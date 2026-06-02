@@ -13,7 +13,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 const SAVE_MAGIC: [u8; 4] = *b"RPGS";
-const SAVE_VERSION: u16 = 3;
+const SAVE_VERSION: u16 = 4;
 
 pub(crate) fn to_save_bytes(
     map: &GameMap,
@@ -21,6 +21,8 @@ pub(crate) fn to_save_bytes(
     score: &ScoreBoard,
     city_owners: &BTreeMap<MapCoord, TeamId>,
     resource_owners: &BTreeMap<MapCoord, TeamId>,
+    land_owners: &BTreeMap<MapCoord, TeamId>,
+    resource_rods: &BTreeMap<MapCoord, TeamId>,
     teams: &BTreeMap<TeamId, Team>,
     teams_order: &VecDeque<TeamId>,
     active_hero: &BTreeMap<TeamId, Option<HeroId>>,
@@ -33,6 +35,8 @@ pub(crate) fn to_save_bytes(
         score,
         city_owners,
         resource_owners,
+        land_owners,
+        resource_rods,
         teams,
         teams_order,
         active_hero,
@@ -48,6 +52,8 @@ pub(crate) fn to_save_bytes_with_name(
     score: &ScoreBoard,
     city_owners: &BTreeMap<MapCoord, TeamId>,
     resource_owners: &BTreeMap<MapCoord, TeamId>,
+    land_owners: &BTreeMap<MapCoord, TeamId>,
+    resource_rods: &BTreeMap<MapCoord, TeamId>,
     teams: &BTreeMap<TeamId, Team>,
     teams_order: &VecDeque<TeamId>,
     active_hero: &BTreeMap<TeamId, Option<HeroId>>,
@@ -160,6 +166,22 @@ pub(crate) fn to_save_bytes_with_name(
     let resource_owner_count = to_u32(resource_owners.len(), "resource owners")?;
     writer.push_u32(resource_owner_count);
     for (coord, team_id) in resource_owners.iter() {
+        writer.push_u32(coord.x);
+        writer.push_u32(coord.y);
+        writer.push_u8(*team_id);
+    }
+
+    let land_owner_count = to_u32(land_owners.len(), "land owners")?;
+    writer.push_u32(land_owner_count);
+    for (coord, team_id) in land_owners.iter() {
+        writer.push_u32(coord.x);
+        writer.push_u32(coord.y);
+        writer.push_u8(*team_id);
+    }
+
+    let rod_count = to_u32(resource_rods.len(), "resource rods")?;
+    writer.push_u32(rod_count);
+    for (coord, team_id) in resource_rods.iter() {
         writer.push_u32(coord.x);
         writer.push_u32(coord.y);
         writer.push_u8(*team_id);
@@ -356,6 +378,26 @@ pub(crate) fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
         }
     }
 
+    let mut land_owners = BTreeMap::new();
+    let mut resource_rods = BTreeMap::new();
+    if version >= 4 {
+        let land_owner_count = reader.read_u32()? as usize;
+        for _ in 0..land_owner_count {
+            let x = reader.read_u32()?;
+            let y = reader.read_u32()?;
+            let team_id = reader.read_u8()?;
+            land_owners.insert(MapCoord::new(x, y), team_id);
+        }
+
+        let rod_count = reader.read_u32()? as usize;
+        for _ in 0..rod_count {
+            let x = reader.read_u32()?;
+            let y = reader.read_u32()?;
+            let team_id = reader.read_u8()?;
+            resource_rods.insert(MapCoord::new(x, y), team_id);
+        }
+    }
+
     let hero_pointer = reader.read_u8()?;
     let rng_state = reader.read_array_32()?;
     let rng_position = reader.read_u8()?;
@@ -369,6 +411,8 @@ pub(crate) fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
         score,
         city_owners,
         resource_owners,
+        land_owners,
+        resource_rods,
         teams,
         teams_order,
         active_hero,

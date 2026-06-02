@@ -218,6 +218,16 @@ Update status as work progresses.
 |------|----------------------------------------------------------------------------------------------------------------------|----------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 11.1 | Сгенерировать карту текущими инструментами проекта, близкую к стартовой Godot-конфигурации, и сохранить TMX в `tmp/` | Codex    | DONE   | Использован `terrain.lua`, seed `default-seed`, размер 96×96 как в `MainScene`; итоговый TMX: `tmp/default-seed-terrain-96x96.tmx`, артефакты прогона: `tmp/gen-1775226082-961/` |
 
+## Phase 12 — Resource Control
+
+| ID   | Task                                                                                               | Assignee | Status      | Notes |
+|------|----------------------------------------------------------------------------------------------------|----------|-------------|-------|
+| 12.1 | Добавить в engine механику жезлов, владения землей и захвата ресурсов через радиус 1 клетки        | Codex    | DONE        | `land_owners`, `resource_rods`, `place_resource_rod`, save v4 |
+| 12.2 | Отрисовать владение землей цветом команды под ресурсами и добавить тайл жезла                      | Codex    | DONE        | Bevy map layers: land owner overlay 75% alpha, rod atlas row 8 col 2 |
+| 12.3 | Починить рассинхронизированные engine unit-тесты                                                   | Codex    | DONE        | `cargo test -p engine` passes |
+| 12.4 | Исправить Bevy ECS query conflict при запуске карты                                                | Codex    | DONE        | Disjoint sprite queries; `cargo run -p weave-of-realms-bevy` reaches window and exits cleanly |
+| 12.5 | Исправить захват Gold/Resource тайлов без resource node и снизить непрозрачность земли             | Codex    | DONE        | `cargo test -p engine` passes; land alpha 0.35 |
+
 ## Phase 12 — T-Deck Integration Cleanup
 
 | ID   | Task                                                                                                                                                  | Assignee | Status | Notes                                                                                                                                                                                                                                          |

@@ -67,6 +67,7 @@ const ATLAS_COLS: u32 = 49;
 const ATLAS_ROWS: u32 = 23;
 const ATLAS_TILE_W: u32 = 16;
 const ATLAS_TILE_H: u32 = 16;
+const RESOURCE_ROD_ATLAS_INDEX: usize = 344;
 
 /// Fallback color for heroes whose team is not found.
 const HERO_COLOR: Color = Color::srgb(1.0, 1.0, 1.0);
@@ -157,6 +158,12 @@ pub struct CursorOverlay;
 
 #[derive(Component)]
 pub struct MapTile;
+
+#[derive(Component)]
+pub struct LandOwnerTile;
+
+#[derive(Component)]
+pub struct ResourceRodTile;
 
 #[derive(Component)]
 pub struct MapTilePos {
@@ -283,6 +290,17 @@ fn spawn_map_view_entities(
             let y = offset_y - row as f32 * tile_size;
             commands.spawn((
                 Sprite {
+                    color: Color::NONE,
+                    custom_size: Some(Vec2::splat(tile_size)),
+                    ..Default::default()
+                },
+                Transform::from_xyz(x, y, -0.1),
+                LandOwnerTile,
+                MapTilePos { col, row },
+            ));
+
+            commands.spawn((
+                Sprite {
                     image: atlas_handle.clone(),
                     texture_atlas: Some(TextureAtlas { layout: layout_handle.clone(), index: 0 }),
                     custom_size: Some(Vec2::splat(tile_size)),
@@ -290,6 +308,22 @@ fn spawn_map_view_entities(
                 },
                 Transform::from_xyz(x, y, 0.0),
                 MapTile,
+                MapTilePos { col, row },
+            ));
+
+            commands.spawn((
+                Sprite {
+                    image: atlas_handle.clone(),
+                    texture_atlas: Some(TextureAtlas {
+                        layout: layout_handle.clone(),
+                        index: RESOURCE_ROD_ATLAS_INDEX,
+                    }),
+                    color: Color::NONE,
+                    custom_size: Some(Vec2::splat(tile_size)),
+                    ..Default::default()
+                },
+                Transform::from_xyz(x, y, 0.2),
+                ResourceRodTile,
                 MapTilePos { col, row },
             ));
         }
@@ -508,8 +542,22 @@ fn update_map_view(
     mut next_state: ResMut<NextState<AppState>>,
     mut reader: MessageReader<UiAction>,
     mut status_query: Query<&mut Text>,
-    mut tile_query: Query<(&MapTilePos, &mut Sprite), (With<MapTile>, Without<CursorOverlay>)>,
-    mut cursor_query: Query<(&mut Transform, &mut Sprite), (With<CursorOverlay>, Without<MapTile>)>,
+    mut tile_query: Query<
+        (&MapTilePos, &mut Sprite),
+        (With<MapTile>, Without<LandOwnerTile>, Without<ResourceRodTile>, Without<CursorOverlay>),
+    >,
+    mut land_query: Query<
+        (&MapTilePos, &mut Sprite),
+        (With<LandOwnerTile>, Without<MapTile>, Without<ResourceRodTile>, Without<CursorOverlay>),
+    >,
+    mut rod_query: Query<
+        (&MapTilePos, &mut Sprite),
+        (With<ResourceRodTile>, Without<MapTile>, Without<LandOwnerTile>, Without<CursorOverlay>),
+    >,
+    mut cursor_query: Query<
+        (&mut Transform, &mut Sprite),
+        (With<CursorOverlay>, Without<MapTile>, Without<LandOwnerTile>, Without<ResourceRodTile>),
+    >,
     cooldown: Res<InputCooldown>,
     time: Res<Time>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
@@ -748,6 +796,9 @@ fn update_map_view(
     if frame(UiAction::NextHero) {
         events.push(InputEvent::NextHero);
     }
+    if frame(UiAction::PlaceRod) {
+        events.push(InputEvent::PlaceRod);
+    }
     if frame(UiAction::Confirm) {
         events.push(InputEvent::Enter);
     }
@@ -943,6 +994,41 @@ fn update_map_view(
             }
         }
 
+        for (tile_pos, mut sprite) in land_query.iter_mut() {
+            let tx = view_x + tile_pos.col;
+            let ty = view_y + tile_pos.row;
+            let coord = MapCoord::new(tx as u32, ty as u32);
+            sprite.custom_size = Some(Vec2::splat(map_view_state.tile_size));
+            sprite.color = session
+                .state()
+                .land_owner(coord)
+                .and_then(|team_id| session.state().get_team(team_id))
+                .map(|team| {
+                    let (r, g, b) = team.color;
+                    rgb_color(r, g, b).with_alpha(0.35)
+                })
+                .unwrap_or(Color::NONE);
+        }
+
+        for (tile_pos, mut sprite) in rod_query.iter_mut() {
+            let tx = view_x + tile_pos.col;
+            let ty = view_y + tile_pos.row;
+            let coord = MapCoord::new(tx as u32, ty as u32);
+            sprite.custom_size = Some(Vec2::splat(map_view_state.tile_size));
+            sprite.color = session
+                .state()
+                .resource_rod_owner(coord)
+                .and_then(|team_id| session.state().get_team(team_id))
+                .map(|team| {
+                    let (r, g, b) = team.color;
+                    rgb_color(r, g, b)
+                })
+                .unwrap_or(Color::NONE);
+            if let Some(atlas) = sprite.texture_atlas.as_mut() {
+                atlas.index = RESOURCE_ROD_ATLAS_INDEX;
+            }
+        }
+
         // Move cursor overlay to the correct tile position.
         let cx = cursor_x - view_x as isize;
         let cy = cursor_y - view_y as isize;
@@ -974,6 +1060,8 @@ fn exit_map_view(
     mut commands: Commands,
     query: Query<Entity, With<MapViewRoot>>,
     tile_query: Query<Entity, With<MapTile>>,
+    land_query: Query<Entity, With<LandOwnerTile>>,
+    rod_query: Query<Entity, With<ResourceRodTile>>,
     cursor_query: Query<Entity, With<CursorOverlay>>,
     pause_query: Query<Entity, With<PauseOverlay>>,
     end_turn_query: Query<Entity, With<EndTurnOverlay>>,
@@ -983,6 +1071,12 @@ fn exit_map_view(
         commands.entity(entity).despawn();
     }
     for entity in tile_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    for entity in land_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    for entity in rod_query.iter() {
         commands.entity(entity).despawn();
     }
     for entity in cursor_query.iter() {

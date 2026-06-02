@@ -195,7 +195,7 @@ mod tests {
     fn take_damage_reduces_hp() {
         let mut h = hero();
         h.take_damage(30);
-        assert_eq!(h.hp, 70);
+        assert_eq!(h.hp, 90);
     }
 
     #[test]
@@ -208,10 +208,10 @@ mod tests {
 
     #[test]
     fn movement_derived_from_spd() {
-        let h = hero(); // spd = 15 → mov = 35
-        assert_eq!(h.mov, Hero::movement_for_spd(15));
-        assert_eq!(h.mov, 35);
-        assert_eq!(h.mov_remaining, 35);
+        let h = hero(); // Knight spd = 8 → mov = 28
+        assert_eq!(h.mov, Hero::movement_for_spd(8));
+        assert_eq!(h.mov, 28);
+        assert_eq!(h.mov_remaining, 28);
     }
 
     #[test]

@@ -21,6 +21,8 @@ pub enum InputEvent {
     CursorRight,
     /// Cycle to the next hero.
     NextHero,
+    /// Place a resource-control rod under the selected hero.
+    PlaceRod,
     /// End current player's turn.
     NextTurn,
     /// Pan viewport up (right stick / WASD).

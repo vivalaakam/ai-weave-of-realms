@@ -65,6 +65,18 @@ impl GameSession {
         Ok(self.selected_hero_position())
     }
 
+    /// Places a resource-control rod under the selected hero.
+    ///
+    /// # Errors
+    /// Returns any engine placement error, or if no hero is currently selected.
+    pub fn place_resource_rod(&mut self) -> Result<MapCoord, EngineError> {
+        let id = self
+            .selected_hero_id
+            .ok_or_else(|| EngineError::InvalidTiles("no hero selected".to_string()))?;
+        self.state.place_resource_rod(id)?;
+        Ok(self.selected_hero_position())
+    }
+
     /// Cycles to the next living player-controlled hero.
     ///
     /// If the current hero is the only living player hero, it stays selected.

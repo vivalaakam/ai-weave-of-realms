@@ -34,6 +34,7 @@ pub enum UiAction {
     Confirm,
     Cancel,
     NextHero,
+    PlaceRod,
     NextTurn,
     CursorUp,
     CursorDown,
@@ -112,6 +113,8 @@ pub struct KeyboardBindings {
     pub confirm: Vec<String>,
     pub cancel: Vec<String>,
     pub next_hero: Vec<String>,
+    #[serde(default)]
+    pub place_rod: Vec<String>,
     pub next_turn: Vec<String>,
     #[serde(default)]
     pub cursor_up: Vec<String>,
@@ -142,6 +145,8 @@ pub struct GamepadBindings {
     pub confirm: Vec<String>,
     pub cancel: Vec<String>,
     pub next_hero: Vec<String>,
+    #[serde(default)]
+    pub place_rod: Vec<String>,
     pub next_turn: Vec<String>,
 }
 
@@ -166,7 +171,7 @@ impl InputMapping {
     pub fn from_config(config: &KeybindingsConfig) -> Self {
         let mut kb_map: HashMap<KeyCode, Vec<UiAction>> = HashMap::new();
 
-        let kb_pairs: [(&Vec<String>, UiAction); 16] = [
+        let kb_pairs: [(&Vec<String>, UiAction); 17] = [
             (&config.keyboard.up, UiAction::Up),
             (&config.keyboard.down, UiAction::Down),
             (&config.keyboard.left, UiAction::Left),
@@ -174,6 +179,7 @@ impl InputMapping {
             (&config.keyboard.confirm, UiAction::Confirm),
             (&config.keyboard.cancel, UiAction::Cancel),
             (&config.keyboard.next_hero, UiAction::NextHero),
+            (&config.keyboard.place_rod, UiAction::PlaceRod),
             (&config.keyboard.next_turn, UiAction::NextTurn),
             (&config.keyboard.cursor_up, UiAction::CursorUp),
             (&config.keyboard.cursor_down, UiAction::CursorDown),
@@ -194,7 +200,7 @@ impl InputMapping {
         }
 
         let mut gp_map: HashMap<GamepadButton, Vec<UiAction>> = HashMap::new();
-        let gp_pairs: [(&Vec<String>, UiAction); 8] = [
+        let gp_pairs: [(&Vec<String>, UiAction); 9] = [
             (&config.gamepad.up, UiAction::Up),
             (&config.gamepad.down, UiAction::Down),
             (&config.gamepad.left, UiAction::Left),
@@ -202,6 +208,7 @@ impl InputMapping {
             (&config.gamepad.confirm, UiAction::Confirm),
             (&config.gamepad.cancel, UiAction::Cancel),
             (&config.gamepad.next_hero, UiAction::NextHero),
+            (&config.gamepad.place_rod, UiAction::PlaceRod),
             (&config.gamepad.next_turn, UiAction::NextTurn),
         ];
 

@@ -377,6 +377,19 @@ impl MapViewApp {
                 self.status = Some(self.session.summary());
                 MapViewOutcome::Changed
             }
+            InputEvent::PlaceRod => match self.session_mut().place_resource_rod() {
+                Ok(pos) => {
+                    self.cursor_x = pos.x as isize;
+                    self.cursor_y = pos.y as isize;
+                    self.scroll_cursor_into_view(visible_cols, visible_rows);
+                    self.status = Some(self.session.summary());
+                    MapViewOutcome::Changed
+                }
+                Err(e) => {
+                    self.status = Some(e.to_string());
+                    MapViewOutcome::Changed
+                }
+            },
             InputEvent::PanUp => self.pan_view(InputEvent::Up, visible_cols, visible_rows),
             InputEvent::PanDown => self.pan_view(InputEvent::Down, visible_cols, visible_rows),
             InputEvent::PanLeft => self.pan_view(InputEvent::Left, visible_cols, visible_rows),
