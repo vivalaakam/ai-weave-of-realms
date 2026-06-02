@@ -14,7 +14,9 @@
       "Read(//Users/vivalaakam/.claude/**)",
       "Bash(ln -sf /Users/vivalaakam/.agents/skills/rpg-tile-render /Users/vivalaakam/.claude/skills/rpg-tile-render)",
       "Bash(ln -sf /Users/vivalaakam/work/ai-rpg-v2/.agents/skills/rpg-tile-render /Users/vivalaakam/.agents/skills/rpg-tile-render)",
-      "Bash(ln -sf /Users/vivalaakam/work/ai-rpg-v2/.agents/skills/rpg-tile-render /Users/vivalaakam/.claude/skills/rpg-tile-render)"
+      "Bash(ln -sf /Users/vivalaakam/work/ai-rpg-v2/.agents/skills/rpg-tile-render /Users/vivalaakam/.claude/skills/rpg-tile-render)",
+      "mcp__plugin_context-mode_context-mode__ctx_execute_file",
+      "mcp__plugin_context-mode_context-mode__ctx_execute"
     ]
   }
 }

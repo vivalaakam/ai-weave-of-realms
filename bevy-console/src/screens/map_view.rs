@@ -1055,8 +1055,14 @@ fn update_map_view(
             // Tile always shows its own color/atlas — cursor is a separate overlay sprite.
             let tile = map.get_tile(coord).ok();
             let resource_node = map.resource_node_at(coord);
-            sprite.color = match (tile, resource_node) {
-                (_, Some(_)) => match session.state().resource_owner(coord) {
+            // A resource point is anything the engine treats as ownable via a
+            // rod: an explicit resource node, or a bare Gold/Resource tile (e.g.
+            // mines loaded from a Tiled map that carries no resource nodes).
+            // Tint it by its owner so a captured mine matches its claimed land.
+            let is_resource_point = resource_node.is_some()
+                || tile.map(|t| matches!(t.kind, Tiles::Gold | Tiles::Resource)).unwrap_or(false);
+            sprite.color = match (tile, is_resource_point) {
+                (_, true) => match session.state().resource_owner(coord) {
                     Some(team_id) => session
                         .state()
                         .get_team(team_id)
@@ -1067,7 +1073,7 @@ fn update_map_view(
                         .unwrap_or(NEUTRAL_RESOURCE_COLOR),
                     None => NEUTRAL_RESOURCE_COLOR,
                 },
-                (Some(t), None) if is_city_tile(t.kind) => {
+                (Some(t), false) if is_city_tile(t.kind) => {
                     match session.state().city_owner(coord) {
                         // The owned city centre cell is hidden so the team logo
                         // overlay (CityLogoTile layer) takes its place; the rest of
@@ -1084,8 +1090,8 @@ fn update_map_view(
                         None => NEUTRAL_CITY_COLOR,
                     }
                 }
-                (Some(t), None) => tile_color_for(t.kind),
-                (None, None) => Color::BLACK,
+                (Some(t), false) => tile_color_for(t.kind),
+                (None, false) => Color::BLACK,
             };
             if let Some(atlas) = sprite.texture_atlas.as_mut() {
                 let idx = resource_node
