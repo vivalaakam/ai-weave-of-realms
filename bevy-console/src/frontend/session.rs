@@ -1,19 +1,11 @@
-//! Engine-backed gameplay session shared by embedded frontends.
-
-use alloc::{
-    format,
-    string::{String, ToString},
-};
-
+use engine::Direction;
 use engine::error::EngineError;
 use engine::game_state::GameState;
 use engine::hero::HeroId;
 use engine::map::game_map::MapCoord;
-use engine::Direction;
 
-/// Runtime game session stored by embedded gameplay frontends.
+/// Runtime game session stored by frontend clients.
 pub struct GameSession {
-    map_name: String,
     state: GameState,
     selected_hero_id: Option<HeroId>,
 }
@@ -28,18 +20,9 @@ impl GameSession {
     /// # Note
     /// If no heroes exist yet (e.g. player teams need to hire their first hero),
     /// `selected_hero_id` is set to `None`.
-    pub fn from_state(map_name: String, state: GameState) -> Self {
+    pub fn from_state(state: GameState) -> Self {
         let selected_hero_id = select_hero(&state);
-        Self {
-            map_name,
-            state,
-            selected_hero_id,
-        }
-    }
-
-    /// Returns the display name of the loaded map.
-    pub fn map_name(&self) -> &str {
-        &self.map_name
+        Self { state, selected_hero_id }
     }
 
     /// Returns the immutable engine state.
@@ -75,9 +58,9 @@ impl GameSession {
     /// Returns any engine move error such as impassable terrain or zero movement points,
     /// or if no hero is currently selected.
     pub fn move_selected_hero(&mut self, direction: Direction) -> Result<MapCoord, EngineError> {
-        let id = self.selected_hero_id.ok_or_else(|| {
-            EngineError::InvalidTiles("no hero selected".to_string())
-        })?;
+        let id = self
+            .selected_hero_id
+            .ok_or_else(|| EngineError::InvalidTiles("no hero selected".to_string()))?;
         self.state.move_hero(id, direction)?;
         Ok(self.selected_hero_position())
     }
@@ -87,13 +70,15 @@ impl GameSession {
     /// If the current hero is the only living player hero, it stays selected.
     /// Does nothing if no hero is currently selected.
     pub fn cycle_selected_hero(&mut self) {
-        let Some(id) = self.selected_hero_id else { return };
+        let Some(id) = self.selected_hero_id else {
+            return;
+        };
         let player_team = self.state.hero(id).map(|h| h.team_id);
-        if let Some(team_id) = player_team {
-            if let Some(next) = self.state.get_next_hero(team_id) {
-                self.selected_hero_id = Some(next);
-                self.state.set_active_hero(team_id, Some(next));
-            }
+        if let Some(team_id) = player_team
+            && let Some(next) = self.state.get_next_hero(team_id)
+        {
+            self.selected_hero_id = Some(next);
+            self.state.set_active_hero(team_id, Some(next));
         }
     }
 
@@ -107,7 +92,10 @@ impl GameSession {
         self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
 
         // Rotate to the next player-controlled team.
-        let next_team = self.state.get_next_active_team().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
+        let next_team = self
+            .state
+            .get_next_active_team()
+            .map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
 
         // Start the new team's turn (reset movement, increment turn counter).
         self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
@@ -130,11 +118,8 @@ impl GameSession {
             return "?".to_string();
         };
         let team_heroes = self.state.get_team_alive_heroes_ids(hero.team_id);
-        let hero_index = team_heroes
-            .iter()
-            .position(|&hid| hid == id)
-            .unwrap_or(0)
-            .saturating_add(1);
+        let hero_index =
+            team_heroes.iter().position(|&hid| hid == id).unwrap_or(0).saturating_add(1);
         let total_team = team_heroes.len();
 
         format!(
@@ -158,6 +143,6 @@ fn select_hero(state: &GameState) -> Option<HeroId> {
         .and_then(|team_id| state.get_active_hero(team_id))
         .or_else(|| active_team.and_then(|team_id| state.get_next_hero(team_id)))
         .or_else(|| state.living_heroes(true).first().map(|hero| hero.get_id()))
-        // Do NOT fall back to AI heroes — if the player team has no heroes,
-        // selected_hero_id stays None and the UI shows "hire hero" prompt.
+    // Do NOT fall back to AI heroes — if the player team has no heroes,
+    // selected_hero_id stays None and the UI shows "hire hero" prompt.
 }

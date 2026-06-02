@@ -6,11 +6,9 @@
 //!
 //! # Usage
 //!
-//! On **`std`** platforms the binary should call [`init_tile_config`](crate::config::init_tile_config)
+//! The binary should call [`init_tile_config`](crate::config::init_tile_config)
 //! once at start-up (e.g. in `main`), passing the contents of `assets/tiles.yaml`.
-//!
-//! On **`no_std`** targets (e.g. T-Deck) there is no file system, so the
-//! built-in [`default_tile_config`] is returned instead.
+//! The built-in [`default_tile_config`] is returned if the config is not loaded.
 
 use alloc::collections::BTreeMap;
 use alloc::string::String;
@@ -162,7 +160,7 @@ fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
     Some((r, g, b))
 }
 
-// ─── Default built-in config (no_std fallback) ─────────────────────────────────
+// ─── Default built-in config ──────────────────────────────────────────────────
 
 /// Returns the built-in default tile configuration.
 ///
@@ -435,9 +433,10 @@ mod tests {
     #[test]
     fn color_parsing_round_trip() {
         let cfg = default_tile_config();
-        for (_, entry) in &cfg.tiles {
+        for entry in cfg.tiles.values() {
             let parsed = parse_hex_color(&entry.color).unwrap();
-            assert!(parsed.0 <= 255 && parsed.1 <= 255 && parsed.2 <= 255);
+            let rebuilt = format!("{:02X}{:02X}{:02X}", parsed.0, parsed.1, parsed.2);
+            assert_eq!(rebuilt, entry.color.trim_start_matches('#').to_uppercase());
         }
     }
 

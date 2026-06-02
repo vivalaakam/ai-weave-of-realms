@@ -8,6 +8,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 mod app_host;
+mod frontend;
 mod input;
 mod screens;
 

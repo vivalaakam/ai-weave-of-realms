@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/engine",
-    "crates/game",
     "crates/mapgen",
     "crates/tiled",
     "crates/rpg-tools",

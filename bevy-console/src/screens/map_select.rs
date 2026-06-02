@@ -187,22 +187,20 @@ fn update_map_select(
         }
 
         let confirm = (is_sel && has(UiAction::Confirm)) || pressed;
-        if confirm {
-            if let Some(entry) = state.entries.get(idx.0) {
-                if entry.id == "__random_map" {
-                    next_state.set(AppState::RandomMap);
-                } else {
-                    match host.load_map_only(entry) {
-                        Ok(map) => {
-                            commands.insert_resource(PendingMapData {
-                                map_name: entry.label.clone(),
-                                map: Some(map),
-                            });
-                            next_state.set(AppState::TeamSetup);
-                        }
-                        Err(e) => {
-                            state.status = Some(e.to_string());
-                        }
+        if confirm && let Some(entry) = state.entries.get(idx.0) {
+            if entry.id == "__random_map" {
+                next_state.set(AppState::RandomMap);
+            } else {
+                match host.load_map_only(entry) {
+                    Ok(map) => {
+                        commands.insert_resource(PendingMapData {
+                            map_name: entry.label.clone(),
+                            map: Some(map),
+                        });
+                        next_state.set(AppState::TeamSetup);
+                    }
+                    Err(e) => {
+                        state.status = Some(e.to_string());
                     }
                 }
             }

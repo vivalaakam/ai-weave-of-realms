@@ -451,10 +451,7 @@ fn update_team_setup(
             if let Some(map) = &pending.map {
                 match build_state_with_teams(map.clone(), &pending.map_name, &team_cfgs) {
                     Ok(game_state) => {
-                        commands.insert_resource(LoadedSession {
-                            map_name: pending.map_name.clone(),
-                            state: Some(game_state),
-                        });
+                        commands.insert_resource(LoadedSession { state: Some(game_state) });
                         commands.remove_resource::<PendingMapData>();
                         next_state.set(AppState::MapView);
                         return;
@@ -481,7 +478,6 @@ fn update_team_setup(
 
 #[derive(Resource)]
 pub struct LoadedSession {
-    pub map_name: String,
     pub state: Option<GameState>,
 }
 

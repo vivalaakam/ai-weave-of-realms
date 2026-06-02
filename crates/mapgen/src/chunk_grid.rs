@@ -4,7 +4,7 @@
 //! преобразуется в плоский [`GameMap`] через [`ChunkGrid::into_game_map`].
 
 use engine::error::EngineError;
-use engine::map::chunk::{Chunk, ChunkCoord, CHUNK_SIZE};
+use engine::map::chunk::{Chunk, CHUNK_SIZE};
 use engine::map::game_map::GameMap;
 
 use crate::error::MapgenError;
@@ -45,60 +45,30 @@ impl ChunkGrid {
         Ok(Self { chunks_wide, chunks_tall, chunks, seed })
     }
 
-    /// Returns a reference to the chunk at `coord`.
-    ///
-    /// # Errors
-    /// Returns [`EngineError::OutOfBounds`] if the coordinate is outside the grid.
-    // TODO: used by future pathfinding / inspection passes
-    #[allow(dead_code)]
-    pub fn get_chunk(&self, coord: ChunkCoord) -> Result<&Chunk, EngineError> {
-        let idx = self.chunk_index(coord)?;
-        Ok(&self.chunks[idx])
-    }
-
-    /// Returns a mutable reference to the chunk at `coord`.
-    ///
-    /// # Errors
-    /// Returns [`EngineError::OutOfBounds`] if the coordinate is outside the grid.
-    // TODO: used by future pathfinding / inspection passes
-    #[allow(dead_code)]
-    pub fn get_chunk_mut(&mut self, coord: ChunkCoord) -> Result<&mut Chunk, EngineError> {
-        let idx = self.chunk_index(coord)?;
-        Ok(&mut self.chunks[idx])
-    }
-
     /// Flattens all chunks into a [`GameMap`] in global row-major tile order.
     ///
     /// # Errors
     /// Returns [`EngineError`] if [`GameMap::new`] fails (should not happen for a
     /// well-formed grid).
     pub fn into_game_map(self) -> Result<GameMap, EngineError> {
-        let cs = CHUNK_SIZE as u32;
-        let tw = self.chunks_wide * cs;
-        let th = self.chunks_tall * cs;
-        let mut tiles = Vec::with_capacity((tw * th) as usize);
+        let cs = CHUNK_SIZE;
+        let grid_w = self.chunks_wide as usize;
+        let grid_h = self.chunks_tall as usize;
+        let tw = grid_w * cs;
+        let th = grid_h * cs;
+        let mut tiles = Vec::with_capacity(tw * th);
 
-        for gy in 0..th {
-            let cy = gy / cs;
-            let ly = (gy % cs) as usize;
-            for gx in 0..tw {
-                let cx = gx / cs;
-                let lx = (gx % cs) as usize;
-                let chunk = &self.chunks[(cy * self.chunks_wide + cx) as usize];
-                tiles.push(*chunk.get(lx, ly)?);
+        for cy in 0..grid_h {
+            for ly in 0..cs {
+                for cx in 0..grid_w {
+                    let chunk = &self.chunks[cy * grid_w + cx];
+                    let row_start = ly * cs;
+                    let row_end = row_start + cs;
+                    tiles.extend_from_slice(&chunk.tiles()[row_start..row_end]);
+                }
             }
         }
 
-        GameMap::new(tw, th, tiles, self.seed)
-    }
-
-    fn chunk_index(&self, coord: ChunkCoord) -> Result<usize, EngineError> {
-        if coord.x >= self.chunks_wide || coord.y >= self.chunks_tall {
-            return Err(EngineError::OutOfBounds(format!(
-                "chunk ({}, {}) outside {}×{} grid",
-                coord.x, coord.y, self.chunks_wide, self.chunks_tall
-            )));
-        }
-        Ok((coord.y * self.chunks_wide + coord.x) as usize)
+        GameMap::new(tw as u32, th as u32, tiles, self.seed)
     }
 }

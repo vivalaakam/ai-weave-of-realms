@@ -1,175 +1,24 @@
-# Agent Instructions
+# Repository Guidelines
 
-This file contains mandatory rules for all code agents working on this project.
-Every agent MUST read and follow these rules before touching any code.
+## Project Structure & Module Organization
+The workspace is defined in `Cargo.toml` and centers on shared Rust crates under `crates/`. Core logic lives in `crates/engine`, with generation and interchange split into `crates/mapgen` (Lua-backed generation scripts in `scripts/`) and `crates/tiled` (TMX import/export). Developer tooling sits in `crates/rpg-tools`, while `crates/helpers` supplies cross-cutting utilities consumed by the app crates. The interactive frontend is `bevy-console/`, which wires Bevy to the shared crates for running the game and map tools from a desktop host.
 
----
+## Build, Test, and Development Commands
+Use the `justfile` targets as the canonical shortcuts:
+- `just test` → `cargo test --workspace`
+- `just sdl2-run` → run the SDL2 console binary
+- `just mapgen` → run the `mapgen` CLI with a timestamp seed
+- `just clean` → `cargo clean`
+Run a single test with `cargo test -p <crate> <test_name>`.
 
-## Language & Runtime
+## Coding Style & Naming Conventions
+Formatting is enforced by `rustfmt.toml` (edition 2021, 4-space indentation, max width 100). Clippy is configured in `clippy.toml` with elevated thresholds for argument count and cognitive complexity. For error handling, use `thiserror` (`anyhow` is not allowed), define per-module `error.rs` enums, and return `Result<T, crate::error::Error>` from fallible public APIs. Logging should use `tracing` (no `println!`/`eprintln!`). Public items require doc comments with clear `# Arguments`/`# Returns`/`# Errors`/`# Panics` sections when applicable, and avoid `unwrap()` or dead code in library modules.
 
-- All game logic and engine code is written in **Rust** (stable toolchain)
-- Godot integration uses **gdext** (godot-rust, Godot 4.x)
-- Scripting for map generation rules uses **Lua 5.4** via **mlua** crate
-- **GDScript is strictly forbidden**
-- No `.gd` files should ever be created
+## Testing Guidelines
+Workspace tests run with `just test` or `cargo test --workspace`. No coverage tooling or extra test harnesses are configured.
 
----
+## Commit & Pull Request Guidelines
+Recent history favors short, imperative commit messages; optional prefixes like `fix:`, `feat:`, or `docs:` appear, and some commits reference issues via `(#N)`. No PR template is present in the repo.
 
-## Error Handling
-
-- **`anyhow` is forbidden**
-- Use **`thiserror`** for all custom error types
-- Every module must define its own `Error` enum in `error.rs`
-- Every public function that can fail must return `Result<T, crate::error::Error>`
-
----
-
-## Logging
-
-- **`println!` and `eprintln!` are forbidden** for diagnostic output
-- Use **`tracing`** crate for all logging:
-    - `tracing::info!` — normal flow events
-    - `tracing::warn!` — recoverable anomalies
-    - `tracing::error!` — errors
-    - `tracing::debug!` — detailed debug info
-    - `tracing::trace!` — fine-grained tracing
-- Initialize subscriber in main entry points only (`tracing_subscriber`)
-
----
-
-## Documentation
-
-- **Every public function must have a doc comment** (`///`)
-- Doc comments must include:
-    - What the function does (one line summary)
-    - `# Arguments` section if there are non-obvious parameters
-    - `# Returns` section if return value needs explanation
-    - `# Errors` section if the function returns `Result`
-    - `# Panics` section if the function can panic
-- Every public struct and enum must have a doc comment
-- Every module (`lib.rs`, `mod.rs`) must have a module-level doc comment (`//!`)
-
-Example:
-
-```rust
-/// Generates a single 32×32 chunk using the provided seed and Lua script.
-///
-/// # Arguments
-/// * `seed` - Deterministic seed derived from map seed + chunk coordinates
-/// * `script` - Compiled Lua chunk generation function
-///
-/// # Returns
-/// A fully populated `Chunk` with tile data.
-///
-/// # Errors
-/// Returns `Error::LuaExecution` if the Lua script fails.
-pub fn generate_chunk(seed: [u8; 32], script: &LuaScript) -> Result<Chunk, Error> {
-```
-
----
-
-## Task Tracking
-
-- **Every task, subtask, and decision must be recorded in `TASKS.md`**
-- When starting a task: update status to `[IN PROGRESS]`
-- When completing a task: update status to `[DONE]`
-- When blocked: update status to `[BLOCKED]` and add a note
-- Never start a new task without recording it in `TASKS.md` first
-- For significant architectural decisions, add a note in `TASKS.md` under the relevant task
-
----
-
-## Code Style
-
-- Prefer explicit types over inference in public APIs
-- No `unwrap()` or `expect()` in library code (only in tests or main with clear justification)
-- Keep modules small and focused — one responsibility per file
-- No dead code in committed files (remove or annotate with `#[allow(dead_code)]` + a TODO comment)
-
----
-
-## Dependency Policy
-
-| Allowed                         | Forbidden                             |
-|---------------------------------|---------------------------------------|
-| `thiserror`                     | `anyhow`                              |
-| `tracing`, `tracing-subscriber` | `log`, `env_logger`, `println!`       |
-| `mlua` (Lua 5.4)                | Any other scripting runtime           |
-| `sha3` (Keccak256)              | `rand`, `rand_chacha` (use SeededRng) |
-| `gdext`                         | `godot-rust` (old API)                |
-| `serde`, `serde_json`           | —                                     |
-| `quick-xml`                     | —                                     |
-
----
-
-## Build & Development Commands
-
-```sh
-just build          # debug GDExtension + sync assets → godot/bin/
-just build-release  # release build
-just test           # cargo test --workspace
-just run            # build + launch Godot
-just editor         # build + open Godot editor
-just mapgen         # generate map PNG+TMX via scripts/generators/terrain.lua
-just clean          # cargo clean + remove godot/bin and godot/scripts
-```
-
-Run a single test: `cargo test -p <crate> <test_name>`
-
----
-
-## Project Structure
-
-```
-ai-rpg-v2/
-├── AGENTS.md        # This file
-├── TASKS.md         # Task tracking (always up to date)
-├── MAP_GENERATION_RULES.md  # Authoritative map gen spec
-├── Cargo.toml       # Workspace root
-├── justfile         # All dev commands
-├── crates/
-│   ├── rpg-engine/   # Pure game logic, zero Godot deps
-│   ├── rpg-mapgen/   # Map generator with Lua scripting
-│   ├── rpg-tiled/    # TMX import/export
-│   ├── rpg-godot/    # Godot wrapper (gdext bridge)
-│   ├── rpg-embedded/ # embedded-graphics primitives for T-Deck / terminal
-│   └── rpg-tools/    # CLI dev tools (mapgen bin)
-├── godot/           # Godot 4 project
-└── scripts/         # Lua scripts (generation rules, validators, evaluators)
-    ├── generators/
-    └── rules/
-```
-
----
-
-## Crate Responsibilities
-
-| Crate          | Responsibility                                                | Godot dep |
-|----------------|---------------------------------------------------------------|-----------|
-| `rpg-engine`   | Hero, combat, score, map types, PRNG                          | No        |
-| `rpg-mapgen`   | Chunk generation, stitching, Lua loader, evaluator, validator | No        |
-| `rpg-tiled`    | TMX parse/serialize, chunk↔TMX conversion                     | No        |
-| `rpg-godot`    | GodotNode wrappers, signals, scene bridging                   | Yes       |
-| `rpg-embedded` | embedded-graphics UI primitives (T-Deck, sixel, SDL2)         | No        |
-| `rpg-tools`    | `mapgen` CLI — renders map PNG+TMX for testing                | No        |
-
----
-
-## Agent Skills
-
-Project-local skill guides live in `.agents/skills/`. Each skill is a `SKILL.md` that contains
-domain knowledge, step-by-step patterns, and common pitfalls for a specific area of the codebase.
-**Read the relevant skill before starting work in that area.**
-
-| Skill             | Path                                      | When to use                                                                                               |
-|-------------------|-------------------------------------------|-----------------------------------------------------------------------------------------------------------|
-| `rpg-tile-render` | `.agents/skills/rpg-tile-render/SKILL.md` | Adding/fixing terrain tile rendering, autotile compositing, tile atlas, water/mountain/road/river sprites |
-
-### How to use a skill
-
-1. Read `.agents/skills/<skill-name>/SKILL.md` at the start of the task.
-2. Follow the patterns described there — they encode decisions already made in prior sessions.
-3. Cross-reference `docs/` for deeper technical documentation.
-
-For Claude Code the skills are also registered as slash-skills (e.g. `/rpg-tile-render`).
-All other agents (Codex, Qwen, Gemini, etc.) should read the SKILL.md files directly.
+## Agent Instructions
+All tasks and decisions must be tracked in `TASKS.md` with status updates (`IN PROGRESS`, `DONE`, `BLOCKED`). When working on specialized areas, consult the relevant guide under `.agents/skills/` before making changes.

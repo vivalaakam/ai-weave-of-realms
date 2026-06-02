@@ -26,7 +26,6 @@ pub enum EngineError {
     #[error("pipeline must have at least one generator")]
     PipelineEmpty,
     /// A validation-rule directory could not be read.
-    #[cfg(feature = "std")]
     #[error("cannot read validation rule directory '{path}': {err}")]
     ValidationRuleDir {
         /// Path that failed to load.

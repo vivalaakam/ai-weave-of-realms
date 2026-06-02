@@ -1,13 +1,12 @@
+use crate::frontend::input::InputEvent;
+use crate::frontend::map_view::{MapViewApp, MapViewOutcome};
+use crate::frontend::session::GameSession;
 use crate::input::{InputCooldown, UiAction};
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
 use bevy::prelude::*;
-use engine::hero_class::HeroClass;
 use engine::map::game_map::MapCoord;
 use engine::map::tile::Tiles;
-use game::input::InputEvent;
-use game::map_view::{MapViewApp, MapViewOutcome};
-use game::session::GameSession;
 
 #[derive(Component)]
 pub struct MapViewRoot;
@@ -207,7 +206,7 @@ fn enter_map_view_impl(
             return;
         };
 
-        let session = GameSession::from_state(loaded.map_name.clone(), state);
+        let session = GameSession::from_state(state);
 
         map_view_state.map_view = Some(Box::new(MapViewApp::new(session, 0, 0, None)));
     }
@@ -491,6 +490,7 @@ fn update_button_style(
 }
 
 #[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 fn update_map_view(
     mut commands: Commands,
     mut map_view_state: ResMut<MapViewState>,
@@ -569,7 +569,7 @@ fn update_map_view(
                 (None, Some(_)) => sel == 1,
                 _ => continue,
             };
-            update_button_style(is_sel, &interaction, &mut bg, &mut border);
+            update_button_style(is_sel, interaction, &mut bg, &mut border);
             let clicked = is_sel && frame(UiAction::Confirm);
             let pressed = matches!(interaction, Interaction::Pressed);
             if clicked || pressed {
@@ -656,7 +656,7 @@ fn update_map_view(
                 (None, Some(_)) => sel == 1,
                 _ => continue,
             };
-            update_button_style(is_sel, &interaction, &mut bg, &mut border);
+            update_button_style(is_sel, interaction, &mut bg, &mut border);
             let clicked = is_sel && frame(UiAction::Confirm);
             let button_pressed = matches!(interaction, Interaction::Pressed);
             if clicked || button_pressed {
@@ -786,7 +786,9 @@ fn update_map_view(
             // Mouse click on the tile under the cursor acts as Enter,
             // but only if the input cooldown has elapsed (prevents stale clicks
             // after a state transition from bleeding through).
-            if mouse_buttons.just_pressed(MouseButton::Left) && !cooldown.is_cooling_down(time.elapsed_secs_f64()) {
+            if mouse_buttons.just_pressed(MouseButton::Left)
+                && !cooldown.is_cooling_down(time.elapsed_secs_f64())
+            {
                 events.push(InputEvent::Enter);
             }
         } else {
@@ -803,18 +805,8 @@ fn update_map_view(
             MapViewOutcome::Changed | MapViewOutcome::CursorChanged => {
                 needs_redraw = true;
             }
-            MapViewOutcome::BackRequested => {
-                next_state.set(AppState::Splash);
-                map_view_state.map_view = Some(map_view_box);
-                return;
-            }
             MapViewOutcome::RequestEndTurn => {
                 request_end_turn = true;
-            }
-            MapViewOutcome::GameOver { .. } => {
-                next_state.set(AppState::Splash);
-                map_view_state.map_view = Some(map_view_box);
-                return;
             }
             MapViewOutcome::OpenStructureOverlay { name } => match name.as_str() {
                 "City" | "City Entrance" => {
@@ -890,18 +882,10 @@ fn update_map_view(
                     .get_team(hero.get_team_id())
                     .map(|t| {
                         let (r, g, b) = t.color;
-                        Color::srgb(
-                            r as f32 / 255.0,
-                            g as f32 / 255.0,
-                            b as f32 / 255.0,
-                        )
+                        Color::srgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
                     })
                     .unwrap_or(HERO_COLOR);
-                sprite.color = if is_selected {
-                    team_color
-                } else {
-                    team_color.with_alpha(0.5)
-                };
+                sprite.color = if is_selected { team_color } else { team_color.with_alpha(0.5) };
                 if let Some(atlas) = sprite.texture_atlas.as_mut() {
                     atlas.index = hero.class.atlas_index();
                 }

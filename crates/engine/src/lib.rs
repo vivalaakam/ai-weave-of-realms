@@ -17,8 +17,6 @@
 //! - [`spawn`]      — Deterministic hero spawn selection on generated maps
 //! - [`error`]      — Crate-level error type
 
-#![cfg_attr(not(any(test, feature = "std")), no_std)]
-
 extern crate alloc;
 
 pub use game_state::{GameOutcome, WinCondition};

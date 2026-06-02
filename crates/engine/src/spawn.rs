@@ -127,19 +127,53 @@ pub fn find_city_entrance_spawns(map: &GameMap, count: usize) -> Vec<MapCoord> {
         return candidates;
     }
 
-    // Greedy farthest-point selection: start from the first candidate and
-    // iteratively pick the candidate farthest from all already-selected points.
+    // Greedy farthest-point selection with cached minimum distances.
     let mut selected: Vec<MapCoord> = vec![candidates[0]];
+    let mut selected_flags = vec![false; candidates.len()];
+    selected_flags[0] = true;
+
+    let mut min_distances: Vec<u32> =
+        candidates.iter().map(|&coord| manhattan_distance(coord, candidates[0])).collect();
+
     while selected.len() < count {
-        let next = candidates.iter().filter(|c| !selected.contains(c)).max_by_key(|&&c| {
-            // Key = minimum Manhattan distance to any already-selected point.
-            selected.iter().map(|&s| manhattan_distance(c, s)).min().unwrap_or(0)
-        });
-        match next {
-            Some(&coord) => selected.push(coord),
-            None => break,
+        let mut best_idx: Option<usize> = None;
+        let mut best_distance = 0;
+
+        for (idx, _) in candidates.iter().enumerate() {
+            if selected_flags[idx] {
+                continue;
+            }
+            let distance = min_distances[idx];
+            let take = match best_idx {
+                None => true,
+                Some(current) => {
+                    distance > best_distance || (distance == best_distance && idx < current)
+                }
+            };
+            if take {
+                best_idx = Some(idx);
+                best_distance = distance;
+            }
+        }
+
+        let Some(chosen_idx) = best_idx else {
+            break;
+        };
+        selected_flags[chosen_idx] = true;
+        let chosen = candidates[chosen_idx];
+        selected.push(chosen);
+
+        for (idx, &coord) in candidates.iter().enumerate() {
+            if selected_flags[idx] {
+                continue;
+            }
+            let distance = manhattan_distance(coord, chosen);
+            if distance < min_distances[idx] {
+                min_distances[idx] = distance;
+            }
         }
     }
+
     selected
 }
 

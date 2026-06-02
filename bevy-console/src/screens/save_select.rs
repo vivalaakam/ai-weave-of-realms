@@ -1,6 +1,7 @@
 use crate::app_host::AppHost;
 use crate::input::UiAction;
 use crate::screens::AppState;
+use crate::screens::team_setup::LoadedSession;
 use bevy::prelude::*;
 use helpers::ListEntry;
 
@@ -123,6 +124,7 @@ fn enter_save_select(
 
 #[allow(clippy::type_complexity)]
 fn update_save_select(
+    mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut host: ResMut<AppHost>,
     mut state: ResMut<SaveSelectState>,
@@ -163,16 +165,15 @@ fn update_save_select(
         }
 
         let confirm = (is_sel && has(UiAction::Confirm)) || pressed;
-        if confirm {
-            if let Some(entry) = state.entries.get(idx.0) {
-                match host.load_save(entry) {
-                    Ok(_loaded) => {
-                        // Insert LoadedGame resource so MapView can pick it up
-                        // TODO: proper handling in MapView
-                    }
-                    Err(e) => {
-                        state.status = Some(e.to_string());
-                    }
+        if confirm && let Some(entry) = state.entries.get(idx.0) {
+            match host.load_save(entry) {
+                Ok(loaded) => {
+                    commands.insert_resource(LoadedSession { state: Some(loaded.state) });
+                    next_state.set(AppState::MapView);
+                    return;
+                }
+                Err(e) => {
+                    state.status = Some(e.to_string());
                 }
             }
         }

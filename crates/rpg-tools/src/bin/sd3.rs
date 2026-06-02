@@ -100,8 +100,8 @@ fn main() -> Result<()> {
     let Args {
         prompt,
         uncond_prompt,
-        cpu,
-        tracing,
+        cpu: _cpu,
+        tracing: _tracing,
         use_flash_attn,
         height,
         width,

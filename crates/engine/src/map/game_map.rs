@@ -173,12 +173,12 @@ impl GameMap {
 
     /// Returns `true` if an enemy spawn exists at `coord`.
     pub fn has_enemy_spawn(&self, coord: MapCoord) -> bool {
-        self.enemy_spawns.contains(&coord)
+        self.enemy_spawns.binary_search(&coord).is_ok()
     }
 
     /// Returns `true` if a chest spawn exists at `coord`.
     pub fn has_chest_spawn(&self, coord: MapCoord) -> bool {
-        self.chest_spawns.contains(&coord)
+        self.chest_spawns.binary_search(&coord).is_ok()
     }
 
     /// Replaces the enemy and chest spawn point lists.
@@ -194,8 +194,14 @@ impl GameMap {
         enemy_spawns: Vec<MapCoord>,
         chest_spawns: Vec<MapCoord>,
     ) -> Result<(), EngineError> {
-        self.validate_spawn_points(&enemy_spawns)?;
-        self.validate_spawn_points(&chest_spawns)?;
+        Self::validate_spawn_points(self.width, self.height, &enemy_spawns)?;
+        Self::validate_spawn_points(self.width, self.height, &chest_spawns)?;
+
+        let mut enemy_spawns = enemy_spawns;
+        let mut chest_spawns = chest_spawns;
+        Self::sort_spawn_points(&mut enemy_spawns);
+        Self::sort_spawn_points(&mut chest_spawns);
+
         self.enemy_spawns = enemy_spawns;
         self.chest_spawns = chest_spawns;
         Ok(())
@@ -235,16 +241,25 @@ impl GameMap {
         Ok((coord.y * self.width + coord.x) as usize)
     }
 
-    fn validate_spawn_points(&self, points: &[MapCoord]) -> Result<(), EngineError> {
+    fn validate_spawn_points(
+        width: u32,
+        height: u32,
+        points: &[MapCoord],
+    ) -> Result<(), EngineError> {
         for coord in points {
-            if coord.x >= self.width || coord.y >= self.height {
+            if coord.x >= width || coord.y >= height {
                 return Err(EngineError::OutOfBounds(format!(
                     "spawn ({}, {}) outside {}×{} map",
-                    coord.x, coord.y, self.width, self.height
+                    coord.x, coord.y, width, height
                 )));
             }
         }
         Ok(())
+    }
+
+    fn sort_spawn_points(points: &mut Vec<MapCoord>) {
+        points.sort_unstable();
+        points.dedup();
     }
 }
 

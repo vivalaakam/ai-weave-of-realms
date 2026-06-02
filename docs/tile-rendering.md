@@ -1,7 +1,6 @@
 # Tile Rendering System
 
-Rendering lives in `crates/rpg-embedded/src/render.rs`. The crate is `no_std + alloc` and uses `embedded-graphics` as
-the draw abstraction.
+Rendering lives in the frontend renderers and uses `embedded-graphics` as the draw abstraction where applicable.
 
 ---
 

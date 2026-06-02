@@ -1,6 +1,5 @@
 //! Hero class definitions — determines stats, sprite, and identity.
 
-use alloc::string::String;
 use serde::{Deserialize, Serialize};
 
 /// All playable hero classes.

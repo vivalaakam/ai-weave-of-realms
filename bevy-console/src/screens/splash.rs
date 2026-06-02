@@ -170,7 +170,8 @@ fn update_splash(
 
     let selected = splash_state.selected;
 
-    for (new_game_opt, load_game_opt, quit_opt, mut bg, mut border, interaction) in query.iter_mut() {
+    for (new_game_opt, load_game_opt, quit_opt, mut bg, mut border, interaction) in query.iter_mut()
+    {
         let is_selected = match (new_game_opt, load_game_opt, quit_opt) {
             (Some(_), None, None) => selected == 0,
             (None, Some(_), None) => selected == 1,

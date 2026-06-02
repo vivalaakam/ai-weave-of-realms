@@ -126,24 +126,6 @@ impl AppHost {
         Ok(LoadedGame { map_name: entry.label.clone(), state })
     }
 
-    pub fn save_game(&mut self, name: &str, state: &GameState) -> Result<(), AppHostError> {
-        fs::create_dir_all(&self.saves_dir).map_err(|e| {
-            AppHostError::SaveGameCreateDirFailed(self.saves_dir.to_string_lossy().to_string(), e)
-        })?;
-        let file_name = sanitize_save_filename(name);
-        let path = self.saves_dir.join(file_name);
-        let bytes =
-            state.to_save_bytes_with_name(name).map_err(AppHostError::SaveGameEngineError)?;
-        fs::write(&path, bytes).map_err(|e| {
-            AppHostError::SaveGameWriteFailed(path.to_string_lossy().to_string(), e)
-        })?;
-        Ok(())
-    }
-
-    pub fn error_message(&self, error: AppHostError) -> String {
-        error.to_string()
-    }
-
     pub fn generate_and_save_map(&mut self, seed: &str) -> Result<ListEntry, AppHostError> {
         let map = generate_map(
             seed.to_string(),

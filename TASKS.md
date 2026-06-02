@@ -12,6 +12,7 @@ Update status as work progresses.
 | ID  | Task                                                                           | Assignee | Status | Notes                                         |
 |-----|--------------------------------------------------------------------------------|----------|--------|-----------------------------------------------|
 | 0.1 | Init Cargo workspace with crates: rpg-engine, rpg-mapgen, rpg-tiled, rpg-godot | —        | DONE   |                                               |
+| 0.2 | Refresh AGENTS.md repository guidelines                                        | Codex    | DONE   | /init                                          |
 | 0.2 | Implement `SeededRng`, `keccak256`, `derive_seed` in rpg-engine::rng           | —        | DONE   | 21 тест, детерминированность подтверждена     |
 | 0.3 | Define map types: `TileKind`, `Tile`, `Chunk`, `GameMap` in rpg-engine::map    | —        | DONE   | Vec<Tile> вместо Box<[Tile;1024]> из-за serde |
 | 0.4 | Define `Error` enums via thiserror in all crates                               | —        | DONE   |                                               |
@@ -99,6 +100,9 @@ Update status as work progresses.
 | 5.13 | T-Deck: убрать TMX-парсер и clippy warnings                                          | Codex    | DONE   | Cleanup storage module                                                         |
 | 5.14 | T-Deck: сохранение с верификацией и .rpgs/.rpg фильтр                                | Codex    | DONE   | Save hash verify + extension handling                                          |
 | 5.15 | T-Deck: единое расширение .rpgs                                                      | Codex    | DONE   | Save/map filters and filenames                                                 |
+| 5.16 | Оптимизации и перенос рендера из game → bevy-console                                 | Codex    | DONE   | spawn lookup, ChunkGrid flatten, render cleanup                             |
+| 5.17 | Удалить crate game и перенести код в bevy-console                                    | Codex    | DONE   | move shared frontend state, update workspace                             |
+| 5.18 | Удалить no_std feature flags в крейтах                                               | Codex    | DONE   | engine std-only, docs updated                                             |
 
 ---
 

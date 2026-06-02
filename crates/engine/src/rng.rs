@@ -9,7 +9,6 @@
 
 use alloc::format;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "std")]
 use sha3::{Digest, Keccak256};
 
 // ─── SeededRng ────────────────────────────────────────────────────────────────
@@ -222,36 +221,9 @@ pub fn derive_seed(base: &[u8; 32], context: &[u8]) -> [u8; 32] {
 }
 
 fn hash_bytes(bytes: &[u8]) -> [u8; 32] {
-    #[cfg(feature = "std")]
-    {
-        let mut hasher = Keccak256::new();
-        hasher.update(bytes);
-        hasher.finalize().into()
-    }
-
-    #[cfg(not(feature = "std"))]
-    {
-        fallback_hash(bytes)
-    }
-}
-
-#[cfg(not(feature = "std"))]
-fn fallback_hash(bytes: &[u8]) -> [u8; 32] {
-    const SEEDS: [u64; 4] =
-        [0xcbf29ce484222325, 0x9e3779b97f4a7c15, 0xd6e8feb86659fd93, 0x94d049bb133111eb];
-    const PRIME: u64 = 0x100000001b3;
-
-    let mut output = [0u8; 32];
-    for (index, seed) in SEEDS.iter().enumerate() {
-        let mut state = *seed;
-        for (offset, byte) in bytes.iter().enumerate() {
-            state ^= u64::from(*byte) + ((offset as u64) << 8) + ((index as u64) << 16);
-            state = state.wrapping_mul(PRIME);
-            state ^= state.rotate_left(13);
-        }
-        output[index * 8..(index + 1) * 8].copy_from_slice(&state.to_be_bytes());
-    }
-    output
+    let mut hasher = Keccak256::new();
+    hasher.update(bytes);
+    hasher.finalize().into()
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

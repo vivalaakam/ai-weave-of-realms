@@ -504,7 +504,7 @@ fn run(args: Args) -> Result<()> {
     let Args {
         prompt,
         uncond_prompt,
-        cpu,
+        cpu: _cpu,
         height,
         width,
         n_steps,
@@ -518,7 +518,7 @@ fn run(args: Args) -> Result<()> {
         clip2_weights,
         vae_weights,
         unet_weights,
-        tracing,
+        tracing: _tracing,
         use_f16,
         guidance_scale,
         use_flash_attn,

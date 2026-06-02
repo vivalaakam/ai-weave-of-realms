@@ -25,7 +25,6 @@ use tracing::{info, instrument};
 use crate::combat::{self, CombatResult};
 use crate::error::EngineError;
 use crate::hero::{Hero, HeroId, TeamId};
-use crate::hero_class::HeroClass;
 use crate::map::game_map::{Direction, GameMap, MapCoord};
 use crate::map::tile::Tiles;
 use crate::rng::SeededRng;
@@ -283,21 +282,19 @@ impl GameState {
     ///
     /// Useful for centering the camera when the team has no hero yet.
     pub fn city_entrance_for_team(&self, team_id: TeamId) -> Option<MapCoord> {
-        self.city_owners
-            .iter()
-            .filter(|(coord, &owner)| owner == team_id)
-            .find_map(|(coord, _)| {
-                let tile = self.map.get_tile(*coord).ok()?;
-                if tile.kind == Tiles::CityEntrance { Some(*coord) } else { None }
-            })
+        self.city_owners.iter().filter(|(_, &owner)| owner == team_id).find_map(|(coord, _)| {
+            let tile = self.map.get_tile(*coord).ok()?;
+            if tile.kind == Tiles::CityEntrance {
+                Some(*coord)
+            } else {
+                None
+            }
+        })
     }
 
     /// Returns any city tile owned by the given team.
     pub fn city_owner_for_team(&self, team_id: TeamId) -> Option<MapCoord> {
-        self.city_owners
-            .iter()
-            .find(|(_, &owner)| owner == team_id)
-            .map(|(coord, _)| *coord)
+        self.city_owners.iter().find(|(_, &owner)| owner == team_id).map(|(coord, _)| *coord)
     }
 
     /// Returns the last active hero ID for `team_id`, or `None` if not set.
@@ -667,6 +664,7 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hero_class::HeroClass;
     use crate::map::tile::Tile;
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
@@ -783,8 +781,28 @@ mod tests {
     fn defeated_enemy_awards_score() {
         let map = meadow_map(5, 5);
         let mut state = make_state(map);
-        let pid = state.add_hero(Hero::new_with_stats(0, HeroClass::Knight, "P", 100, 200, 0, 10, MapCoord::new(0, 0), 0));
-        let eid = state.add_hero(Hero::new_with_stats(0, HeroClass::Knight, "E", 1, 1, 0, 1, MapCoord::new(1, 0), 2));
+        let pid = state.add_hero(Hero::new_with_stats(
+            0,
+            HeroClass::Knight,
+            "P",
+            100,
+            200,
+            0,
+            10,
+            MapCoord::new(0, 0),
+            0,
+        ));
+        let eid = state.add_hero(Hero::new_with_stats(
+            0,
+            HeroClass::Knight,
+            "E",
+            1,
+            1,
+            0,
+            1,
+            MapCoord::new(1, 0),
+            2,
+        ));
         state.attack_hero(pid, eid).unwrap();
         assert!(state.score.total() > 0);
     }
@@ -846,9 +864,39 @@ mod tests {
 
     fn make_state_with_heroes(map: GameMap) -> (GameState, HeroId, HeroId, HeroId) {
         let mut state = make_state(map);
-        let pid = state.add_hero(Hero::new_with_stats(0, HeroClass::Knight, "P", 100, 200, 0, 10, MapCoord::new(0, 0), 0));
-        let bid = state.add_hero(Hero::new_with_stats(1, HeroClass::Knight, "P2", 100, 200, 0, 10, MapCoord::new(2, 0), 1));
-        let eid = state.add_hero(Hero::new_with_stats(2, HeroClass::Knight, "E", 1, 1, 0, 1, MapCoord::new(1, 0), 2));
+        let pid = state.add_hero(Hero::new_with_stats(
+            0,
+            HeroClass::Knight,
+            "P",
+            100,
+            200,
+            0,
+            10,
+            MapCoord::new(0, 0),
+            0,
+        ));
+        let bid = state.add_hero(Hero::new_with_stats(
+            1,
+            HeroClass::Knight,
+            "P2",
+            100,
+            200,
+            0,
+            10,
+            MapCoord::new(2, 0),
+            1,
+        ));
+        let eid = state.add_hero(Hero::new_with_stats(
+            2,
+            HeroClass::Knight,
+            "E",
+            1,
+            1,
+            0,
+            1,
+            MapCoord::new(1, 0),
+            2,
+        ));
         (state, pid, bid, eid)
     }
 

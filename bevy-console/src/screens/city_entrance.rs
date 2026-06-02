@@ -178,7 +178,7 @@ fn spawn_hero_select(
 ) {
     let classes = HeroClass::all();
     let total = classes.len();
-    let total_rows = (total + GRID_COLS - 1) / GRID_COLS;
+    let total_rows = total.div_ceil(GRID_COLS);
 
     commands.insert_resource(HeroSelectScroll { focus: 0, scroll_y: 0.0 });
 
@@ -235,15 +235,13 @@ fn spawn_hero_select(
 
     // Scroll wrapper — clips content and provides a viewport for the grid.
     let scroll_wrapper = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Column,
-                overflow: Overflow::clip(),
-                flex_grow: 1.0,
-                width: Val::Percent(100.0),
-                ..default()
-            },
-        ))
+        .spawn((Node {
+            flex_direction: FlexDirection::Column,
+            overflow: Overflow::clip(),
+            flex_grow: 1.0,
+            width: Val::Percent(100.0),
+            ..default()
+        },))
         .id();
 
     // Grid area (scrollable container of rows).
@@ -262,13 +260,11 @@ fn spawn_hero_select(
     // Spawn rows of cards.
     for row_idx in 0..total_rows {
         let row_entity = commands
-            .spawn((
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(gap),
-                    ..default()
-                },
-            ))
+            .spawn((Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(gap),
+                ..default()
+            },))
             .id();
         commands.entity(grid).add_child(row_entity);
 
@@ -333,24 +329,24 @@ fn spawn_hero_select(
                     ));
 
                     // Class name + stats stacked vertically.
-                    card_node.spawn((
-                        Node {
+                    card_node
+                        .spawn((Node {
                             flex_direction: FlexDirection::Column,
                             flex_grow: 1.0,
                             ..default()
-                        },
-                    )).with_children(|text_col| {
-                        text_col.spawn((
-                            Text::new(class.display_name()),
-                            TextFont { font_size: FontSize::Px(14.0), ..default() },
-                            TextColor(TEXT_COLOR),
-                        ));
-                        text_col.spawn((
-                            Text::new(stats),
-                            TextFont { font_size: FontSize::Px(12.0), ..default() },
-                            TextColor(SUBTLE_COLOR),
-                        ));
-                    });
+                        },))
+                        .with_children(|text_col| {
+                            text_col.spawn((
+                                Text::new(class.display_name()),
+                                TextFont { font_size: FontSize::Px(14.0), ..default() },
+                                TextColor(TEXT_COLOR),
+                            ));
+                            text_col.spawn((
+                                Text::new(stats),
+                                TextFont { font_size: FontSize::Px(12.0), ..default() },
+                                TextColor(SUBTLE_COLOR),
+                            ));
+                        });
                 })
                 .id();
 
@@ -378,11 +374,6 @@ fn spawn_hero_select(
 struct HeroClassCard {
     class: HeroClass,
 }
-
-/// Marker for the "Hire Hero" button on the entrance screen.
-/// Separates it from hero-class cards so we can use disjoint queries.
-#[derive(Component)]
-struct HireHeroBtn;
 
 #[allow(clippy::type_complexity)]
 fn update_city_entrance(
@@ -412,30 +403,29 @@ fn update_city_entrance(
     let has = |action: UiAction| actions.contains(&action);
 
     // ── Hero selection overlay mode ────────────────────────────────
-    if !select_root.is_empty() && scroll.is_some() {
-        let scroll = scroll.as_mut().unwrap();
+    if !select_root.is_empty() {
+        let Some(scroll) = scroll.as_mut() else {
+            return;
+        };
         let total = HeroClass::all().len();
 
         // Navigation within the selection grid.
-        if has(UiAction::CursorUp) || has(UiAction::Up) {
-            if scroll.focus >= GRID_COLS {
-                scroll.focus -= GRID_COLS;
-            }
+        if (has(UiAction::CursorUp) || has(UiAction::Up)) && scroll.focus >= GRID_COLS {
+            scroll.focus -= GRID_COLS;
         }
-        if has(UiAction::CursorDown) || has(UiAction::Down) {
-            if scroll.focus + GRID_COLS < total {
-                scroll.focus += GRID_COLS;
-            }
+        if (has(UiAction::CursorDown) || has(UiAction::Down)) && scroll.focus + GRID_COLS < total {
+            scroll.focus += GRID_COLS;
         }
-        if has(UiAction::CursorLeft) || has(UiAction::Left) {
-            if scroll.focus % GRID_COLS > 0 {
-                scroll.focus -= 1;
-            }
+        if (has(UiAction::CursorLeft) || has(UiAction::Left))
+            && !scroll.focus.is_multiple_of(GRID_COLS)
+        {
+            scroll.focus -= 1;
         }
-        if has(UiAction::CursorRight) || has(UiAction::Right) {
-            if scroll.focus % GRID_COLS < GRID_COLS - 1 && scroll.focus + 1 < total {
-                scroll.focus += 1;
-            }
+        if (has(UiAction::CursorRight) || has(UiAction::Right))
+            && scroll.focus % GRID_COLS < GRID_COLS - 1
+            && scroll.focus + 1 < total
+        {
+            scroll.focus += 1;
         }
 
         // Update card highlights based on focus.
@@ -466,10 +456,7 @@ fn update_city_entrance(
 
         // Apply scroll offset to the grid container.
         if let Ok(mut node) = grid_node.single_mut() {
-            node.margin = UiRect {
-                top: Val::Px(-scroll.scroll_y),
-                ..default()
-            };
+            node.margin = UiRect { top: Val::Px(-scroll.scroll_y), ..default() };
         }
 
         // Confirm selection — hire the focused class.
@@ -539,11 +526,7 @@ fn update_city_entrance(
 
     if hire_triggered {
         // Open hero class selection — pass the atlas handles from MapViewState.
-        spawn_hero_select(
-            &mut commands,
-            &map_view_state.atlas_image,
-            &map_view_state.atlas_layout,
-        );
+        spawn_hero_select(&mut commands, &map_view_state.atlas_image, &map_view_state.atlas_layout);
         return;
     }
 

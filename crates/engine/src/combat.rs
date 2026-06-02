@@ -93,10 +93,21 @@ fn calc_damage(source: &mut Hero, target: &Hero) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hero_class::HeroClass;
     use crate::map::game_map::MapCoord;
 
     fn make_hero(id: u8, hp: u32, atk: u32, def: u32, spd: u32) -> Hero {
-        Hero::new_with_stats(id, HeroClass::Warrior, "Hero", hp, atk, def, spd, MapCoord::new(0, 0), 1)
+        Hero::new_with_stats(
+            id,
+            HeroClass::Warrior,
+            "Hero",
+            hp,
+            atk,
+            def,
+            spd,
+            MapCoord::new(0, 0),
+            1,
+        )
     }
 
     #[test]

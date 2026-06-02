@@ -34,6 +34,19 @@ struct ExitConfirmButton;
 #[derive(Component)]
 struct ExitCancelButton;
 
+type ExitConfirmButtonQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Option<&'static ExitConfirmButton>,
+        Option<&'static ExitCancelButton>,
+        &'static mut BackgroundColor,
+        &'static mut BorderColor,
+        &'static Interaction,
+    ),
+    Without<ExitConfirmOverlay>,
+>;
+
 // ── State ─────────────────────────────────────────────────────────────
 
 /// Whether the exit-confirmation overlay is currently showing.
@@ -92,16 +105,7 @@ fn handle_exit_confirm(
     mut app_exit: MessageWriter<AppExit>,
     mut commands: Commands,
     overlay_q: Query<Entity, With<ExitConfirmOverlay>>,
-    mut btn_query: Query<
-        (
-            Option<&ExitConfirmButton>,
-            Option<&ExitCancelButton>,
-            &mut BackgroundColor,
-            &mut BorderColor,
-            &Interaction,
-        ),
-        Without<ExitConfirmOverlay>,
-    >,
+    mut btn_query: ExitConfirmButtonQuery,
 ) {
     // Keyboard: Left/Right or A/D to navigate between Confirm and Cancel.
     if keys.just_pressed(KeyCode::ArrowLeft)
@@ -144,10 +148,16 @@ fn handle_exit_confirm(
     let stick_deadzone = 0.5;
     for gamepad in gamepads.iter() {
         let ls = gamepad.left_stick();
-        if gamepad.pressed(GamepadButton::DPadLeft) || gamepad.pressed(GamepadButton::DPadUp) || ls.y > stick_deadzone {
+        if gamepad.pressed(GamepadButton::DPadLeft)
+            || gamepad.pressed(GamepadButton::DPadUp)
+            || ls.y > stick_deadzone
+        {
             state.selected = state.selected.saturating_sub(1);
         }
-        if gamepad.pressed(GamepadButton::DPadRight) || gamepad.pressed(GamepadButton::DPadDown) || ls.y < -stick_deadzone {
+        if gamepad.pressed(GamepadButton::DPadRight)
+            || gamepad.pressed(GamepadButton::DPadDown)
+            || ls.y < -stick_deadzone
+        {
             state.selected = (state.selected + 1).min(1);
         }
         if gamepad.just_pressed(GamepadButton::South) {
