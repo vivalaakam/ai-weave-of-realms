@@ -8,7 +8,7 @@ use crate::screens::team_setup::LoadedSession;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use engine::MapCoord;
-use engine::config::{TeamLogo, get_team_catalog, get_tile_config};
+use engine::config::{TeamLogo, TileConfig, default_tile_config};
 use engine::game_state::GameState;
 use engine::map::game_map::{RESOURCE_KIND_COUNT, ResourceKind};
 use engine::map::tile::Tiles;
@@ -57,15 +57,15 @@ pub enum TopBarField {
 const GOLD_COLOR: Color = Color::srgb(0.96, 0.82, 0.30);
 
 /// Atlas index of the gold pictogram, sourced from `tiles.yaml` (`gold` tile).
-fn gold_icon_index() -> usize {
-    get_tile_config().atlas_index("gold").unwrap_or(0) as usize
+fn gold_icon_index(tile_config: &TileConfig) -> usize {
+    tile_config.atlas_index("gold").unwrap_or(0) as usize
 }
 
 /// Atlas indices of the four resource pictograms, sourced from `tiles.yaml`
 /// (`resource` tile variants, in declaration order).
-fn resource_icon_indices() -> [usize; RESOURCE_KIND_COUNT] {
+fn resource_icon_indices(tile_config: &TileConfig) -> [usize; RESOURCE_KIND_COUNT] {
     let mut icons = [0usize; RESOURCE_KIND_COUNT];
-    if let Some(indexes) = get_tile_config().atlas_indexes("resource") {
+    if let Some(indexes) = tile_config.atlas_indexes("resource") {
         for (slot, index) in icons.iter_mut().zip(indexes) {
             *slot = index as usize;
         }
@@ -160,8 +160,8 @@ impl Default for MapViewState {
 /// Color used for tiles of a neutral (unowned) city.
 const NEUTRAL_CITY_COLOR: Color = Color::srgb(1.0, 0.0, 1.0); // magenta
 
-fn tile_color_for(kind: Tiles) -> Color {
-    let (r, g, b) = kind.as_color();
+fn tile_color_for(kind: Tiles, tile_config: &TileConfig) -> Color {
+    let (r, g, b) = kind.color_with_config(tile_config);
     rgb_color(r, g, b)
 }
 
@@ -175,8 +175,8 @@ fn is_city_tile(kind: Tiles) -> bool {
     matches!(kind, Tiles::City | Tiles::CityEntrance)
 }
 
-fn tile_atlas_index(kind: Tiles) -> usize {
-    kind.atlas_index() as usize
+fn tile_atlas_index(kind: Tiles, tile_config: &TileConfig) -> usize {
+    kind.atlas_index_with_config(tile_config) as usize
 }
 
 fn resource_atlas_index(kind: ResourceKind) -> usize {
@@ -469,7 +469,11 @@ fn spawn_map_view_entities(
             ));
         });
 
-    spawn_top_bar(commands, atlas_handle, layout_handle);
+    let tile_config = map_view_state
+        .get_game_state()
+        .map(|state| state.tile_config().clone())
+        .unwrap_or_else(default_tile_config);
+    spawn_top_bar(commands, atlas_handle, layout_handle, &tile_config);
 }
 
 /// Spawns the top HUD bar: current turn number, gold balance, and the four
@@ -480,6 +484,7 @@ fn spawn_top_bar(
     commands: &mut Commands,
     atlas_image: Handle<Image>,
     atlas_layout: Handle<TextureAtlasLayout>,
+    tile_config: &TileConfig,
 ) {
     // One labelled cell: optional pictogram + value text tagged with `field`.
     fn cell(
@@ -539,7 +544,7 @@ fn spawn_top_bar(
             TopBarRoot,
         ))
         .with_children(|parent| {
-            let resource_icons = resource_icon_indices();
+            let resource_icons = resource_icon_indices(tile_config);
             // Turn number (no icon, plain text label baked into the value).
             cell(parent, &atlas_image, &atlas_layout, None, TopBarField::Turn, TEXT_COLOR);
             // Gold balance.
@@ -547,7 +552,7 @@ fn spawn_top_bar(
                 parent,
                 &atlas_image,
                 &atlas_layout,
-                Some(gold_icon_index()),
+                Some(gold_icon_index(tile_config)),
                 TopBarField::Gold,
                 GOLD_COLOR,
             );
@@ -1165,6 +1170,7 @@ fn update_map_view(
     if needs_redraw {
         let session = map_view.session();
         let map = &session.state().map;
+        let tile_config = session.state().tile_config();
         let city_centers = owned_city_centers(session.state());
         let view_x = map_view.view_x();
         let view_y = map_view.view_y();
@@ -1258,13 +1264,13 @@ fn update_map_view(
                         None => NEUTRAL_CITY_COLOR,
                     }
                 }
-                (Some(t), false) => tile_color_for(t.kind),
+                (Some(t), false) => tile_color_for(t.kind, tile_config),
                 (None, false) => Color::BLACK,
             };
             if let Some(atlas) = sprite.texture_atlas.as_mut() {
                 let idx = resource_node
                     .map(|node| resource_atlas_index(node.kind))
-                    .or_else(|| tile.map(|t| tile_atlas_index(t.kind)))
+                    .or_else(|| tile.map(|t| tile_atlas_index(t.kind, tile_config)))
                     .unwrap_or(0);
                 atlas.index = idx;
             }
@@ -1306,7 +1312,7 @@ fn update_map_view(
         }
 
         // City logo overlay: draw the owning team's logo on its city core tile.
-        let catalog = get_team_catalog();
+        let catalog = session.state().team_catalog();
         for (tile_pos, mut sprite) in layers.logo.iter_mut() {
             let tx = view_x + tile_pos.col;
             let ty = view_y + tile_pos.row;
@@ -1322,8 +1328,7 @@ fn update_map_view(
                     .and_then(|team_id| session.state().get_team(team_id))
                     .and_then(|team| {
                         catalog
-                            .as_ref()
-                            .and_then(|cat| cat.by_name(&team.name))
+                            .by_name(&team.name)
                             .map(|def| (def.logo.clone(), team.name.clone(), team.color))
                     })
             } else {

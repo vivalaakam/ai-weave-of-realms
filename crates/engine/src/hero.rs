@@ -117,19 +117,7 @@ impl Hero {
     }
 
     pub fn get_atlas_index(&self) -> usize {
-        if self.atlas_index != 0 {
-            return self.atlas_index;
-        }
-
-        crate::config::get_hero_catalog()
-            .and_then(|catalog| {
-                catalog
-                    .heroes()
-                    .iter()
-                    .find(|candidate| candidate.get_class_id() == self.class_id)
-                    .map(|candidate| candidate.get_atlas_index())
-            })
-            .unwrap_or(self.class_id as usize)
+        self.atlas_index
     }
 
     /// Returns `true` if the hero is still alive (`hp > 0`).

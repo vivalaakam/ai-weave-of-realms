@@ -13,7 +13,7 @@ use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::String;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::EngineError;
 use crate::hero_candidate::HeroCandidate;
@@ -31,7 +31,7 @@ struct HeroFile {
 // ─── HeroCatalog ──────────────────────────────────────────────────────────────
 
 /// Per-class hero data loaded from `assets/heroes.yaml`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HeroCatalog {
     heroes: Vec<HeroCandidate>,
 }

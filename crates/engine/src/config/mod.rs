@@ -5,9 +5,6 @@
 //! once; the built-in defaults are used as a fallback.
 
 use alloc::format;
-use alloc::sync::Arc;
-
-use std::sync::OnceLock;
 
 use crate::error::EngineError;
 
@@ -20,20 +17,32 @@ pub use team_config::{TeamCatalog, TeamDef, TeamKind, TeamLogo};
 pub mod hero_config;
 pub use hero_config::HeroCatalog;
 
-/// Global singleton holding the active [`TileConfig`].
-///
-/// Populated by calling [`init_tile_config`] once at application start.
-static TILE_CONFIG: OnceLock<Arc<TileConfig>> = OnceLock::new();
+use serde::{Deserialize, Serialize};
 
-/// Global singleton holding the active [`TeamCatalog`].
-///
-/// Populated by calling [`init_team_catalog`] once at application start.
-static TEAM_CATALOG: OnceLock<Arc<TeamCatalog>> = OnceLock::new();
+/// Static game configuration loaded at application initialization and stored
+/// with each [`crate::game_state::GameState`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameConfig {
+    pub tiles: TileConfig,
+    pub teams: TeamCatalog,
+    pub heroes: HeroCatalog,
+}
 
-/// Global singleton holding the active [`HeroCatalog`].
-///
-/// Populated by calling [`init_hero_catalog`] once at application start.
-static HERO_CATALOG: OnceLock<Arc<HeroCatalog>> = OnceLock::new();
+impl GameConfig {
+    pub fn new(tiles: TileConfig, teams: TeamCatalog, heroes: HeroCatalog) -> Self {
+        Self { tiles, teams, heroes }
+    }
+}
+
+impl Default for GameConfig {
+    fn default() -> Self {
+        Self {
+            tiles: default_tile_config(),
+            teams: TeamCatalog::default(),
+            heroes: HeroCatalog::default(),
+        }
+    }
+}
 
 /// Load a [`TileConfig`] from a YAML string and install it as the global
 /// singleton.
@@ -43,20 +52,11 @@ static HERO_CATALOG: OnceLock<Arc<HeroCatalog>> = OnceLock::new();
 ///
 /// # Panics
 /// Panics if called more than once per process; use only in `main`.
-pub fn init_tile_config(yaml: &str) -> Result<(), EngineError> {
+pub fn init_tile_config(yaml: &str) -> Result<TileConfig, EngineError> {
     let config: TileConfig = serde_yaml::from_str(yaml)
         .map_err(|e| EngineError::InvalidTiles(format!("failed to parse tiles YAML: {e}")))?;
 
-    let arc = Arc::new(config);
-    // Only allow initialisation once — callers typically invoke this from `main`.
-    assert!(TILE_CONFIG.set(arc).is_ok(), "init_tile_config called twice");
-    Ok(())
-}
-
-/// Return a reference to the global [`TileConfig`], falling back to the
-/// built-in default if [`init_tile_config`] has not yet been called.
-pub fn get_tile_config() -> Arc<TileConfig> {
-    TILE_CONFIG.get().cloned().unwrap_or_else(|| Arc::new(default_tile_config()))
+    Ok(config)
 }
 
 /// Load a [`TeamCatalog`] from a YAML string and install it as the global
@@ -67,17 +67,9 @@ pub fn get_tile_config() -> Arc<TileConfig> {
 ///
 /// # Panics
 /// Panics if called more than once per process; use only in `main`.
-pub fn init_team_catalog(yaml: &str) -> Result<(), EngineError> {
+pub fn init_team_catalog(yaml: &str) -> Result<TeamCatalog, EngineError> {
     let catalog = TeamCatalog::from_yaml(yaml)?;
-    let arc = Arc::new(catalog);
-    assert!(TEAM_CATALOG.set(arc).is_ok(), "init_team_catalog called twice");
-    Ok(())
-}
-
-/// Return a reference to the global [`TeamCatalog`], falling back to an empty
-/// catalogue if [`init_team_catalog`] has not yet been called.
-pub fn get_team_catalog() -> Option<Arc<TeamCatalog>> {
-    TEAM_CATALOG.get().cloned()
+    Ok(catalog)
 }
 
 /// Load a [`HeroCatalog`] from a YAML string and install it as the global
@@ -88,15 +80,7 @@ pub fn get_team_catalog() -> Option<Arc<TeamCatalog>> {
 ///
 /// # Panics
 /// Panics if called more than once per process; use only in `main`.
-pub fn init_hero_catalog(yaml: &str) -> Result<(), EngineError> {
+pub fn init_hero_catalog(yaml: &str) -> Result<HeroCatalog, EngineError> {
     let catalog = HeroCatalog::from_yaml(yaml)?;
-    let arc = Arc::new(catalog);
-    assert!(HERO_CATALOG.set(arc).is_ok(), "init_hero_catalog called twice");
-    Ok(())
-}
-
-/// Return a reference to the global [`HeroCatalog`], or `None` if
-/// [`init_hero_catalog`] has not yet been called.
-pub fn get_hero_catalog() -> Option<Arc<HeroCatalog>> {
-    HERO_CATALOG.get().cloned()
+    Ok(catalog)
 }

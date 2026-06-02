@@ -1,9 +1,9 @@
-use crate::app_host::{PendingMapData, TeamConfig, build_state_with_teams};
+use crate::app_host::{AppHost, PendingMapData, TeamConfig, build_state_with_teams};
 use crate::atlas::{TeamLogoImages, TileAtlas};
 use crate::input::UiAction;
 use crate::screens::AppState;
 use bevy::prelude::*;
-use engine::config::{TeamKind, TeamLogo, get_team_catalog};
+use engine::config::{TeamCatalog, TeamKind, TeamLogo};
 use engine::game_state::GameState;
 use std::collections::HashSet;
 
@@ -86,16 +86,16 @@ pub struct TeamSetupState {
 
 impl Default for TeamSetupState {
     fn default() -> Self {
-        Self::from_catalog()
+        Self::from_catalog(None)
     }
 }
 
 impl TeamSetupState {
-    fn from_catalog() -> Self {
+    fn from_catalog(catalog: Option<&TeamCatalog>) -> Self {
         let mut teams = Vec::new();
         let mut max_races = 0;
 
-        if let Some(catalog) = get_team_catalog() {
+        if let Some(catalog) = catalog {
             // Playable teams first, then factions. The first playable team
             // defaults to Human; everything else starts disabled.
             for (i, def) in catalog.playable().into_iter().enumerate() {
@@ -175,7 +175,8 @@ impl Plugin for TeamSetupPlugin {
     }
 }
 
-fn enter_team_setup(mut state: ResMut<TeamSetupState>) {
+fn enter_team_setup(mut state: ResMut<TeamSetupState>, host: Res<AppHost>) {
+    *state = TeamSetupState::from_catalog(Some(&host.team_catalog));
     state.needs_rebuild = true;
 }
 
@@ -408,6 +409,7 @@ fn update_team_setup(
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut state: ResMut<TeamSetupState>,
+    host: Res<AppHost>,
     mut reader: MessageReader<UiAction>,
     buttons: Query<&Interaction, With<Button>>,
     pending: Option<Res<PendingMapData>>,
@@ -473,14 +475,12 @@ fn update_team_setup(
                 .collect();
 
             // Append the chosen number of hostile races (always CPU/non-player).
-            if let Some(catalog) = get_team_catalog() {
-                for def in catalog.races().into_iter().take(state.num_races) {
-                    team_cfgs.push(TeamConfig {
-                        name: def.name.clone(),
-                        color: def.color,
-                        player_controlled: false,
-                    });
-                }
+            for def in host.team_catalog.races().into_iter().take(state.num_races) {
+                team_cfgs.push(TeamConfig {
+                    name: def.name.clone(),
+                    color: def.color,
+                    player_controlled: false,
+                });
             }
 
             if !team_cfgs.iter().any(|t| t.player_controlled) {
@@ -490,7 +490,12 @@ fn update_team_setup(
             }
 
             if let Some(map) = &pending.map {
-                match build_state_with_teams(map.clone(), &pending.map_name, &team_cfgs) {
+                match build_state_with_teams(
+                    map.clone(),
+                    &pending.map_name,
+                    &team_cfgs,
+                    host.game_config(),
+                ) {
                     Ok(game_state) => {
                         commands.insert_resource(LoadedSession { state: Some(game_state) });
                         commands.remove_resource::<PendingMapData>();

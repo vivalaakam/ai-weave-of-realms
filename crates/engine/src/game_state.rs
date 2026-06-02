@@ -17,6 +17,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use tracing::{info, instrument};
 
 use crate::combat::{self, CombatResult};
+use crate::config::{GameConfig, HeroCatalog, TeamCatalog, TileConfig};
 use crate::entrance_info::EntranceInfo;
 use crate::error::EngineError;
 use crate::hero::{Hero, HeroId, TeamId};
@@ -116,6 +117,8 @@ pub struct GameState {
     pub(crate) rng: SeededRng,
     pub(crate) hero_pointer: HeroId,
 
+    #[serde(default)]
+    config: GameConfig,
     hero_candidates: Vec<HeroCandidate>,
 }
 
@@ -125,6 +128,12 @@ impl GameState {
     /// Add teams via [`add_team`](Self::add_team) and heroes via
     /// [`add_hero`](Self::add_hero) before the first turn.
     pub fn new(map: GameMap, seed: impl AsRef<str>) -> Self {
+        Self::new_with_config(map, seed, GameConfig::default())
+    }
+
+    /// Creates a new empty game session with static config loaded by the host.
+    pub fn new_with_config(map: GameMap, seed: impl AsRef<str>, config: GameConfig) -> Self {
+        let hero_candidates = config.heroes.heroes().to_vec();
         Self {
             map,
             heroes: BTreeMap::new(),
@@ -138,10 +147,44 @@ impl GameState {
             teams_order: VecDeque::new(),
             rng: SeededRng::new(seed.as_ref()),
             hero_pointer: 0,
-            hero_candidates: crate::config::get_hero_catalog()
-                .map(|catalog| catalog.heroes().to_vec())
-                .unwrap_or_default(),
+            config,
+            hero_candidates,
         }
+    }
+
+    /// Replaces static configuration after loading a save produced by an older
+    /// schema or a host that stores config outside the save file.
+    pub fn set_config(&mut self, config: GameConfig) {
+        for hero in self.heroes.values_mut() {
+            if hero.atlas_index == 0 {
+                if let Some(candidate) = config
+                    .heroes
+                    .heroes()
+                    .iter()
+                    .find(|candidate| candidate.get_class_id() == hero.class_id)
+                {
+                    hero.atlas_index = candidate.get_atlas_index();
+                }
+            }
+        }
+        self.hero_candidates = config.heroes.heroes().to_vec();
+        self.config = config;
+    }
+
+    pub fn config(&self) -> &GameConfig {
+        &self.config
+    }
+
+    pub fn tile_config(&self) -> &TileConfig {
+        &self.config.tiles
+    }
+
+    pub fn team_catalog(&self) -> &TeamCatalog {
+        &self.config.teams
+    }
+
+    pub fn hero_catalog(&self) -> &HeroCatalog {
+        &self.config.heroes
     }
 
     /// Adds a hero to the session, auto-assigning `id = heroes.len()`.
@@ -583,7 +626,7 @@ impl GameState {
 
         // Check passability.
         let tile = self.map.get_tile(target)?;
-        if !tile.kind.is_passable() {
+        if !tile.kind.is_passable_with_config(self.tile_config()) {
             return Err(EngineError::ImpassableTile { x: target.x, y: target.y });
         }
 
@@ -595,7 +638,8 @@ impl GameState {
         }
 
         // Deduct the movement cost for entering the target tile.
-        let cost = (1i32 + tile.kind.movement_cost_modifier()).max(1) as u32;
+        let cost =
+            (1i32 + tile.kind.movement_cost_modifier_with_config(self.tile_config())).max(1) as u32;
         if self.heroes[&hero_id].mov_remaining < cost {
             return Err(EngineError::NoMovementPoints { hero_id });
         }
@@ -607,7 +651,7 @@ impl GameState {
 
         // Trigger POI score events.
         if let Ok(tile) = self.map.get_tile(target) {
-            if tile.kind.is_point_of_interest() {
+            if tile.kind.is_point_of_interest_with_config(self.tile_config()) {
                 events.push(TurnEvent::PoiVisited { hero_id, coord: target });
                 match tile.kind {
                     Tiles::City | Tiles::CityEntrance => {
@@ -780,7 +824,10 @@ impl GameState {
             .into_iter()
             .filter_map(|direction| direction.apply(coord, w, h))
             .find(|candidate| {
-                self.map.get_tile(*candidate).map(|tile| tile.kind.is_passable()).unwrap_or(false)
+                self.map
+                    .get_tile(*candidate)
+                    .map(|tile| tile.kind.is_passable_with_config(self.tile_config()))
+                    .unwrap_or(false)
                     && self
                         .hero_at(candidate)
                         .map(|other| other.get_id() == hero_id)

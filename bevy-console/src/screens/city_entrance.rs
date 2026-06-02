@@ -9,11 +9,6 @@ use engine::hero::Hero;
 /// Tint for gold cost labels.
 const GOLD_COLOR: Color = Color::srgb(0.96, 0.82, 0.30);
 
-/// Atlas index of the gold pictogram, sourced from `tiles.yaml` (`gold` tile).
-fn gold_icon_index() -> usize {
-    engine::config::get_tile_config().atlas_index("gold").unwrap_or(0) as usize
-}
-
 const TEXT_COLOR: Color = Color::srgb(0.92, 0.92, 0.88);
 const SUBTLE_COLOR: Color = Color::srgb(0.72, 0.72, 0.76);
 const FOOTER_COLOR: Color = Color::srgb(0.5, 0.5, 0.55);
@@ -164,6 +159,7 @@ fn spawn_hero_select(
     };
 
     let classes = game_state.get_hero_candidates();
+    let gold_icon_index = game_state.tile_config().atlas_index("gold").unwrap_or(0) as usize;
     let total = classes.len();
     let total_rows = total.div_ceil(GRID_COLS);
 
@@ -347,7 +343,7 @@ fn spawn_hero_select(
                                             image: atlas_image.clone(),
                                             texture_atlas: Some(TextureAtlas {
                                                 layout: atlas_layout.clone(),
-                                                index: gold_icon_index(),
+                                                index: gold_icon_index,
                                             }),
                                             ..default()
                                         },
