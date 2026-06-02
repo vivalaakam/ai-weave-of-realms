@@ -5,7 +5,7 @@ use crate::input::{InputCooldown, UiAction};
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
 use bevy::prelude::*;
-use engine::map::game_map::MapCoord;
+use engine::map::game_map::{MapCoord, ResourceKind};
 use engine::map::tile::Tiles;
 
 #[derive(Component)]
@@ -64,12 +64,13 @@ const BTN_BORDER_SELECTED: Color = Color::srgb(0.7, 0.7, 0.78);
 const BTN_BORDER_PRESSED: Color = Color::srgb(0.65, 0.65, 0.72);
 
 const ATLAS_COLS: u32 = 49;
-const ATLAS_ROWS: u32 = 22;
+const ATLAS_ROWS: u32 = 23;
 const ATLAS_TILE_W: u32 = 16;
 const ATLAS_TILE_H: u32 = 16;
 
 /// Fallback color for heroes whose team is not found.
 const HERO_COLOR: Color = Color::srgb(1.0, 1.0, 1.0);
+const NEUTRAL_RESOURCE_COLOR: Color = Color::srgb(1.0, 1.0, 1.0);
 
 pub struct MapViewPlugin;
 
@@ -121,6 +122,16 @@ fn is_city_tile(kind: Tiles) -> bool {
 
 fn tile_atlas_index(kind: Tiles) -> usize {
     kind.atlas_index() as usize
+}
+
+fn resource_atlas_index(kind: ResourceKind) -> usize {
+    match kind {
+        ResourceKind::Resource1 => 1089,
+        ResourceKind::Resource2 => 1092,
+        ResourceKind::Resource3 => 1093,
+        ResourceKind::Resource4 => 1094,
+        ResourceKind::GoldMine => 1091,
+    }
 }
 
 /// Common button node style for overlay buttons.
@@ -894,8 +905,9 @@ fn update_map_view(
 
             // Tile always shows its own color/atlas — cursor is a separate overlay sprite.
             let tile = map.get_tile(coord).ok();
-            sprite.color = match tile {
-                Some(t) if is_city_tile(t.kind) => match session.state().city_owner(coord) {
+            let resource_node = map.resource_node_at(coord);
+            sprite.color = match (tile, resource_node) {
+                (_, Some(_)) => match session.state().resource_owner(coord) {
                     Some(team_id) => session
                         .state()
                         .get_team(team_id)
@@ -903,14 +915,30 @@ fn update_map_view(
                             let (r, g, b) = team.color;
                             rgb_color(r, g, b)
                         })
-                        .unwrap_or(NEUTRAL_CITY_COLOR),
-                    None => NEUTRAL_CITY_COLOR,
+                        .unwrap_or(NEUTRAL_RESOURCE_COLOR),
+                    None => NEUTRAL_RESOURCE_COLOR,
                 },
-                Some(t) => tile_color_for(t.kind),
-                None => Color::BLACK,
+                (Some(t), None) if is_city_tile(t.kind) => {
+                    match session.state().city_owner(coord) {
+                        Some(team_id) => session
+                            .state()
+                            .get_team(team_id)
+                            .map(|team| {
+                                let (r, g, b) = team.color;
+                                rgb_color(r, g, b)
+                            })
+                            .unwrap_or(NEUTRAL_CITY_COLOR),
+                        None => NEUTRAL_CITY_COLOR,
+                    }
+                }
+                (Some(t), None) => tile_color_for(t.kind),
+                (None, None) => Color::BLACK,
             };
             if let Some(atlas) = sprite.texture_atlas.as_mut() {
-                let idx = tile.map(|t| tile_atlas_index(t.kind)).unwrap_or(0);
+                let idx = resource_node
+                    .map(|node| resource_atlas_index(node.kind))
+                    .or_else(|| tile.map(|t| tile_atlas_index(t.kind)))
+                    .unwrap_or(0);
                 atlas.index = idx;
             }
         }

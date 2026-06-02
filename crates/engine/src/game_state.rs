@@ -85,6 +85,8 @@ pub struct GameState {
     /// City tile ownership: maps each occupied city [`MapCoord`] to the owning
     /// team id.  Absence from the map means the city is neutral.
     pub city_owners: BTreeMap<MapCoord, TeamId>,
+    /// Resource point ownership. Absence from the map means the resource is neutral.
+    pub resource_owners: BTreeMap<MapCoord, TeamId>,
     /// All teams in the game (player-controlled and AI).
     pub(crate) teams: BTreeMap<TeamId, Team>,
     pub(crate) teams_order: VecDeque<TeamId>,
@@ -106,6 +108,7 @@ impl GameState {
             heroes: BTreeMap::new(),
             score: ScoreBoard::new(),
             city_owners: BTreeMap::new(),
+            resource_owners: BTreeMap::new(),
             teams: BTreeMap::new(),
             active_hero: BTreeMap::new(),
             teams_order: VecDeque::new(),
@@ -278,6 +281,11 @@ impl GameState {
         self.city_owners.get(&coord).copied()
     }
 
+    /// Returns the team id that owns the resource at `coord`, or `None` if neutral.
+    pub fn resource_owner(&self, coord: MapCoord) -> Option<TeamId> {
+        self.resource_owners.get(&coord).copied()
+    }
+
     /// Returns the first city entrance tile owned by `team_id`.
     ///
     /// Useful for centering the camera when the team has no hero yet.
@@ -353,6 +361,21 @@ impl GameState {
             };
         }
         connected
+    }
+
+    /// Sets the owning team for a resource point.
+    ///
+    /// # Returns
+    /// `true` if the coordinate is a known resource point and ownership was updated.
+    pub fn set_resource_owner(&mut self, coord: MapCoord, team_id: Option<TeamId>) -> bool {
+        if self.map.resource_node_at(coord).is_none() {
+            return false;
+        }
+        match team_id {
+            Some(id) => self.resource_owners.insert(coord, id),
+            None => self.resource_owners.remove(&coord),
+        };
+        true
     }
 
     /// Finds TeamId by team name (case-insensitive). Returns None if not found.
@@ -460,6 +483,11 @@ impl GameState {
                         events.push(TurnEvent::CityOwnerChanged { coord, team_id: Some(tid) });
                     }
                 }
+            }
+
+            if self.map.resource_node_at(target).is_some() {
+                let tid = self.heroes[&hero_id].team_id;
+                self.resource_owners.insert(target, tid);
             }
         }
 
@@ -596,6 +624,7 @@ impl GameState {
             &self.heroes,
             &self.score,
             &self.city_owners,
+            &self.resource_owners,
             &self.teams,
             &self.teams_order,
             &self.active_hero,
@@ -611,6 +640,7 @@ impl GameState {
             &self.heroes,
             &self.score,
             &self.city_owners,
+            &self.resource_owners,
             &self.teams,
             &self.teams_order,
             &self.active_hero,
@@ -637,6 +667,7 @@ impl GameState {
         heroes: BTreeMap<HeroId, Hero>,
         score: ScoreBoard,
         city_owners: BTreeMap<MapCoord, TeamId>,
+        resource_owners: BTreeMap<MapCoord, TeamId>,
         teams: BTreeMap<TeamId, Team>,
         teams_order: VecDeque<TeamId>,
         active_hero: BTreeMap<TeamId, Option<HeroId>>,
@@ -650,6 +681,7 @@ impl GameState {
             heroes,
             score,
             city_owners,
+            resource_owners,
             teams,
             teams_order,
             active_hero,
@@ -665,6 +697,7 @@ impl GameState {
 mod tests {
     use super::*;
     use crate::hero_class::HeroClass;
+    use crate::map::game_map::{ResourceKind, ResourceNode};
     use crate::map::tile::Tile;
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
@@ -704,6 +737,37 @@ mod tests {
         assert_eq!(state.hero(0).unwrap().position, MapCoord::new(3, 0));
         assert_eq!(state.hero(0).unwrap().mov_remaining, 27); // 30 - 3 = 27
         assert!(events.iter().any(|e| matches!(e, TurnEvent::HeroMoved { .. })));
+    }
+
+    #[test]
+    fn move_hero_claims_resource_node() {
+        let mut map = meadow_map(3, 1);
+        map.set_resource_nodes(vec![ResourceNode {
+            coord: MapCoord::new(1, 0),
+            kind: ResourceKind::Resource1,
+        }])
+        .unwrap();
+        let mut state = make_state(map);
+        state.add_hero(player(MapCoord::new(0, 0)));
+
+        state.move_hero(0, Direction::East).unwrap();
+
+        assert_eq!(state.resource_owner(MapCoord::new(1, 0)), Some(0));
+    }
+
+    #[test]
+    fn save_round_trip_keeps_resource_nodes_and_owners() {
+        let mut map = meadow_map(3, 1);
+        let coord = MapCoord::new(1, 0);
+        map.set_resource_nodes(vec![ResourceNode { coord, kind: ResourceKind::GoldMine }]).unwrap();
+        let mut state = make_state(map);
+        state.set_resource_owner(coord, Some(1));
+
+        let bytes = state.to_save_bytes().unwrap();
+        let loaded = GameState::from_save_bytes(&bytes).unwrap();
+
+        assert_eq!(loaded.map.resource_node_at(coord).unwrap().kind, ResourceKind::GoldMine);
+        assert_eq!(loaded.resource_owner(coord), Some(1));
     }
 
     #[test]

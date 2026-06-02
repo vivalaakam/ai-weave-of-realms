@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use tracing::{debug, info, instrument, warn};
 
 use engine::map::chunk::{ChunkCoord, CHUNK_SIZE};
-use engine::map::game_map::{GameMap, MapCoord};
+use engine::map::game_map::{GameMap, MapCoord, ResourceKind, ResourceNode};
 use engine::map::tile::Tiles;
 use engine::rng::keccak256;
 use engine::rng::{derive_seed, SeededRng};
@@ -254,6 +254,9 @@ impl MapAssembler {
         info!("stitching chunk boundaries");
         Stitcher::stitch(&mut map, CHUNK_SIZE as u32)?;
 
+        let resource_nodes = generate_resource_nodes(&map, &self.map_seed);
+        map.set_resource_nodes(resource_nodes).map_err(MapgenError::Engine)?;
+
         let (enemy_spawns, chest_spawns) = generate_spawn_points(&map, &self.map_seed);
         map.set_spawn_points(enemy_spawns, chest_spawns).map_err(MapgenError::Engine)?;
 
@@ -306,6 +309,55 @@ impl MapAssembler {
 
         Err(last_err.unwrap_or_else(|| MapgenError::ValidationFailed("no attempts made".into())))
     }
+}
+
+fn generate_resource_nodes(map: &GameMap, map_seed: &[u8; 32]) -> Vec<ResourceNode> {
+    let mut nodes = Vec::new();
+    let cs = CHUNK_SIZE as u32;
+    let chunk_w = map.tile_width() / cs;
+    let chunk_h = map.tile_height() / cs;
+    let kinds = [
+        ResourceKind::Resource1,
+        ResourceKind::Resource2,
+        ResourceKind::Resource3,
+        ResourceKind::Resource4,
+        ResourceKind::GoldMine,
+    ];
+
+    for cy in 0..chunk_h {
+        for cx in 0..chunk_w {
+            let seed = derive_seed(map_seed, format!("resources_{cx}_{cy}").as_bytes());
+            let mut rng = SeededRng::from_bytes(seed);
+            let mut candidates: Vec<MapCoord> = Vec::new();
+
+            for y in 1..cs.saturating_sub(1) {
+                for x in 1..cs.saturating_sub(1) {
+                    let coord = MapCoord::new(cx * cs + x, cy * cs + y);
+                    if let Ok(tile) = map.get_tile(coord) {
+                        if is_resource_tile(tile.kind) {
+                            candidates.push(coord);
+                        }
+                    }
+                }
+            }
+
+            let target = rng.random_range_u32(5..8) as usize;
+            let count = target.min(candidates.len()).min(7);
+            let offset = ((cy * chunk_w + cx) as usize * count) % kinds.len();
+
+            for idx in 0..count {
+                let candidate_idx = rng.random_range_usize(0..candidates.len());
+                let coord = candidates.swap_remove(candidate_idx);
+                nodes.push(ResourceNode { coord, kind: kinds[(offset + idx) % kinds.len()] });
+            }
+
+            if count < target {
+                warn!(cx, cy, target, count, "resource points limited by available tiles");
+            }
+        }
+    }
+
+    nodes
 }
 
 fn generate_spawn_points(map: &GameMap, map_seed: &[u8; 32]) -> (Vec<MapCoord>, Vec<MapCoord>) {
@@ -367,7 +419,12 @@ fn generate_spawn_points(map: &GameMap, map_seed: &[u8; 32]) -> (Vec<MapCoord>, 
 }
 
 fn is_spawnable_tile(tile: Tiles) -> bool {
-    tile.is_passable() && !matches!(tile, Tiles::City | Tiles::CityEntrance)
+    tile.is_passable()
+        && !matches!(tile, Tiles::City | Tiles::CityEntrance | Tiles::Resource | Tiles::Gold)
+}
+
+fn is_resource_tile(tile: Tiles) -> bool {
+    matches!(tile, Tiles::Meadow | Tiles::Forest)
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -453,6 +510,30 @@ mod tests {
         for (ta, tb) in a.tiles().iter().zip(b.tiles()) {
             assert_eq!(ta, tb);
         }
+    }
+
+    #[test]
+    fn generated_resources_are_limited_per_chunk() {
+        init_tracing();
+        let asm = MapAssembler::new(make_config_single(MEADOW_GENERATOR)).unwrap();
+        let map = asm.generate().unwrap();
+        let cs = CHUNK_SIZE as u32;
+        let mut counts = vec![0usize; 9];
+
+        for node in map.resource_nodes() {
+            let cx = node.coord.x / cs;
+            let cy = node.coord.y / cs;
+            counts[(cy * 3 + cx) as usize] += 1;
+            let tile = map.get_tile(node.coord).unwrap();
+            if node.kind.is_gold() {
+                assert_eq!(tile.kind, engine::map::tile::Tiles::Gold);
+            } else {
+                assert_eq!(tile.kind, engine::map::tile::Tiles::Resource);
+            }
+        }
+
+        assert!(counts.iter().all(|&count| count <= 7));
+        assert!(counts.iter().all(|&count| count >= 5));
     }
 
     #[test]

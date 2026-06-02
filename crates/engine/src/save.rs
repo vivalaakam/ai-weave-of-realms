@@ -2,7 +2,7 @@ use crate::error::EngineError;
 use crate::game_state::GameState;
 use crate::hero::{Hero, HeroId, TeamId};
 use crate::hero_class::HeroClass;
-use crate::map::game_map::{GameMap, MapCoord};
+use crate::map::game_map::{GameMap, MapCoord, ResourceKind, ResourceNode};
 use crate::map::tile::Tiles;
 use crate::rng::SeededRng;
 use crate::score::{ScoreBoard, ScoreEvent};
@@ -13,13 +13,14 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 const SAVE_MAGIC: [u8; 4] = *b"RPGS";
-const SAVE_VERSION: u16 = 2;
+const SAVE_VERSION: u16 = 3;
 
 pub(crate) fn to_save_bytes(
     map: &GameMap,
     heroes: &BTreeMap<HeroId, Hero>,
     score: &ScoreBoard,
     city_owners: &BTreeMap<MapCoord, TeamId>,
+    resource_owners: &BTreeMap<MapCoord, TeamId>,
     teams: &BTreeMap<TeamId, Team>,
     teams_order: &VecDeque<TeamId>,
     active_hero: &BTreeMap<TeamId, Option<HeroId>>,
@@ -31,6 +32,7 @@ pub(crate) fn to_save_bytes(
         heroes,
         score,
         city_owners,
+        resource_owners,
         teams,
         teams_order,
         active_hero,
@@ -45,6 +47,7 @@ pub(crate) fn to_save_bytes_with_name(
     heroes: &BTreeMap<HeroId, Hero>,
     score: &ScoreBoard,
     city_owners: &BTreeMap<MapCoord, TeamId>,
+    resource_owners: &BTreeMap<MapCoord, TeamId>,
     teams: &BTreeMap<TeamId, Team>,
     teams_order: &VecDeque<TeamId>,
     active_hero: &BTreeMap<TeamId, Option<HeroId>>,
@@ -80,6 +83,14 @@ pub(crate) fn to_save_bytes_with_name(
     for coord in map.chest_spawns() {
         writer.push_u32(coord.x);
         writer.push_u32(coord.y);
+    }
+
+    let resource_count = to_u32(map.resource_nodes().len(), "resource nodes")?;
+    writer.push_u32(resource_count);
+    for node in map.resource_nodes() {
+        writer.push_u32(node.coord.x);
+        writer.push_u32(node.coord.y);
+        writer.push_u8(node.kind.to_id());
     }
 
     let team_count = to_u32(teams.len(), "teams")?;
@@ -141,6 +152,14 @@ pub(crate) fn to_save_bytes_with_name(
     let city_count = to_u32(city_owners.len(), "city owners")?;
     writer.push_u32(city_count);
     for (coord, team_id) in city_owners.iter() {
+        writer.push_u32(coord.x);
+        writer.push_u32(coord.y);
+        writer.push_u8(*team_id);
+    }
+
+    let resource_owner_count = to_u32(resource_owners.len(), "resource owners")?;
+    writer.push_u32(resource_owner_count);
+    for (coord, team_id) in resource_owners.iter() {
         writer.push_u32(coord.x);
         writer.push_u32(coord.y);
         writer.push_u8(*team_id);
@@ -229,6 +248,18 @@ pub(crate) fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
 
     let mut map = GameMap::new(width, height, tiles, seed)?;
     map.set_spawn_points(enemy_spawns, chest_spawns)?;
+    if version >= 3 {
+        let resource_count = reader.read_u32()? as usize;
+        let mut resource_nodes = Vec::with_capacity(resource_count);
+        for _ in 0..resource_count {
+            let x = reader.read_u32()?;
+            let y = reader.read_u32()?;
+            let kind = ResourceKind::from_id(reader.read_u8()?)
+                .map_err(|_| save_error("invalid resource kind"))?;
+            resource_nodes.push(ResourceNode { coord: MapCoord::new(x, y), kind });
+        }
+        map.set_resource_nodes(resource_nodes)?;
+    }
 
     let team_count = reader.read_u32()? as usize;
     let mut teams = BTreeMap::new();
@@ -314,6 +345,17 @@ pub(crate) fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
         city_owners.insert(MapCoord::new(x, y), team_id);
     }
 
+    let mut resource_owners = BTreeMap::new();
+    if version >= 3 {
+        let resource_owner_count = reader.read_u32()? as usize;
+        for _ in 0..resource_owner_count {
+            let x = reader.read_u32()?;
+            let y = reader.read_u32()?;
+            let team_id = reader.read_u8()?;
+            resource_owners.insert(MapCoord::new(x, y), team_id);
+        }
+    }
+
     let hero_pointer = reader.read_u8()?;
     let rng_state = reader.read_array_32()?;
     let rng_position = reader.read_u8()?;
@@ -326,6 +368,7 @@ pub(crate) fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
         heroes,
         score,
         city_owners,
+        resource_owners,
         teams,
         teams_order,
         active_hero,

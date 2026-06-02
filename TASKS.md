@@ -254,3 +254,9 @@ Update status as work progresses.
 |------|---------------------------------------------------------------------------|----------|------------|-------|
 | 14.1 | Refactor `sdl2-console/src/main.rs` into sub-modules (input, controller, render, layout, present) | — | DONE     | Slim main.rs to ~200 lines, modularised input/controller/render/layout/present |
 | 14.2 | Add F11 fullscreen toggle and cmdline `--fullscreen` flag                                             | — | DONE     | SDL2 `set_fullscreen` via `SDL_WINDOW_FULLSCREEN_DESKTOP`; `--fullscreen` in `Args` |
+
+## Phase 15 — Map Resources
+
+| ID   | Task                                                                 | Assignee | Status      | Notes |
+|------|----------------------------------------------------------------------|----------|-------------|-------|
+| 15.1 | Добавить отображение и равномерную генерацию ресурсов по чанкам карты | Codex    | DONE        | 4 типа ресурсов + gold mine, до 7 resource points на 32x32 chunk; нейтральные белые, занятые в цвет команды |

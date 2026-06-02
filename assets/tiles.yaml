@@ -179,30 +179,35 @@ tiles:
   gold:
     tile_id: 12
     atlas_indexes:
-      - index: 12
-        variant: "vein"
+      - index: 1093
+        variant: "mine"
     variants:
-      - vein
-      - nugget
-      - dust
-    color: "#00c8b3"
+      - mine
+    color: "#ffffff"
     ascii: "*"
-    passable: true
+    passable: false
     buildable: false
     movement_cost: 0
     poi: true
   resource:
     tile_id: 13
     atlas_indexes:
-      - index: 13
-        variant: "ore"
+      - index: 1090
+        variant: "resource_1"
+      - index: 1094
+        variant: "resource_2"
+      - index: 1095
+        variant: "resource_3"
+      - index: 1096
+        variant: "resource_4"
     variants:
-      - ore
-      - lumber
-      - gem
-    color: "#00c3d0"
+      - resource_1
+      - resource_2
+      - resource_3
+      - resource_4
+    color: "#ffffff"
     ascii: "◆"
-    passable: true
+    passable: false
     buildable: false
     movement_cost: 0
     poi: true

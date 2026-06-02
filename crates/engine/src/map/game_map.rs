@@ -8,7 +8,7 @@ use crate::error::EngineError;
 use crate::game_state::GameState;
 use crate::hero::Hero;
 use crate::hero_class::HeroClass;
-use crate::map::tile::Tile;
+use crate::map::tile::{Tile, Tiles};
 use crate::spawn;
 use crate::team::Team;
 // ─── MapCoord ─────────────────────────────────────────────────────────────────
@@ -20,6 +20,60 @@ pub struct MapCoord {
     pub x: u32,
     /// Vertical tile index from the top edge of the map.
     pub y: u32,
+}
+
+/// Resource node subtype used for resource deposits on the map.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ResourceKind {
+    /// First common resource.
+    Resource1,
+    /// Second common resource.
+    Resource2,
+    /// Third common resource.
+    Resource3,
+    /// Fourth common resource.
+    Resource4,
+    /// Gold mine resource.
+    GoldMine,
+}
+
+impl ResourceKind {
+    /// Returns `true` when this node represents a gold mine.
+    pub fn is_gold(self) -> bool {
+        matches!(self, Self::GoldMine)
+    }
+
+    /// Returns a compact stable id for save serialization.
+    pub fn to_id(self) -> u8 {
+        match self {
+            Self::Resource1 => 0,
+            Self::Resource2 => 1,
+            Self::Resource3 => 2,
+            Self::Resource4 => 3,
+            Self::GoldMine => 4,
+        }
+    }
+
+    /// Constructs a resource kind from a compact save id.
+    pub fn from_id(id: u8) -> Result<Self, EngineError> {
+        match id {
+            0 => Ok(Self::Resource1),
+            1 => Ok(Self::Resource2),
+            2 => Ok(Self::Resource3),
+            3 => Ok(Self::Resource4),
+            4 => Ok(Self::GoldMine),
+            _ => Err(EngineError::InvalidTileKind(format!("unknown resource kind {id}"))),
+        }
+    }
+}
+
+/// A resource point placed on the world map.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceNode {
+    /// Absolute map coordinate of this resource point.
+    pub coord: MapCoord,
+    /// Resource subtype, including gold mines.
+    pub kind: ResourceKind,
 }
 
 impl MapCoord {
@@ -97,6 +151,9 @@ pub struct GameMap {
     /// Absolute tile coordinates where chests can spawn.
     #[serde(default)]
     chest_spawns: Vec<MapCoord>,
+    /// Resource points placed on the map.
+    #[serde(default)]
+    resource_nodes: Vec<ResourceNode>,
     /// The 32-byte seed this map was generated from.
     pub seed: [u8; 32],
 }
@@ -122,7 +179,15 @@ impl GameMap {
         if tiles.len() != expected {
             return Err(EngineError::InvalidTilesSize { expected, got: tiles.len() });
         }
-        Ok(Self { width, height, tiles, enemy_spawns: Vec::new(), chest_spawns: Vec::new(), seed })
+        Ok(Self {
+            width,
+            height,
+            tiles,
+            enemy_spawns: Vec::new(),
+            chest_spawns: Vec::new(),
+            resource_nodes: Vec::new(),
+            seed,
+        })
     }
 
     pub fn default_state(&self, seed: &str) -> Result<GameState, EngineError> {
@@ -171,6 +236,19 @@ impl GameMap {
         &self.chest_spawns
     }
 
+    /// Returns all configured resource points.
+    pub fn resource_nodes(&self) -> &[ResourceNode] {
+        &self.resource_nodes
+    }
+
+    /// Returns the resource point at `coord`, if one exists.
+    pub fn resource_node_at(&self, coord: MapCoord) -> Option<ResourceNode> {
+        self.resource_nodes
+            .binary_search_by_key(&coord, |node| node.coord)
+            .ok()
+            .map(|idx| self.resource_nodes[idx])
+    }
+
     /// Returns `true` if an enemy spawn exists at `coord`.
     pub fn has_enemy_spawn(&self, coord: MapCoord) -> bool {
         self.enemy_spawns.binary_search(&coord).is_ok()
@@ -204,6 +282,36 @@ impl GameMap {
 
         self.enemy_spawns = enemy_spawns;
         self.chest_spawns = chest_spawns;
+        Ok(())
+    }
+
+    /// Replaces the resource point list and synchronizes matching tile kinds.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::OutOfBounds`] if any resource coordinate is outside the map.
+    pub fn set_resource_nodes(
+        &mut self,
+        resource_nodes: Vec<ResourceNode>,
+    ) -> Result<(), EngineError> {
+        for node in &resource_nodes {
+            if node.coord.x >= self.width || node.coord.y >= self.height {
+                return Err(EngineError::OutOfBounds(format!(
+                    "resource ({}, {}) outside {}×{} map",
+                    node.coord.x, node.coord.y, self.width, self.height
+                )));
+            }
+        }
+
+        let mut resource_nodes = resource_nodes;
+        resource_nodes.sort_by_key(|node| node.coord);
+        resource_nodes.dedup_by_key(|node| node.coord);
+
+        for node in &resource_nodes {
+            let tile = self.get_tile_mut(node.coord)?;
+            tile.kind = if node.kind.is_gold() { Tiles::Gold } else { Tiles::Resource };
+        }
+
+        self.resource_nodes = resource_nodes;
         Ok(())
     }
 
