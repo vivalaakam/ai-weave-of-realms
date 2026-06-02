@@ -1,11 +1,11 @@
 use std::collections::{BTreeSet, VecDeque};
 
-use engine::Direction;
 use engine::game_state::ROD_COST;
 use engine::hero::HeroId;
 use engine::map::game_map::Direction as MapDir;
-use engine::map::game_map::{GameMap, MapCoord};
+use engine::map::game_map::GameMap;
 use engine::map::tile::Tiles;
+use engine::{Direction, MapCoord};
 
 use super::input::InputEvent;
 use super::session::GameSession;
@@ -144,8 +144,8 @@ impl MapViewApp {
         if let Some(id) = self.session.selected_hero_id()
             && let Some(hero) = self.session.state().hero(id)
         {
-            self.cursor_x = hero.position.x as isize;
-            self.cursor_y = hero.position.y as isize;
+            self.cursor_x = hero.get_position().x as isize;
+            self.cursor_y = hero.get_position().y as isize;
             return;
         }
         // No hero — center on the team's city instead.
@@ -345,7 +345,7 @@ impl MapViewApp {
     /// Returns the id of the living hero standing under the cursor, if any.
     pub fn cursor_hero_id(&self) -> Option<HeroId> {
         let coord = self.cursor_coord()?;
-        self.session.state().hero_at(coord).map(|hero| hero.get_id())
+        self.session.state().hero_at(&coord).map(|hero| hero.get_id())
     }
 
     /// Applies a single input event to the shared map view.

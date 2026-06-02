@@ -19,14 +19,17 @@
 
 extern crate alloc;
 
+pub use entrance_info::EntranceInfo;
 pub use game_state::{GameOutcome, WinCondition};
+pub use hero_candidate::HeroCandidate;
 pub use map::game_map::Direction;
+pub use map_coord::MapCoord;
+
 pub mod combat;
 pub mod config;
 pub mod error;
 pub mod game_state;
 pub mod hero;
-pub mod hero_class;
 pub mod map;
 pub mod movement;
 pub mod rng;
@@ -34,7 +37,9 @@ pub mod score;
 pub mod spawn;
 pub mod team;
 
-mod save;
+mod entrance_info;
+mod hero_candidate;
+mod map_coord;
 pub mod state_flood;
 #[cfg(test)]
 pub mod test_utils;

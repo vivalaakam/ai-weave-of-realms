@@ -1,9 +1,9 @@
 //! # rpg-tiled
 //!
-//! TMX (Tiled Map Editor) import and export for [`rpg_engine::map::game_map::GameMap`].
+//! TMX (Tiled Map Editor) import and export for [`engine::map::game_map::GameMap`].
 //!
 //! Supports the isometric staggered diamond layout used by the project.
-//! TMX files reference tile GIDs defined in [`rpg_engine::map::tile::Tiles::to_gid`].
+//! TMX files reference tile GIDs defined in [`engine::map::tile::Tiles::to_gid`].
 //!
 //! ## Modules
 //! - [`exporter`] — `GameMap` → `.tmx` XML
@@ -12,11 +12,11 @@
 //!
 //! ## Quick start
 //! ```rust,no_run
-//! use rpg_tiled::{write_tmx, read_tmx};
+//! use tiled::{write_tmx, read_tmx};
 //! use std::path::Path;
 //!
 //! // Export
-//! # fn example(map: rpg_engine::map::game_map::GameMap) -> Result<(), rpg_tiled::error::Error> {
+//! # fn example(map: engine::map::game_map::GameMap) -> Result<(), tiled::error::TiledError> {
 //! write_tmx(&map, Path::new("output/map.tmx"), "../tileset/tileset.tsx")?;
 //!
 //! // Import

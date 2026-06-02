@@ -20,8 +20,8 @@ use alloc::{collections::BTreeMap, vec, vec::Vec};
 use core::cmp::Reverse;
 
 use crate::error::EngineError;
-use crate::map::game_map::{GameMap, MapCoord};
-
+use crate::map::game_map::GameMap;
+use crate::map_coord::MapCoord;
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /// Returns all tiles reachable from `start` within `mov_budget` movement points.

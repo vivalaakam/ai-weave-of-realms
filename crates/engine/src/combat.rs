@@ -93,21 +93,26 @@ fn calc_damage(source: &mut Hero, target: &Hero) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hero_class::HeroClass;
-    use crate::map::game_map::MapCoord;
+    use crate::hero_candidate::HeroCandidate;
+    use crate::rng::SeededRng;
+    use crate::MapCoord;
 
     fn make_hero(id: u8, hp: u32, atk: u32, def: u32, spd: u32) -> Hero {
-        Hero::new_with_stats(
-            id,
-            HeroClass::Warrior,
-            "Hero",
+        let hero_candidate = HeroCandidate {
+            class_id: 0,
+            name: "default_hero".to_owned(),
+            description: "default_description".to_owned(),
+            atlas_index: 0,
+            cost: 50,
             hp,
             atk,
             def,
             spd,
-            MapCoord::new(0, 0),
-            1,
-        )
+        };
+
+        let rnd = SeededRng::new("default");
+
+        Hero::new(id, &hero_candidate, &MapCoord::new(0, 0), 0, &rnd)
     }
 
     #[test]

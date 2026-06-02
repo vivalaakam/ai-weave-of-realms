@@ -2,11 +2,10 @@ use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 use bevy::prelude::Resource;
+use engine::MapCoord;
 use engine::error::EngineError;
 use engine::game_state::GameState;
-use engine::hero::Hero;
-use engine::hero_class::HeroClass;
-use engine::map::game_map::{GameMap, MapCoord};
+use engine::map::game_map::GameMap;
 use engine::team::Team;
 use helpers::ListEntry;
 use helpers::sanitize_save_filename;
@@ -58,7 +57,6 @@ pub struct AppHost {
 /// Data loaded from a save or map file.
 #[derive(Resource)]
 pub struct LoadedGame {
-    pub map_name: String,
     pub state: GameState,
 }
 
@@ -123,7 +121,7 @@ impl AppHost {
             fs::read(path).map_err(|e| AppHostError::LoadSaveLoadFailed(entry.id.clone(), e))?;
         let state = GameState::from_save_bytes(&bytes)
             .map_err(|e| AppHostError::LoadSaveEngineError(entry.id.clone(), e))?;
-        Ok(LoadedGame { map_name: entry.label.clone(), state })
+        Ok(LoadedGame { state })
     }
 
     pub fn generate_and_save_map(&mut self, seed: &str) -> Result<ListEntry, AppHostError> {
@@ -143,8 +141,7 @@ impl AppHost {
         })?;
         let file_name = sanitize_save_filename(seed);
         let path = self.maps_dir.join(&file_name);
-        let bytes =
-            state.to_save_bytes_with_name(seed).map_err(AppHostError::SaveGameEngineError)?;
+        let bytes = state.to_save_bytes().map_err(AppHostError::SaveGameEngineError)?;
         fs::write(&path, bytes).map_err(|e| {
             AppHostError::SaveGameWriteFailed(path.to_string_lossy().to_string(), e)
         })?;
@@ -247,8 +244,9 @@ pub fn build_state_with_teams(
         // Player-controlled teams start without a hero — they must hire one at a city entrance.
         // AI-controlled teams get a hero immediately.
         if !cfg.player_controlled {
-            let hero_name = cfg.name.to_string();
-            state.add_hero(Hero::new(i as u8, HeroClass::Knight, &hero_name, hero_pos, team_id));
+            if let Some(hero) = state.get_hero_candidate_at(0).cloned() {
+                state.add_hero(team_id, &hero, &hero_pos);
+            }
         }
 
         // The city always belongs to the team regardless of whether a hero is placed.

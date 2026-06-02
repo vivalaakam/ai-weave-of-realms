@@ -2,9 +2,9 @@ use crate::input::UiAction;
 use crate::screens::AppState;
 use crate::screens::map_view::MapViewState;
 use bevy::prelude::*;
+use engine::EntranceInfo;
 use engine::error::EngineError;
 use engine::hero::Hero;
-use engine::hero_class::HeroClass;
 
 /// Tint for gold cost labels.
 const GOLD_COLOR: Color = Color::srgb(0.96, 0.82, 0.30);
@@ -81,51 +81,24 @@ fn button_node(w: f32, h: f32) -> Node {
     }
 }
 
-/// Decide what to show based on whether the entrance is occupied
-/// and whether the player's team owns the city.
-enum EntranceInfo {
-    Occupied { name: String },
-    CanHire,
-    NoOwnership,
-}
+fn get_entrance_info(map_view_state: &MapViewState) -> EntranceInfo {
+    let Some(game_state) = map_view_state.get_game_state() else {
+        return EntranceInfo::NoOwnership;
+    };
+    let Some(coord) = map_view_state.cursor_coord() else {
+        return EntranceInfo::NoOwnership;
+    };
 
-fn get_entrance_info(map_view_state: &MapViewState) -> Option<EntranceInfo> {
-    let map_view = map_view_state.map_view.as_ref()?;
-    let coord = map_view.cursor_coord()?;
-    let state = map_view.session().state();
-
-    if let Some(hero) = state.hero_at(coord) {
-        return Some(EntranceInfo::Occupied { name: hero.name.clone() });
-    }
-
-    let active_team_id = state.get_active_team_id().copied().ok()?;
-    let owner = state.city_owner(coord);
-
-    if owner == Some(active_team_id) {
-        Some(EntranceInfo::CanHire)
-    } else {
-        Some(EntranceInfo::NoOwnership)
-    }
+    game_state.get_entrance_info_at_coord(&coord)
 }
 
 fn build_city_entrance(commands: &mut Commands, map_view_state: &MapViewState) {
     let info = get_entrance_info(map_view_state);
 
     let (hero_text, show_hire_button, footer_text) = match info {
-        Some(EntranceInfo::Occupied { name }) => {
-            (name, false, "Enter/Cross: select   Esc/Circle: back")
-        }
-        Some(EntranceInfo::CanHire) => (
-            "No hero stationed here".to_string(),
-            true,
-            "Enter/Cross: hire hero   Esc/Circle: back",
-        ),
-        Some(EntranceInfo::NoOwnership) => (
-            "No hero stationed here\n(You don't own this city)".to_string(),
-            false,
-            "Esc/Circle: back",
-        ),
-        None => ("Unknown".to_string(), false, "Esc/Circle: back"),
+        EntranceInfo::Occupied { name } => (name, false, "Enter/Cross: select   Esc/Circle: back"),
+        EntranceInfo::CanHire => (0, true, "Enter/Cross: hire hero   Esc/Circle: back"),
+        EntranceInfo::NoOwnership => (0, false, "Esc/Circle: back"),
     };
 
     commands
@@ -150,7 +123,7 @@ fn build_city_entrance(commands: &mut Commands, map_view_state: &MapViewState) {
             ));
 
             parent.spawn((
-                Text::new(hero_text),
+                Text::new(hero_text.to_string()),
                 TextFont { font_size: FontSize::Px(20.0), ..default() },
                 TextColor(SUBTLE_COLOR),
             ));
@@ -184,8 +157,13 @@ fn spawn_hero_select(
     commands: &mut Commands,
     atlas_image: &Handle<Image>,
     atlas_layout: &Handle<TextureAtlasLayout>,
+    map_view_state: &MapViewState,
 ) {
-    let classes = HeroClass::all();
+    let Some(game_state) = map_view_state.get_game_state() else {
+        return;
+    };
+
+    let classes = game_state.get_hero_candidates();
     let total = classes.len();
     let total_rows = total.div_ceil(GRID_COLS);
 
@@ -282,15 +260,15 @@ fn spawn_hero_select(
             if idx >= total {
                 break;
             }
-            let class = classes[idx];
+            let class = classes.get(idx).unwrap();
 
             let stats = format!(
                 "HP:{} ATK:{} DEF:{}\nSPD:{} MOV:{}",
-                class.base_hp(),
-                class.base_atk(),
-                class.base_def(),
-                class.base_spd(),
-                Hero::movement_for_spd(class.base_spd()),
+                class.get_hp(),
+                class.get_atk(),
+                class.get_def(),
+                class.get_spd(),
+                Hero::movement_for_spd(class.get_spd()),
             );
 
             let is_focused = idx == 0;
@@ -301,11 +279,11 @@ fn spawn_hero_select(
             };
 
             // Card: sprite on the left, name + stats on the right.
-            let atlas_index = class.atlas_index();
+            let atlas_index = class.get_atlas_index();
             let card = commands
                 .spawn((
                     Button,
-                    HeroClassCard { class },
+                    HeroClassCard { idx },
                     Node {
                         width: Val::Px(card_w),
                         height: Val::Px(card_h),
@@ -346,7 +324,7 @@ fn spawn_hero_select(
                         },))
                         .with_children(|text_col| {
                             text_col.spawn((
-                                Text::new(class.display_name()),
+                                Text::new(class.get_name()),
                                 TextFont { font_size: FontSize::Px(14.0), ..default() },
                                 TextColor(TEXT_COLOR),
                             ));
@@ -380,7 +358,7 @@ fn spawn_hero_select(
                                         },
                                     ));
                                     cost_row.spawn((
-                                        Text::new(format!("{}", class.hire_cost())),
+                                        Text::new(format!("{}", class.get_cost())),
                                         TextFont { font_size: FontSize::Px(13.0), ..default() },
                                         TextColor(GOLD_COLOR),
                                     ));
@@ -411,7 +389,7 @@ fn spawn_hero_select(
 
 #[derive(Component)]
 struct HeroClassCard {
-    class: HeroClass,
+    idx: usize,
 }
 
 #[allow(clippy::type_complexity)]
@@ -435,6 +413,10 @@ fn update_city_entrance(
     mut grid_node: Query<&mut Node, With<HeroSelectGrid>>,
     entrance_roots: Query<Entity, With<CityEntranceRoot>>,
 ) {
+    let Some(game_state) = map_view_state.get_game_state_mut() else {
+        return;
+    };
+
     // If no hero-selection overlay is active and scroll resource is missing,
     // we're in the entrance screen mode. Early-out if scroll is None and
     // there's no overlay either.
@@ -446,7 +428,7 @@ fn update_city_entrance(
         let Some(scroll) = scroll.as_mut() else {
             return;
         };
-        let total = HeroClass::all().len();
+        let total = game_state.get_hero_candidate_count();
 
         // Navigation within the selection grid.
         if (has(UiAction::CursorUp) || has(UiAction::Up)) && scroll.focus >= GRID_COLS {
@@ -469,7 +451,7 @@ fn update_city_entrance(
 
         // Update card highlights based on focus.
         for (card, mut bg, mut border, _interaction) in cards.iter_mut() {
-            let is_focused = scroll.focus == card.class as usize;
+            let is_focused = scroll.focus == card.idx;
             if is_focused {
                 *bg = BackgroundColor(BTN_BG_SELECTED);
                 *border = BorderColor::all(BTN_BORDER_SELECTED);
@@ -500,8 +482,7 @@ fn update_city_entrance(
 
         // Confirm selection — hire the focused class.
         if has(UiAction::Confirm) {
-            let class = HeroClass::all()[scroll.focus];
-            hire_hero_of_class(&mut map_view_state, class);
+            hire_hero_of_class(&mut map_view_state, scroll.focus);
             for entity in select_root.iter() {
                 commands.entity(entity).despawn_children().despawn();
             }
@@ -525,7 +506,7 @@ fn update_city_entrance(
         // Mouse click on a card.
         for (card, _bg, _border, interaction) in cards.iter_mut() {
             if matches!(interaction, Interaction::Pressed) {
-                hire_hero_of_class(&mut map_view_state, card.class);
+                hire_hero_of_class(&mut map_view_state, card.idx);
                 for entity in select_root.iter() {
                     commands.entity(entity).despawn_children().despawn();
                 }
@@ -565,7 +546,12 @@ fn update_city_entrance(
 
     if hire_triggered {
         // Open hero class selection — pass the atlas handles from MapViewState.
-        spawn_hero_select(&mut commands, &map_view_state.atlas_image, &map_view_state.atlas_layout);
+        spawn_hero_select(
+            &mut commands,
+            &map_view_state.atlas_image,
+            &map_view_state.atlas_layout,
+            &map_view_state,
+        );
         return;
     }
 
@@ -575,30 +561,39 @@ fn update_city_entrance(
 }
 
 /// Hires a hero of the given class at the current cursor position.
-fn hire_hero_of_class(map_view_state: &mut ResMut<MapViewState>, class: HeroClass) {
-    if let Some(map_view) = map_view_state.map_view.as_mut() {
-        let coord = map_view.cursor_coord();
-        let team_id = map_view.session().state().get_active_team_id().copied();
+fn hire_hero_of_class(map_view_state: &mut ResMut<MapViewState>, index: usize) {
+    let Some(coord) = map_view_state.cursor_coord() else {
+        return;
+    };
 
-        if let (Some(coord), Ok(team_id)) = (coord, team_id) {
-            let state = map_view.session_mut().state_mut();
-            let hero_count = state.get_team_heroes(team_id).len();
-            let name = format!("{} {}", class.display_name(), hero_count + 1);
+    let result = {
+        let Some(game_state) = map_view_state.get_game_state_mut() else {
+            return;
+        };
+        let Some(hero) = game_state.get_hero_candidate_at(index).cloned() else {
+            return;
+        };
+        let cost = hero.get_cost();
+        game_state.hire_hero(&hero, &coord).map(|new_id| (new_id, cost))
+    };
 
-            match state.hire_hero(team_id, class, coord, name) {
-                Ok(new_id) => {
-                    // Always make the newly hired hero the active hero.
-                    map_view.session_mut().set_selected_hero_id(new_id);
-                    map_view.sync_cursor_to_hero();
-                    map_view.set_status(Some(format!("Hero hired! (-{} gold)", class.hire_cost())));
-                }
-                Err(EngineError::InsufficientGold { needed, have }) => {
-                    map_view
-                        .set_status(Some(format!("Not enough gold: need {needed}, have {have}")));
-                }
-                Err(_) => {
-                    map_view.set_status(Some("Cannot hire here".to_string()));
-                }
+    match result {
+        Ok((new_id, cost)) => {
+            let Some(map_view) = map_view_state.map_view.as_mut() else {
+                return;
+            };
+            map_view.session_mut().set_selected_hero_id(new_id);
+            map_view.sync_cursor_to_hero();
+            map_view.set_status(Some(format!("Hero hired! (-{} gold)", cost)));
+        }
+        Err(EngineError::InsufficientGold { needed, have }) => {
+            if let Some(map_view) = map_view_state.map_view.as_mut() {
+                map_view.set_status(Some(format!("Not enough gold: need {needed}, have {have}")));
+            }
+        }
+        Err(_) => {
+            if let Some(map_view) = map_view_state.map_view.as_mut() {
+                map_view.set_status(Some("Cannot hire here".to_string()));
             }
         }
     }

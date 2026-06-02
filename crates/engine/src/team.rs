@@ -95,18 +95,6 @@ impl Team {
         }
     }
 
-    /// Overwrites the gold balance (used when loading a save).
-    pub(crate) fn set_gold(&mut self, gold: u32) {
-        self.gold = gold;
-    }
-
-    /// Overwrites the resource at `index` (used when loading a save).
-    pub(crate) fn set_resource(&mut self, index: usize, amount: u32) {
-        if let Some(slot) = self.resources.get_mut(index) {
-            *slot = amount;
-        }
-    }
-
     pub(crate) fn reset_id(&mut self, id: TeamId) {
         self.id = id;
     }
@@ -117,14 +105,6 @@ impl Team {
 
     pub fn get_turn(&self) -> u32 {
         self.turn
-    }
-
-    /// Sets the team's turn counter.
-    ///
-    /// # Arguments
-    /// * `turn` - New per-team turn index.
-    pub(crate) fn set_turn(&mut self, turn: u32) {
-        self.turn = turn;
     }
 
     pub fn is_player_controlled(&self) -> bool {

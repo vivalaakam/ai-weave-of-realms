@@ -67,4 +67,8 @@ pub enum EngineError {
         /// Gold currently available to the team.
         have: u32,
     },
+    #[error("minicbor serialization error: {0}")]
+    MinicborEncode(#[from] minicbor_serde::error::EncodeError<core::convert::Infallible>),
+    #[error("minicbor deserialization error: {0}")]
+    MinicborDecode(#[from] minicbor_serde::error::DecodeError),
 }

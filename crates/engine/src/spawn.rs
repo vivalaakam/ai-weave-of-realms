@@ -6,8 +6,9 @@
 
 use alloc::{vec, vec::Vec};
 
-use crate::map::game_map::{GameMap, MapCoord};
+use crate::map::game_map::GameMap;
 use crate::map::tile::Tiles;
+use crate::map_coord::MapCoord;
 
 /// Recommended starting positions for the initial player and enemy heroes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

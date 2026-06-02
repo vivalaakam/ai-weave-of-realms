@@ -14,12 +14,10 @@ use std::path::Path;
 use mlua::{Function, Lua, Table, Value};
 use tracing::{debug, instrument};
 
-use engine::hero::{Hero, TeamId};
-use engine::hero_class::HeroClass;
-use engine::map::game_map::{GameMap, MapCoord};
-
 use crate::error::MapgenError;
 use crate::map_table::game_map_to_lua_table;
+use engine::map::game_map::GameMap;
+use engine::MapCoord;
 
 // ─── EnemySpawn ───────────────────────────────────────────────────────────────
 
@@ -35,31 +33,6 @@ pub struct EnemySpawn {
     pub atk: u32,
     pub def: u32,
     pub spd: u32,
-}
-
-impl EnemySpawn {
-    /// Converts this spawn descriptor into a [`Hero`].
-    ///
-    /// Movement points are derived from `spd` via `Hero::movement_for_spd`.
-    ///
-    /// `base_rng` is the session RNG; the hero's personal RNG is derived from
-    /// it via [`SeededRng::derive_for_hero`] so the result is reproducible.
-    ///
-    /// `team_id` must correspond to a [`rpg_engine::team::Team`] registered
-    /// in the active [`GameState`].
-    pub fn into_hero(self, team_id: TeamId) -> Hero {
-        Hero::new_with_stats(
-            self.id as u8,
-            HeroClass::Warrior,
-            format!("Enemy {}", self.id),
-            self.hp,
-            self.atk,
-            self.def,
-            self.spd,
-            self.position,
-            team_id,
-        )
-    }
 }
 
 // ─── EnemySpawner ─────────────────────────────────────────────────────────────
@@ -246,22 +219,5 @@ mod tests {
         );
         let enemies = spawner.spawn(&make_map()).unwrap();
         assert_eq!(enemies.len(), 1);
-    }
-
-    #[test]
-    fn convert_spawns_to_heroes() {
-        let spawner = make_spawner(
-            r#"
-            return function(map)
-                return {
-                    { id = 1, x = 10, y = 20, hp = 50, atk = 15, def = 8, spd = 6, mov = 3 },
-                }
-            end
-            "#,
-        );
-        let spawns = spawner.spawn(&make_map()).unwrap();
-        let hero = spawns.into_iter().next().unwrap().into_hero(3);
-        assert_eq!(hero.hp, 50);
-        assert_eq!(hero.atk, 15);
     }
 }

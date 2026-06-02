@@ -73,7 +73,8 @@ fn main() {
         std::process::exit(1);
     }
 
-    if let Err(error) = engine::config::init_hero_catalog(include_str!("../../assets/heroes.yaml")) {
+    if let Err(error) = engine::config::init_hero_catalog(include_str!("../../assets/heroes.yaml"))
+    {
         eprintln!("failed to load hero catalog: {error}");
         std::process::exit(1);
     }

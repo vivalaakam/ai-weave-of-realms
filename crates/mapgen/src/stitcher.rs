@@ -21,9 +21,9 @@ use std::collections::HashMap;
 use tracing::{debug, instrument};
 
 use engine::error::EngineError;
-use engine::map::game_map::{GameMap, MapCoord};
+use engine::map::game_map::GameMap;
 use engine::map::tile::Tiles;
-
+use engine::MapCoord;
 // ─── Stitcher ─────────────────────────────────────────────────────────────────
 
 /// Smooths chunk boundary seams on an assembled [`GameMap`].
@@ -211,7 +211,7 @@ impl Stitcher {
             updated[pos] = match tile {
                 Tiles::Road | Tiles::River => {
                     if Self::is_edge_anchor(pos as u32) {
-                        *tile
+                        tile.clone()
                     } else {
                         Tiles::Meadow
                     }
@@ -226,7 +226,7 @@ impl Stitcher {
                 Tiles::Forest | Tiles::Mountain | Tiles::Water => {
                     natural_fill[pos].unwrap_or(Tiles::Meadow)
                 }
-                _ => *tile,
+                _ => tile.clone(),
             };
         }
 
@@ -250,6 +250,7 @@ mod tests {
     use crate::test_utils::init_tracing;
     use engine::map::chunk::CHUNK_SIZE;
     use engine::map::tile::Tile;
+    use engine::MapCoord;
 
     /// Builds a 2×1 map (64×32 tiles) where the left half is all `left_kind` and
     /// the right half is all `right_kind`.

@@ -1,5 +1,6 @@
-use crate::map::game_map::{Direction, GameMap, MapCoord};
+use crate::map::game_map::{Direction, GameMap};
 use crate::map::tile::Tiles;
+use crate::map_coord::MapCoord;
 use alloc::collections::{BTreeSet, VecDeque};
 use alloc::vec;
 use alloc::vec::Vec;

@@ -20,10 +20,11 @@ use std::path::PathBuf;
 use tracing::{debug, info, instrument, warn};
 
 use engine::map::chunk::{ChunkCoord, CHUNK_SIZE};
-use engine::map::game_map::{GameMap, MapCoord, ResourceKind, ResourceNode};
+use engine::map::game_map::{GameMap, ResourceKind, ResourceNode};
 use engine::map::tile::Tiles;
 use engine::rng::keccak256;
 use engine::rng::{derive_seed, SeededRng};
+use engine::MapCoord;
 
 use crate::chunk_generator::ChunkGenerator;
 use crate::chunk_grid::ChunkGrid;
@@ -546,7 +547,7 @@ mod tests {
         let map = asm.generate().unwrap();
         // WATER_GENERATOR ignores base and fills everything with water
         // Centre of chunk (1,1): global coord = (1*32 + 16, 1*32 + 16) = (48, 48)
-        use engine::map::game_map::MapCoord;
+        use engine::MapCoord;
         assert_eq!(
             map.get_tile(MapCoord::new(16 + 32, 16 + 32)).unwrap().kind,
             engine::map::tile::Tiles::Water

@@ -7,8 +7,10 @@ use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use engine::MapCoord;
 use engine::config::{TeamLogo, get_team_catalog, get_tile_config};
-use engine::map::game_map::{MapCoord, RESOURCE_KIND_COUNT, ResourceKind};
+use engine::game_state::GameState;
+use engine::map::game_map::{RESOURCE_KIND_COUNT, ResourceKind};
 use engine::map::tile::Tiles;
 
 #[derive(Component)]
@@ -87,6 +89,20 @@ pub struct MapViewState {
     pub atlas_image: Handle<Image>,
     /// Handle to the tile atlas layout.
     pub atlas_layout: Handle<TextureAtlasLayout>,
+}
+
+impl MapViewState {
+    pub fn get_game_state(&self) -> Option<&GameState> {
+        self.map_view.as_ref().map(|mv| mv.session().state())
+    }
+
+    pub fn get_game_state_mut(&mut self) -> Option<&mut GameState> {
+        self.map_view.as_mut().map(|mv| mv.session_mut().state_mut())
+    }
+
+    pub fn cursor_coord(&self) -> Option<MapCoord> {
+        self.map_view.as_ref().and_then(|mv| mv.cursor_coord())
+    }
 }
 
 const TEXT_COLOR: Color = Color::srgb(0.85, 0.85, 0.88);
@@ -1186,7 +1202,7 @@ fn update_map_view(
             sprite.custom_size = Some(Vec2::splat(map_view_state.tile_size));
 
             // Check for hero on this tile first — hero sprite takes priority.
-            if let Some(hero) = session.state().hero_at(coord) {
+            if let Some(hero) = session.state().hero_at(&coord) {
                 let is_selected = selected_hero_id == Some(hero.get_id());
                 // Color: team color for selected, 50% alpha team color for others.
                 let team_color = session
@@ -1199,7 +1215,7 @@ fn update_map_view(
                     .unwrap_or(HERO_COLOR);
                 sprite.color = if is_selected { team_color } else { team_color.with_alpha(0.5) };
                 if let Some(atlas) = sprite.texture_atlas.as_mut() {
-                    atlas.index = hero.class.atlas_index();
+                    atlas.index = hero.get_atlas_index();
                 }
                 continue;
             }
@@ -1226,7 +1242,7 @@ fn update_map_view(
                     None => NEUTRAL_RESOURCE_COLOR,
                 },
                 (Some(t), false) if is_city_tile(t.kind) => {
-                    match session.state().city_owner(coord) {
+                    match session.state().city_owner(&coord) {
                         // The owned city centre cell is hidden so the team logo
                         // overlay (CityLogoTile layer) takes its place; the rest of
                         // the city keeps its owner-tinted castle tiles.
@@ -1299,10 +1315,10 @@ fn update_map_view(
 
             // Resolve a logo only for a city centre cell with no hero on it.
             let is_center = city_centers.contains(&coord);
-            let resolved = if is_center && session.state().hero_at(coord).is_none() {
+            let resolved = if is_center && session.state().hero_at(&coord).is_none() {
                 session
                     .state()
-                    .city_owner(coord)
+                    .city_owner(&coord)
                     .and_then(|team_id| session.state().get_team(team_id))
                     .and_then(|team| {
                         catalog

@@ -16,13 +16,13 @@ use clap::Parser;
 use image::{ImageBuffer, Rgb};
 use tracing::{error, info, warn};
 
+use engine::config::HeroCatalog;
 use engine::game_state::GameState;
-use engine::hero::Hero;
-use engine::hero_class::HeroClass;
 use engine::map::game_map::GameMap;
 use engine::map::tile::Tiles;
 use engine::spawn;
 use engine::team::Team;
+use engine::MapCoord;
 use mapgen::map_assembler::{MapAssembler, MapConfig};
 use tiled::write_tmx;
 
@@ -268,7 +268,7 @@ fn print_ascii(map: &GameMap) {
     for y in 0..max_rows {
         let mut row = String::with_capacity(w + 1);
         for x in 0..w {
-            let coord = engine::map::game_map::MapCoord::new(x as u32, y as u32);
+            let coord = MapCoord::new(x as u32, y as u32);
             if let Ok(tile) = map.get_tile(coord) {
                 row.push(tile.kind.as_char());
             } else {
@@ -294,7 +294,7 @@ fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
 
     for ty in 0..map.tile_height() {
         for tx in 0..map.tile_width() {
-            let coord = engine::map::game_map::MapCoord::new(tx, ty);
+            let coord = MapCoord::new(tx, ty);
             let tile = match map.get_tile(coord) {
                 Ok(t) => t,
                 Err(_) => continue,
@@ -336,11 +336,15 @@ fn save_rpgs(
     let team_id = state.add_team(Team::new(0, "Red", (220, 50, 50), true));
     state.add_team(Team::new(1, "Blue", (220, 50, 50), true));
     state.add_team(Team::new(2, "Enemy", (150, 80, 200), false));
-    state.add_hero(Hero::new(0, HeroClass::Knight, "Hero", spawn, team_id));
+    let catalog = HeroCatalog::from_yaml(include_str!("../../../../assets/heroes.yaml"))?;
+    let Some(hero) = catalog.heroes().first() else {
+        return Err(engine::error::EngineError::InvalidTiles("no hero candidates".to_string()));
+    };
+    state.add_hero(team_id, hero, &spawn);
     state.set_city_owner(spawn, Some(team_id));
     let _ = state.on_turn();
 
-    let bytes = state.to_save_bytes_with_name(seed)?;
+    let bytes = state.to_save_bytes()?;
     fs::write(output, bytes).map_err(|err| engine::error::EngineError::Save(err.to_string()))?;
     Ok(())
 }

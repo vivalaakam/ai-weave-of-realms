@@ -17,29 +17,26 @@ impl Plugin for HeroPlugin {
 }
 
 fn enter_hero(mut commands: Commands, map_view_state: Res<MapViewState>) {
-    // Resolve the hero standing under the cursor from the shared map view.
-    let hero_lines = map_view_state.map_view.as_ref().and_then(|map_view| {
-        let coord = map_view.cursor_coord()?;
-        map_view.session().state().hero_at(coord).map(|hero| {
-            (
-                hero.name.clone(),
-                format!("HP: {}/{}", hero.hp, hero.max_hp),
-                format!("ATK: {}   DEF: {}   SPD: {}", hero.atk, hero.def, hero.spd),
-                format!("MOV: {}/{}", hero.mov_remaining, hero.mov),
-                format!("Position: {},{}", hero.position.x, hero.position.y),
-            )
-        })
-    });
+    let Some(map_view) = map_view_state.map_view.as_ref() else {
+        return;
+    };
 
-    let (title, hp, stats, mov, pos) = hero_lines.unwrap_or_else(|| {
-        (
-            "Hero".to_string(),
-            "No hero selected".to_string(),
-            String::new(),
-            String::new(),
-            String::new(),
-        )
-    });
+    let Some(coord) = map_view.cursor_coord() else {
+        return;
+    };
+
+    let Some(hero) = map_view.session().state().hero_at(&coord) else {
+        return;
+    };
+
+    let position = hero.get_position();
+
+    let title = hero.get_name().to_owned();
+    let hp = format!("HP: {}/{}", hero.get_hp(), hero.get_max_hp());
+    let stats =
+        format!("ATK: {}   DEF: {}   SPD: {}", hero.get_atk(), hero.get_def(), hero.get_spd());
+    let mov = format!("MOV: {}/{}", hero.get_mov_remaining(), hero.get_mov());
+    let pos = format!("Position: {},{}", position.x, position.y);
 
     commands
         .spawn((
