@@ -45,7 +45,7 @@ pub struct TopBarRoot;
 /// Identifies which treasury value a top-bar text entity displays.
 #[derive(Component, Clone, Copy)]
 pub enum TopBarField {
-    /// Current team turn number.
+    /// Current team turn number + score.
     Turn,
     /// Gold balance.
     Gold,
@@ -1178,14 +1178,16 @@ fn update_map_view(
         let cursor_y = map_view.cursor_y();
         let selected_hero_id = session.selected_hero_id();
 
-        // Refresh the top HUD bar (turn number, gold, resources) for the active team.
+        // Refresh the top HUD bar (turn number, score, gold, resources) for the active team.
         if let Ok(team) = session.state().get_active_team() {
             let turn = team.get_turn();
+            let team_id = team.get_id();
             let gold = team.gold();
             let resources = team.resources();
+            let score = session.state().team_score(team_id);
             for (mut text, field) in top_bar_query.iter_mut() {
                 text.0 = match *field {
-                    TopBarField::Turn => format!("Turn {turn}"),
+                    TopBarField::Turn => format!("T{turn} ⚑{}", score.total()),
                     TopBarField::Gold => format!("{gold}"),
                     TopBarField::Resource(idx) => {
                         format!("{}", resources.get(idx).copied().unwrap_or(0))

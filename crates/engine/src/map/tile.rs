@@ -70,6 +70,14 @@ impl Tiles {
         self.is_buildable_with_config(&default_tile_config())
     }
 
+    /// Returns `true` if territory can expand onto this tile.
+    ///
+    /// Mountains, water, and rivers are not terraformable even though
+    /// water and rivers are passable by units.
+    pub fn is_terraformable(self) -> bool {
+        self.is_terraformable_with_config(&default_tile_config())
+    }
+
     /// Returns `true` if a city entrance can be placed adjacent to this tile.
     pub fn allows_city_entrance(self) -> bool {
         self.is_buildable()
@@ -112,6 +120,10 @@ impl Tiles {
 
     pub fn is_buildable_with_config(self, cfg: &TileConfig) -> bool {
         cfg.is_buildable(self.as_str()).unwrap_or(false)
+    }
+
+    pub fn is_terraformable_with_config(self, cfg: &TileConfig) -> bool {
+        cfg.is_terraformable(self.as_str()).unwrap_or(false)
     }
 
     pub fn movement_cost_modifier_with_config(self, cfg: &TileConfig) -> i32 {

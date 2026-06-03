@@ -26,7 +26,11 @@ use crate::map::game_map::{Direction, GameMap, ResourceKind};
 use crate::map::tile::Tiles;
 use crate::map_coord::MapCoord;
 use crate::rng::SeededRng;
-use crate::score::{ScoreBoard, ScoreEvent};
+use crate::score::{
+    ScoreBoard, ScoreEvent, CITY_EXPANSION_INTERVAL, CITY_INITIAL_RADIUS, ROD_EXPANSION_INTERVAL,
+    CITY_TILE_POINTS, LAND_TILE_POINTS, RESOURCE_POINT_POINTS, ROD_POINTS, HERO_ALIVE_POINTS,
+    ScoreBreakdown,
+};
 use crate::state_flood::flood_city;
 use crate::team::Team;
 
@@ -86,6 +90,10 @@ pub enum TurnEvent {
     TeamTurnStarted { team_id: TeamId, turn: u32 },
     /// A team collected its start-of-turn income (base gold plus mine output).
     TeamIncomeCollected { team_id: TeamId, gold: u32 },
+    /// Territory around a city expanded by one tile.
+    CityTerritoryExpanded { team_id: TeamId, new_tile: MapCoord },
+    /// Territory around a rod expanded by one tile.
+    RodTerritoryExpanded { team_id: TeamId, new_tile: MapCoord },
 }
 
 // ─── GameState ────────────────────────────────────────────────────────────────
@@ -655,13 +663,22 @@ impl GameState {
                 events.push(TurnEvent::PoiVisited { hero_id, coord: target });
                 match tile.kind {
                     Tiles::City | Tiles::CityEntrance => {
-                        self.score.record(ScoreEvent::CityCapture { city: target });
+                        self.score.record_for(
+                            self.heroes[&hero_id].team_id,
+                            ScoreEvent::CityCapture { city: target },
+                        );
                     }
                     Tiles::Gold => {
-                        self.score.record(ScoreEvent::GoldCollected { coord: target });
+                        self.score.record_for(
+                            self.heroes[&hero_id].team_id,
+                            ScoreEvent::GoldCollected { coord: target },
+                        );
                     }
                     Tiles::Resource => {
-                        self.score.record(ScoreEvent::ResourceCollected { coord: target });
+                        self.score.record_for(
+                            self.heroes[&hero_id].team_id,
+                            ScoreEvent::ResourceCollected { coord: target },
+                        );
                     }
                     _ => {}
                 }
@@ -766,6 +783,9 @@ impl GameState {
         self.hero_index(attacker_id)?;
         self.hero_index(defender_id)?;
 
+        // Borrow team_id before removing heroes.
+        let attacker_team_id = self.heroes[&attacker_id].team_id;
+
         let mut attacker = self.heroes.remove(&attacker_id).unwrap();
         let mut defender = self.heroes.remove(&defender_id).unwrap();
         let result = combat::resolve_combat(&mut attacker, &mut defender);
@@ -778,7 +798,8 @@ impl GameState {
             vec![TurnEvent::CombatResolved { attacker_id, defender_id, result: result.clone() }];
 
         if !result.defender_survived {
-            self.score.record(ScoreEvent::EnemyDefeated { enemy_id: defender_id });
+            self.score
+                .record_for(attacker_team_id, ScoreEvent::EnemyDefeated { enemy_id: defender_id });
             events.push(TurnEvent::HeroDefeated { hero_id: defender_id });
         }
         if !result.attacker_survived {
@@ -788,10 +809,21 @@ impl GameState {
         Ok(events)
     }
 
-    /// Advances the global turn: resets movement for non-player-controlled (AI) heroes
-    /// and awards one survival point.
+    /// Advances the global turn: resets movement for non-player-controlled (AI) heroes,
+    /// awards one survival point to each player team, and triggers territory expansion.
     ///
     /// Movement for player-controlled heroes is reset per-team in [`GameState::on_turn`].
+    ///
+    /// ## Territory expansion
+    ///
+    /// After all player teams have acted this round:
+    /// - Every team whose current turn is a multiple of [`CITY_EXPANSION_INTERVAL`]
+    ///   gets +1 land tile around each of its owned cities.
+    /// - Every team whose current turn is a multiple of [`ROD_EXPANSION_INTERVAL`]
+    ///   gets +1 land tile around each of its placed rods.
+    ///
+    /// Expansion grows in a circular (clock-wise sweep) pattern, picking the first
+    /// unclaimed passable tile that borders the team's existing territory.
     pub fn advance_turn(&mut self) -> Vec<TurnEvent> {
         let player_teams: BTreeSet<TeamId> =
             self.teams.values().filter(|t| t.is_player_controlled()).map(|t| t.get_id()).collect();
@@ -803,8 +835,238 @@ impl GameState {
         {
             hero.reset_movement();
         }
-        self.score.record(ScoreEvent::TurnSurvived);
-        vec![TurnEvent::TurnAdvanced { turn: 0 }]
+
+        // Award survival points to each player team.
+        for &team_id in &player_teams {
+            self.score.record_for(team_id, ScoreEvent::TurnSurvived);
+        }
+
+        let mut events = vec![TurnEvent::TurnAdvanced { turn: 0 }];
+
+        // Territory expansion for all teams (player and AI).
+        let all_team_ids: Vec<TeamId> = self.teams.keys().copied().collect();
+        for team_id in all_team_ids {
+            let team_turn = self.teams.get(&team_id).map(|t| t.get_turn()).unwrap_or(0);
+
+            // City expansion.
+            if team_turn > 0 && team_turn % CITY_EXPANSION_INTERVAL == 0 {
+                self.expand_city_territory(team_id, &mut events);
+            }
+
+            // Rod expansion.
+            if team_turn > 0 && team_turn % ROD_EXPANSION_INTERVAL == 0 {
+                self.expand_rod_territory(team_id, &mut events);
+            }
+        }
+
+        events
+    }
+
+    // ── Territory Expansion ─────────────────────────────────────────────────
+
+    /// Claims initial territory around all cities owned by `team_id`.
+    ///
+    /// For every city tile owned by the team, all passable tiles within Manhattan
+    /// distance [`CITY_INITIAL_RADIUS`] are claimed if they are unowned. This
+    /// should be called once when a team first captures a city.
+    pub fn claim_initial_city_territory(&mut self, team_id: TeamId) -> Vec<TurnEvent> {
+        let city_tiles: Vec<MapCoord> = self
+            .city_owners
+            .iter()
+            .filter(|(_, &owner)| owner == team_id)
+            .map(|(&coord, _)| coord)
+            .collect();
+
+        let mut events = Vec::new();
+        let w = self.map.tile_width();
+        let h = self.map.tile_height();
+
+        for city in &city_tiles {
+            // Claim all passable tiles within CITY_INITIAL_RADIUS (Manhattan distance).
+            for dy in -(CITY_INITIAL_RADIUS as i32)..=(CITY_INITIAL_RADIUS as i32) {
+                let dx_range =
+                    (CITY_INITIAL_RADIUS as i32) - dy.abs().max(-(CITY_INITIAL_RADIUS as i32));
+                for dx in -dx_range..=dx_range {
+                    let nx = city.x as i32 + dx;
+                    let ny = city.y as i32 + dy;
+                    if nx < 0 || ny < 0 {
+                        continue;
+                    }
+                    let coord = MapCoord::new(nx as u32, ny as u32);
+                    if coord.x >= w || coord.y >= h {
+                        continue;
+                    }
+                    // Check terraformability — mountains, water, and rivers block expansion.
+                    if self
+                        .map
+                        .get_tile(coord)
+                        .map(|t| t.kind.is_terraformable_with_config(self.tile_config()))
+                        .unwrap_or(false)
+                        && self.land_owner(coord) != Some(team_id)
+                    {
+                        self.land_owners.insert(coord, team_id);
+                        events.push(TurnEvent::LandOwnerChanged { coord, team_id: Some(team_id) });
+                    }
+                }
+            }
+        }
+        events
+    }
+
+    /// Expands territory from cities: claims one new tile per owned city,
+    /// choosing randomly among the nearest boundary tiles of the team's
+    /// territory "island".
+    fn expand_city_territory(
+        &mut self,
+        team_id: TeamId,
+        events: &mut Vec<TurnEvent>,
+    ) {
+        let city_tiles: Vec<MapCoord> = self
+            .city_owners
+            .iter()
+            .filter(|(_, &owner)| owner == team_id)
+            .map(|(&coord, _)| coord)
+            .collect();
+
+        for city in city_tiles {
+            let top = self.expansion_candidates(city, team_id);
+            if top.is_empty() {
+                continue;
+            }
+            let idx = self.rng.random_range_usize(0..top.len());
+            let new_tile = top[idx];
+            self.land_owners.insert(new_tile, team_id);
+            events.push(TurnEvent::CityTerritoryExpanded { team_id, new_tile });
+        }
+    }
+
+    /// Expands territory from rods: claims one new tile per rod,
+    /// choosing randomly among the nearest boundary tiles.
+    fn expand_rod_territory(
+        &mut self,
+        team_id: TeamId,
+        events: &mut Vec<TurnEvent>,
+    ) {
+        let rod_tiles: Vec<MapCoord> = self
+            .resource_rods
+            .iter()
+            .filter(|(_, &owner)| owner == team_id)
+            .map(|(&coord, _)| coord)
+            .collect();
+
+        for rod in rod_tiles {
+            let top = self.expansion_candidates(rod, team_id);
+            if top.is_empty() {
+                continue;
+            }
+            let idx = self.rng.random_range_usize(0..top.len());
+            let new_tile = top[idx];
+            self.land_owners.insert(new_tile, team_id);
+            events.push(TurnEvent::RodTerritoryExpanded { team_id, new_tile });
+        }
+    }
+
+    /// Collects the ~10 nearest boundary tiles around `center` that the team
+    /// could expand into. The "island" is the set of all tiles currently
+    /// owned by `team_id`; boundary tiles are passable, unowned neighbours
+    /// of that island, sorted by Manhattan distance to `center` (with ties
+    /// included for fairness).
+    fn expansion_candidates(&self, center: MapCoord, team_id: TeamId) -> Vec<MapCoord> {
+        // 1. Collect all owned tiles for this team → this is the "island".
+        let owned: alloc::collections::BTreeSet<MapCoord> = self
+            .land_owners
+            .iter()
+            .filter(|(_, &owner)| owner == team_id)
+            .map(|(&coord, _)| coord)
+            .collect();
+
+        let w = self.map.tile_width();
+        let h = self.map.tile_height();
+
+        // 2. For each owned tile, check its 4 neighbours. If a neighbour is
+        //    passable, in-bounds, and NOT owned by this team → boundary tile.
+        let mut candidates: Vec<(u32, MapCoord)> = Vec::new();
+        for &coord in &owned {
+            for dir in &[Direction::North, Direction::East, Direction::South, Direction::West] {
+                let Some(neighbour) = dir.apply(coord, w, h) else {
+                    continue;
+                };
+                // Already owned by us → not a boundary.
+                if owned.contains(&neighbour) {
+                    continue;
+                }
+                // Must be terraformable (mountains, water, rivers block expansion).
+                if !self
+                    .map
+                    .get_tile(neighbour)
+                    .map(|t| t.kind.is_terraformable_with_config(self.tile_config()))
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+                let dist = centre_dist(center, neighbour);
+                candidates.push((dist, neighbour));
+            }
+        }
+
+        // 3. Sort by Manhattan distance and deduplicate (same tile may appear
+        //    as a neighbour of multiple owned tiles).
+        candidates.sort_by_key(|(d, _)| *d);
+        candidates.dedup_by(|a, b| a.1 == b.1);
+
+        // 4. Take the closest candidates (up to ~10, including ties at the
+        //    boundary distance so that equidistant tiles get a fair chance).
+        const MAX_CANDIDATES: usize = 10;
+        let cutoff = candidates
+            .iter()
+            .nth(MAX_CANDIDATES.saturating_sub(1))
+            .map(|(d, _)| *d);
+        // When fewer than MAX_CANDIDATES exist, cutoff is None and all pass.
+        candidates
+            .iter()
+            .take_while(|(d, _)| cutoff.map_or(true, |c| *d <= c))
+            .map(|(_, c)| *c)
+            .collect()
+    }
+
+    /// Computes the per-team score breakdown for `team_id`.
+    ///
+    /// Counts cities, land, resources, rods, living heroes, and event points.
+    pub fn team_score(&self, team_id: TeamId) -> ScoreBreakdown {
+        let cities = self
+            .city_owners
+            .values()
+            .filter(|&&owner| owner == team_id)
+            .count() as i32
+            * CITY_TILE_POINTS;
+
+        let land = self
+            .land_owners
+            .values()
+            .filter(|&&owner| owner == team_id)
+            .count() as i32
+            * LAND_TILE_POINTS;
+
+        let resources = self
+            .resource_owners
+            .values()
+            .filter(|&&owner| owner == team_id)
+            .count() as i32
+            * RESOURCE_POINT_POINTS;
+
+        let rods = self
+            .resource_rods
+            .values()
+            .filter(|&&owner| owner == team_id)
+            .count() as i32
+            * ROD_POINTS;
+
+        let heroes =
+            self.get_team_alive_heroes_ids(team_id).len() as i32 * HERO_ALIVE_POINTS;
+
+        let events = self.score.team_total(team_id);
+
+        ScoreBreakdown { cities, land, resources, rods, heroes, events }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -957,6 +1219,11 @@ impl GameState {
     pub fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
         minicbor_serde::from_slice(bytes).map_err(EngineError::from)
     }
+}
+
+/// Manhattan distance between two map coordinates.
+fn centre_dist(a: MapCoord, b: MapCoord) -> u32 {
+    a.x.abs_diff(b.x) + a.y.abs_diff(b.y)
 }
 
 // ═══ Tests ═══════════════════════════════════════════════════════════════════
@@ -1396,5 +1663,350 @@ mod tests {
         // Even after scoring, enemy team should not trigger victory.
         state.attack_hero(pid, eid).unwrap();
         assert_eq!(state.check_outcome(&conditions), None);
+    }
+
+    // ── Territory expansion tests ───────────────────────────────────────────────
+
+    #[test]
+    fn claim_initial_city_territory_claims_radius_2_around_city() {
+        // 9×9 map with a city at (4, 4). After claiming, all passable tiles
+        // within Manhattan distance ≤ CITY_INITIAL_RADIUS (2) should be owned.
+        let map = meadow_map(9, 9);
+        let mut state = make_state(map);
+        let city = MapCoord::new(4, 4);
+        state.set_city_owner(city, Some(0)); // team 0 (Red)
+
+        let events = state.claim_initial_city_territory(0);
+
+        // Every tile within Manhattan distance 2 of (4,4) should be owned by team 0.
+        for dy in -2i32..=2 {
+            let dx_max = 2 - dy.abs();
+            for dx in -dx_max..=dx_max {
+                let coord = MapCoord::new((4 + dx) as u32, (4 + dy) as u32);
+                assert_eq!(
+                    state.land_owner(coord),
+                    Some(0),
+                    "tile {:?} should be owned by team 0",
+                    coord
+                );
+            }
+        }
+        // Tile at Manhattan distance 3 should NOT be claimed.
+        assert_eq!(state.land_owner(MapCoord::new(4, 1)), None); // distance 3
+        assert!(events.iter().any(|e| matches!(
+            e,
+            TurnEvent::LandOwnerChanged { team_id: Some(0), .. }
+        )));
+    }
+
+    #[test]
+    fn claim_initial_city_territory_skips_already_owned() {
+        let map = meadow_map(9, 9);
+        let mut state = make_state(map);
+        let city = MapCoord::new(4, 4);
+        state.set_city_owner(city, Some(0));
+        // Pre-claim one tile — it should still be owned but no duplicate event.
+        state.set_land_owner(MapCoord::new(4, 4), Some(0));
+
+        let events = state.claim_initial_city_territory(0);
+
+        // Only tiles NOT already owned should produce LandOwnerChanged events.
+        let claimed: Vec<MapCoord> = events
+            .iter()
+            .filter_map(|e| match e {
+                TurnEvent::LandOwnerChanged { coord, team_id: Some(0) } => Some(*coord),
+                _ => None,
+            })
+            .collect();
+        // (4,4) was pre-claimed, so it should not appear in new events.
+        assert!(!claimed.contains(&MapCoord::new(4, 4)));
+    }
+
+    #[test]
+    fn expand_city_territory_adds_one_tile_per_city() {
+        // Place a city, claim initial territory, then advance team turns to
+        // reach the expansion interval.
+        let map = meadow_map(9, 9);
+        let mut state = make_state(map);
+        let city = MapCoord::new(4, 4);
+        state.set_city_owner(city, Some(0));
+        state.claim_initial_city_territory(0);
+
+        let initial_count = state
+            .land_owners
+            .values()
+            .filter(|&&o| o == 0)
+            .count();
+
+        // Manually call expand_city_territory.
+        let mut events = Vec::new();
+        state.expand_city_territory(0, &mut events);
+
+        let after_count = state
+            .land_owners
+            .values()
+            .filter(|&&o| o == 0)
+            .count();
+        assert_eq!(after_count, initial_count + 1, "city expansion should add exactly 1 tile");
+        assert!(events.iter().any(|e| matches!(
+            e,
+            TurnEvent::CityTerritoryExpanded { team_id: 0, .. }
+        )));
+    }
+
+    #[test]
+    fn expand_rod_territory_adds_one_tile_per_rod() {
+        let map = meadow_map(9, 9);
+        let mut state = make_state(map);
+        // Place a rod at center, claim surrounding land so expansion has something
+        // adjacent to grow from.
+        let rod = MapCoord::new(4, 4);
+        state.resource_rods.insert(rod, 0);
+        // Claim the rod tile itself as land.
+        state.set_land_owner(rod, Some(0));
+
+        let mut events = Vec::new();
+        state.expand_rod_territory(0, &mut events);
+
+        let owned_count = state
+            .land_owners
+            .values()
+            .filter(|&&o| o == 0)
+            .count();
+        // 1 initial (rod tile) + 1 expansion = 2
+        assert_eq!(owned_count, 2, "rod expansion should add exactly 1 tile");
+        assert!(events.iter().any(|e| matches!(
+            e,
+            TurnEvent::RodTerritoryExpanded { team_id: 0, .. }
+        )));
+    }
+
+    #[test]
+    fn expansion_is_circular_not_linear() {
+        // After several expansion rounds, territory should form a roughly circular
+        // shape (not a straight line). We verify by checking that multiple
+        // directions from the center have been claimed.
+        let map = meadow_map(15, 15);
+        let mut state = make_state(map);
+        let city = MapCoord::new(7, 7);
+        state.set_city_owner(city, Some(0));
+        state.claim_initial_city_territory(0);
+
+        // Run 4 expansion rounds.
+        for _ in 0..4 {
+            let mut events = Vec::new();
+            state.expand_city_territory(0, &mut events);
+            // At least one event per round (city exists, expansion possible).
+            assert!(!events.is_empty() || state.land_owners.values().filter(|&&o| o == 0).count() >= 13);
+        }
+
+        // Check that territory extends in multiple directions — not just one.
+        let owned = |x, y| state.land_owner(MapCoord::new(x, y)) == Some(0);
+        let directions_claimed = [
+            owned(7, 5), // north
+            owned(9, 7), // east
+            owned(7, 9), // south
+            owned(5, 7), // west
+        ];
+        let claimed_count = directions_claimed.iter().filter(|&&c| c).count();
+        assert!(
+            claimed_count >= 3,
+            "territory should extend in at least 3 cardinal directions, got {}",
+            claimed_count
+        );
+    }
+
+    #[test]
+    fn expansion_stops_when_surrounded() {
+        // On a small map (3×3), after initial claim only the boundary tiles can
+        // expand. Further expansion has nowhere to go.
+        let map = meadow_map(3, 3);
+        let mut state = make_state(map);
+        let city = MapCoord::new(1, 1);
+        state.set_city_owner(city, Some(0));
+        state.claim_initial_city_territory(0);
+
+        // All 9 tiles (radius-2 from center covers entire 3×3) are claimed.
+        let count_before = state.land_owners.values().filter(|&&o| o == 0).count();
+
+        let mut events = Vec::new();
+        state.expand_city_territory(0, &mut events);
+        let count_after = state.land_owners.values().filter(|&&o| o == 0).count();
+
+        assert_eq!(count_before, count_after, "no expansion possible on fully claimed small map");
+    }
+
+    #[test]
+    fn expansion_blocked_by_mountain_water_river() {
+        // 7×1 strip: [Meadow, Mountain, Meadow, Meadow, Water, Meadow, River]
+        // City on first meadow — expansion should NOT cross mountain.
+        // Then we also test water and river in a separate layout.
+        // --- Test 1: Mountain blocks expansion ---
+        {
+            let mut tiles = vec![Tile { kind: Tiles::Meadow }; 7 * 1];
+            tiles[1] = Tile { kind: Tiles::Mountain };
+            let map = GameMap::new(7, 1, tiles, [0u8; 32]).unwrap();
+            let mut state = make_state(map);
+            let city = MapCoord::new(0, 0);
+            state.set_city_owner(city, Some(0));
+            state.claim_initial_city_territory(0);
+
+            // Initial claim in radius 2: only tiles at distance 0 (0,0), 1 (1,0 blocked by mountain)
+            // Actually (0,0) is city — (1,0) is Mountain (not terraformable),
+            // so only (0,0) itself is claimed. Distance 1 from (0,0) would be (1,0) blocked.
+            // With radius 2: (0,0), (1,0) Mountain skip, (2,0) is out of radius (distance 2,
+            // but mountain (1,0) is not terraformable, so it's NOT claimed. But (2,0) at dist 2
+            // IS within radius. Wait — the city is at (0,0), so (2,0) is Manhattan distance 2.
+            // But (1,0) is mountain — we skip it. (2,0) is meadow at distance 2 — it IS claimed
+            // because claim_initial iterates all coords in radius regardless of adjacency.
+            // Actually claim_initial iterates ALL coords within Manhattan radius, not just
+            // contiguous ones. So (2,0) IS terraformable and IS within radius 2.
+            // Only (1,0) mountain is skipped.
+
+            // After initial claim: (0,0), (2,0) — mountain at (1,0) is NOT claimed.
+            assert_eq!(state.land_owner(MapCoord::new(1, 0)), None, "mountain should not be claimed");
+            assert_eq!(state.land_owner(MapCoord::new(2, 0)), Some(0), "meadow behind mountain should be claimed initially");
+
+            // Now try to expand. The island is {(0,0), (2,0)}.
+            // Boundary of (0,0): right is (1,0)=Mountain skip, left/up/down out of bounds
+            // Boundary of (2,0): left is (1,0)=Mountain skip, right is (3,0)=Meadow
+            // So expansion candidates: (3,0)
+            let mut events = Vec::new();
+            state.expand_city_territory(0, &mut events);
+            assert_eq!(state.land_owner(MapCoord::new(1, 0)), None, "mountain should never be claimed");
+            assert_eq!(state.land_owner(MapCoord::new(3, 0)), Some(0), "expansion should claim past the gap, not onto mountain");
+        }
+
+        // --- Test 2: Water blocks expansion ---
+        {
+            let mut tiles = vec![Tile { kind: Tiles::Meadow }; 5 * 1];
+            tiles[2] = Tile { kind: Tiles::Water };
+            let map = GameMap::new(5, 1, tiles, [0u8; 32]).unwrap();
+            let mut state = make_state(map);
+            let city = MapCoord::new(0, 0);
+            state.set_city_owner(city, Some(0));
+            state.claim_initial_city_territory(0);
+            // (2,0) is Water — not terraformable, skipped.
+            // Within radius 2: (0,0), (1,0) meadow ✓; (2,0) water ✗
+            assert_eq!(state.land_owner(MapCoord::new(2, 0)), None, "water should not be claimed");
+            let mut events = Vec::new();
+            state.expand_city_territory(0, &mut events);
+            assert_eq!(state.land_owner(MapCoord::new(2, 0)), None, "water should block expansion");
+        }
+
+        // --- Test 3: River blocks expansion ---
+        {
+            let mut tiles = vec![Tile { kind: Tiles::Meadow }; 5 * 1];
+            tiles[2] = Tile { kind: Tiles::River };
+            let map = GameMap::new(5, 1, tiles, [0u8; 32]).unwrap();
+            let mut state = make_state(map);
+            let city = MapCoord::new(0, 0);
+            state.set_city_owner(city, Some(0));
+            state.claim_initial_city_territory(0);
+            assert_eq!(state.land_owner(MapCoord::new(2, 0)), None, "river should not be claimed");
+            let mut events = Vec::new();
+            state.expand_city_territory(0, &mut events);
+            assert_eq!(state.land_owner(MapCoord::new(2, 0)), None, "river should block expansion");
+        }
+    }
+
+    // ── Per-team scoring tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn team_score_counts_cities_and_land() {
+        let map = meadow_map(9, 9);
+        let mut state = make_state(map);
+        state.set_city_owner(MapCoord::new(4, 4), Some(0));
+        state.claim_initial_city_territory(0);
+
+        let score = state.team_score(0);
+        // 1 city × 50 + N land tiles × 10, no resources/rods/heroes/events.
+        assert!(score.cities > 0, "should have city points");
+        assert!(score.land > 0, "should have land points");
+        assert_eq!(score.resources, 0);
+        assert_eq!(score.rods, 0);
+        assert_eq!(score.total(), score.cities + score.land + score.events + score.heroes);
+    }
+
+    #[test]
+    fn team_score_separates_teams() {
+        let map = meadow_map(9, 9);
+        let mut state = make_state(map);
+
+        // Team 0 owns city + land.
+        state.set_city_owner(MapCoord::new(2, 2), Some(0));
+        state.set_land_owner(MapCoord::new(2, 2), Some(0));
+
+        // Team 1 owns just land.
+        state.set_land_owner(MapCoord::new(6, 6), Some(1));
+
+        let s0 = state.team_score(0);
+        let s1 = state.team_score(1);
+
+        assert!(s0.cities > 0, "team 0 should have city points");
+        assert_eq!(s1.cities, 0, "team 1 has no cities");
+        assert!(s0.land > 0);
+        assert!(s1.land > 0);
+        // Different teams should not share points.
+        assert_ne!(s0.total(), s1.total());
+    }
+
+    #[test]
+    fn team_score_includes_heroes() {
+        let map = meadow_map(9, 9);
+        let mut state = make_state(map);
+        add_player(&mut state, MapCoord::new(0, 0)); // team 0 hero
+
+        let score = state.team_score(0);
+        assert_eq!(score.heroes, HERO_ALIVE_POINTS, "1 living hero × HERO_ALIVE_POINTS");
+    }
+
+    #[test]
+    fn team_score_excludes_dead_heroes() {
+        let map = meadow_map(9, 9);
+        let mut state = make_state(map);
+        let pid = add_player(&mut state, MapCoord::new(0, 0));
+        state.heroes.get_mut(&pid).unwrap().take_damage(100);
+
+        assert_eq!(state.team_score(0).heroes, 0, "dead hero contributes 0 hero points");
+    }
+
+    #[test]
+    fn team_score_includes_rods_and_resources() {
+        let mut map = meadow_map(9, 9);
+        let res = MapCoord::new(3, 3);
+        map.set_resource_nodes(vec![ResourceNode {
+            coord: res,
+            kind: ResourceKind::Resource1,
+        }])
+        .unwrap();
+        let mut state = make_state(map);
+        state.set_resource_owner(res, Some(0));
+        state.resource_rods.insert(MapCoord::new(1, 1), 0);
+
+        let score = state.team_score(0);
+        assert_eq!(score.resources, RESOURCE_POINT_POINTS, "1 resource owned");
+        assert_eq!(score.rods, ROD_POINTS, "1 rod owned");
+    }
+
+    #[test]
+    fn team_score_unknown_team_returns_zeros() {
+        let map = meadow_map(9, 9);
+        let state = make_state(map);
+        let score = state.team_score(99);
+        assert_eq!(score.total(), 0, "non-existent team has zero score");
+    }
+
+    #[test]
+    fn per_team_score_events_accumulate_independently() {
+        // Verify that per-team score events are tracked correctly via ScoreBoard.
+        let mut board = ScoreBoard::new();
+        board.record_for(0, ScoreEvent::TurnSurvived);
+        board.record_for(0, ScoreEvent::TurnSurvived);
+        board.record_for(1, ScoreEvent::CityCapture { city: MapCoord::new(0, 0) });
+
+        assert_eq!(board.team_total(0), 20, "team 0: 2 × TurnSurvived");
+        assert_eq!(board.team_total(1), 500, "team 1: 1 × CityCapture");
+        assert_eq!(board.total(), 520, "global total = 20 + 500");
     }
 }

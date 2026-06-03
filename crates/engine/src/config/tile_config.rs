@@ -48,6 +48,12 @@ pub struct TileEntry {
     /// Whether the tile counts as a point of interest.
     #[serde(default)]
     pub poi: bool,
+    /// Whether territory can expand onto this tile.
+    ///
+    /// Impassable terrain (mountains) and water features (water, river) are
+    /// not terraformable even though some of them are passable by units.
+    #[serde(default = "default_true")]
+    pub terraformable: bool,
 }
 
 /// A single atlas index entry with its own variant label.
@@ -124,6 +130,11 @@ impl TileConfig {
         Some(self.tiles.get(name)?.poi)
     }
 
+    /// Can territory expand onto this tile?
+    pub fn is_terraformable(&self, name: &str) -> Option<bool> {
+        Some(self.tiles.get(name)?.terraformable)
+    }
+
     /// Find the tile whose `tile_id` matches.
     /// Used for reverse mapping (e.g. during deserialization).
     pub fn find_by_base_id(&self, tile_id: u32) -> Option<&str> {
@@ -146,6 +157,11 @@ impl TileEntry {
     pub fn base_tile_id(&self) -> u32 {
         self.tile_id
     }
+}
+
+/// Default value for `terraformable: bool` — used by `#[serde(default)]`.
+const fn default_true() -> bool {
+    true
 }
 
 /// Parse a `"#RRGGBB"` or `"RRGGBB"` string into a `(r, g, b)` triple.
@@ -186,6 +202,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: true,
             movement_cost: 0,
             poi: false,
+            terraformable: true,
         },
     );
 
@@ -204,6 +221,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 1,
             poi: false,
+            terraformable: true,
         },
     );
 
@@ -219,6 +237,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 3,
             poi: false,
+            terraformable: false,
         },
     );
 
@@ -234,6 +253,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 3,
             poi: false,
+            terraformable: false,
         },
     );
 
@@ -249,6 +269,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 0,
             poi: false,
+            terraformable: false,
         },
     );
 
@@ -264,6 +285,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 0,
             poi: false,
+            terraformable: true,
         },
     );
 
@@ -279,6 +301,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: -1,
             poi: false,
+            terraformable: true,
         },
     );
 
@@ -298,6 +321,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 3,
             poi: false,
+            terraformable: false,
         },
     );
 
@@ -313,6 +337,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 0,
             poi: false,
+            terraformable: true,
         },
     );
 
@@ -328,6 +353,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 0,
             poi: true,
+            terraformable: true,
         },
     );
 
@@ -343,6 +369,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 0,
             poi: true,
+            terraformable: true,
         },
     );
 
@@ -358,6 +385,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 0,
             poi: true,
+            terraformable: true,
         },
     );
 
@@ -373,6 +401,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 0,
             poi: true,
+            terraformable: true,
         },
     );
 
@@ -393,6 +422,7 @@ pub fn default_tile_config() -> TileConfig {
             buildable: false,
             movement_cost: 0,
             poi: true,
+            terraformable: true,
         },
     );
 
