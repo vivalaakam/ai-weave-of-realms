@@ -676,17 +676,23 @@ impl GameState {
             }
 
             // City ownership: entering any City/CityEntrance tile claims the
-            // entire connected city complex for the hero's team.
-            // Emit CityOwnerChanged for every tile whose owner actually changes.
+            // entire connected city complex for the hero's team, and also
+            // claims the initial territory around the city.
             if matches!(tile.kind, Tiles::City | Tiles::CityEntrance) {
                 let tid = self.heroes[&hero_id].team_id;
+                let mut city_newly_captured = false;
                 for coord in flood_city(&self.map, target) {
                     let already_owned =
                         self.city_owners.get(&coord).map(|&o| o == tid).unwrap_or(false);
                     if !already_owned {
                         self.city_owners.insert(coord, tid);
                         events.push(TurnEvent::CityOwnerChanged { coord, team_id: Some(tid) });
+                        city_newly_captured = true;
                     }
+                }
+                if city_newly_captured {
+                    let territory_events = self.claim_initial_city_territory(tid);
+                    events.extend(territory_events);
                 }
             }
 
@@ -1978,5 +1984,31 @@ mod tests {
         assert_eq!(board.team_total(0), 20, "team 0: 2 × TurnSurvived");
         assert_eq!(board.team_total(1), 500, "team 1: 1 × CityCapture");
         assert_eq!(board.total(), 520, "global total = 20 + 500");
+    }
+
+    #[test]
+    fn capturing_city_auto_claims_territory() {
+        // When a hero captures a city by moving onto it, the initial
+        // territory (radius CITY_INITIAL_RADIUS) should be automatically
+        // claimed for that team without a separate call.
+        let mut map = meadow_map(9, 9);
+        // Make (4,4) a CityEntrance so flood_city connects it.
+        map.get_tile_mut(MapCoord::new(4, 4)).unwrap().kind = Tiles::CityEntrance;
+
+        let mut state = make_state(map);
+        let hid = add_player(&mut state, MapCoord::new(3, 4));
+        state.set_city_owner(MapCoord::new(4, 4), Some(1)); // enemy owns city initially
+
+        // Move hero East onto (4,4) — the city entrance — should capture city AND territory.
+        let events = state.move_hero(hid, Direction::East).unwrap();
+
+        // City was captured.
+        assert_eq!(state.city_owner(&MapCoord::new(4, 4)), Some(0));
+        // Territory around city was also claimed automatically.
+        assert!(state.land_owner(MapCoord::new(3, 4)).is_some(), "tile near city should be claimed");
+        assert!(events.iter().any(|e| matches!(
+            e,
+            TurnEvent::LandOwnerChanged { team_id: Some(0), .. }
+        )), "should emit LandOwnerChanged events for territory");
     }
 }

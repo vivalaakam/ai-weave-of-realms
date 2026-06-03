@@ -264,6 +264,8 @@ pub fn build_state_with_teams(
 
         // The city always belongs to the team regardless of whether a hero is placed.
         state.set_city_owner(hero_pos, Some(team_id));
+        // Claim initial territory around the city (radius CITY_INITIAL_RADIUS).
+        state.claim_initial_city_territory(team_id);
     }
     let _ = state.on_turn();
     // Grant the first active team its start-of-turn income.
