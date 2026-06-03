@@ -1156,9 +1156,9 @@ fn update_map_view(
             let session = map_view.session();
             let state = session.state();
             let team = state.get_active_team().ok();
-            team.map(|t| t.name.clone()).unwrap_or_else(|| "Unknown".to_string())
+            team.map(|t| t.get_name()).unwrap_or_else(|| "Unknown")
         };
-        spawn_end_turn_overlay(&mut commands, &team_name);
+        spawn_end_turn_overlay(&mut commands, team_name);
         map_view_state.map_view = Some(map_view_box);
         return;
     }
@@ -1218,7 +1218,7 @@ fn update_map_view(
                     .state()
                     .get_team(hero.get_team_id())
                     .map(|t| {
-                        let (r, g, b) = t.color;
+                        let (r, g, b) = t.get_color();
                         Color::srgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
                     })
                     .unwrap_or(HERO_COLOR);
@@ -1244,7 +1244,7 @@ fn update_map_view(
                         .state()
                         .get_team(team_id)
                         .map(|team| {
-                            let (r, g, b) = team.color;
+                            let (r, g, b) = team.get_color();
                             rgb_color(r, g, b)
                         })
                         .unwrap_or(NEUTRAL_RESOURCE_COLOR),
@@ -1260,7 +1260,7 @@ fn update_map_view(
                             .state()
                             .get_team(team_id)
                             .map(|team| {
-                                let (r, g, b) = team.color;
+                                let (r, g, b) = team.get_color();
                                 rgb_color(r, g, b)
                             })
                             .unwrap_or(NEUTRAL_CITY_COLOR),
@@ -1289,7 +1289,7 @@ fn update_map_view(
                 .land_owner(coord)
                 .and_then(|team_id| session.state().get_team(team_id))
                 .map(|team| {
-                    let (r, g, b) = team.color;
+                    let (r, g, b) = team.get_color();
                     rgb_color(r, g, b).with_alpha(0.35)
                 })
                 .unwrap_or(Color::NONE);
@@ -1305,7 +1305,7 @@ fn update_map_view(
                 .resource_rod_owner(coord)
                 .and_then(|team_id| session.state().get_team(team_id))
                 .map(|team| {
-                    let (r, g, b) = team.color;
+                    let (r, g, b) = team.get_color();
                     rgb_color(r, g, b)
                 })
                 .unwrap_or(Color::NONE);
@@ -1331,8 +1331,8 @@ fn update_map_view(
                     .and_then(|team_id| session.state().get_team(team_id))
                     .and_then(|team| {
                         catalog
-                            .by_name(&team.name)
-                            .map(|def| (def.logo.clone(), team.name.clone(), team.color))
+                            .by_name(team.get_name())
+                            .map(|def| (def.logo.clone(), team.get_name(), team.get_color()))
                     })
             } else {
                 None
@@ -1351,7 +1351,7 @@ fn update_map_view(
                             sprite.color = tint;
                         }
                         TeamLogo::Bitmap(_) => {
-                            match layers.logo_images.handle(&mut layers.images, &name, &logo) {
+                            match layers.logo_images.handle(&mut layers.images, name, &logo) {
                                 Some(handle) => {
                                     sprite.image = handle;
                                     sprite.texture_atlas = None;

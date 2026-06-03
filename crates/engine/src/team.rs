@@ -18,9 +18,9 @@ pub struct Team {
     /// Unique numeric identifier (0-8).
     id: TeamId,
     /// Human-readable team name (e.g. "Red", "Blue").
-    pub name: String,
+    name: String,
     /// Display color as RGB tuple.
-    pub color: (u8, u8, u8),
+    color: (u8, u8, u8),
     /// `true` if the human player can select and command heroes on this team.
     player_controlled: bool,
     /// How many turns this team has taken (0 = not yet started).
@@ -54,6 +54,14 @@ impl Team {
 
     // ── Treasury ────────────────────────────────────────────────────────────
 
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn get_color(&self) -> (u8, u8, u8) {
+        self.color
+    }
+
     /// Returns the team's current gold balance.
     pub fn gold(&self) -> u32 {
         self.gold
@@ -70,7 +78,7 @@ impl Team {
     }
 
     /// Adds `amount` gold to the treasury.
-    pub fn add_gold(&mut self, amount: u32) {
+    pub(crate) fn add_gold(&mut self, amount: u32) {
         self.gold = self.gold.saturating_add(amount);
     }
 
@@ -78,7 +86,7 @@ impl Team {
     ///
     /// Returns `true` and deducts the gold on success, or `false` (leaving the
     /// balance untouched) when there is not enough gold.
-    pub fn spend_gold(&mut self, amount: u32) -> bool {
+    pub(crate) fn spend_gold(&mut self, amount: u32) -> bool {
         if self.gold < amount {
             return false;
         }
@@ -87,7 +95,7 @@ impl Team {
     }
 
     /// Adds `amount` of the resource at `index` (0–3) to the stockpile.
-    pub fn add_resource(&mut self, index: usize, amount: u32) {
+    pub(crate) fn add_resource(&mut self, index: usize, amount: u32) {
         if let Some(slot) = self.resources.get_mut(index) {
             *slot = slot.saturating_add(amount);
         }
@@ -109,37 +117,7 @@ impl Team {
         self.player_controlled
     }
 
-    pub fn increment_turn(&mut self) {
+    pub(crate) fn increment_turn(&mut self) {
         self.turn += 1;
-    }
-
-    /// Convenience constructor for a player-controlled red team.
-    pub fn red() -> Self {
-        Self::new(0, "Red", (220, 50, 50), true)
-    }
-
-    /// Convenience constructor for a computer-controlled blue enemy team.
-    pub fn blue() -> Self {
-        Self::new(1, "Blue", (50, 50, 220), false)
-    }
-
-    /// Convenience constructor for a computer-controlled green neutral team.
-    pub fn green() -> Self {
-        Self::new(2, "Green", (50, 220, 50), false)
-    }
-
-    /// Convenience constructor for a computer-controlled yellow team.
-    pub fn yellow() -> Self {
-        Self::new(3, "Yellow", (220, 220, 50), false)
-    }
-
-    /// Convenience constructor for a player team (alias for red).
-    pub fn player() -> Self {
-        Self::red()
-    }
-
-    /// Convenience constructor for a non-player-controlled enemy team (alias for green).
-    pub fn enemy() -> Self {
-        Self::green()
     }
 }

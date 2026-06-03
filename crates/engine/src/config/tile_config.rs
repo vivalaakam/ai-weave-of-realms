@@ -9,11 +9,8 @@
 //! The binary should call [`init_tile_config`](crate::config::init_tile_config)
 //! once at start-up (e.g. in `main`), passing the contents of `assets/tiles.yaml`.
 
-use alloc::collections::BTreeMap;
-use alloc::string::String;
-use alloc::vec::Vec;
-
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 // ─── TileConfig ───────────────────────────────────────────────────────────────
 

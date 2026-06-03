@@ -5,8 +5,6 @@
 //! read from the runtime [`TileConfig`](crate::config::TileConfig) rather than
 //! hard-coded.
 
-use alloc::format;
-use alloc::string::ToString;
 use core::str::FromStr;
 
 use serde::{Deserialize, Serialize};

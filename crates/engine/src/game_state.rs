@@ -576,12 +576,12 @@ impl GameState {
     /// Finds TeamId by team name (case-insensitive). Returns None if not found.
     pub fn team_id_by_name(&self, name: &str) -> Option<TeamId> {
         let name_lower = name.to_lowercase();
-        self.teams.values().find(|t| t.name.to_lowercase() == name_lower).map(|t| t.get_id())
+        self.teams.values().find(|t| t.get_name().to_lowercase() == name_lower).map(|t| t.get_id())
     }
 
     /// Finds team name by TeamId. Returns None if not found.
     pub fn team_name_by_id(&self, id: TeamId) -> Option<&str> {
-        self.teams.get(&id).map(|t| t.name.as_str())
+        self.teams.get(&id).map(|t| t.get_name())
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -2005,10 +2005,15 @@ mod tests {
         // City was captured.
         assert_eq!(state.city_owner(&MapCoord::new(4, 4)), Some(0));
         // Territory around city was also claimed automatically.
-        assert!(state.land_owner(MapCoord::new(3, 4)).is_some(), "tile near city should be claimed");
-        assert!(events.iter().any(|e| matches!(
-            e,
-            TurnEvent::LandOwnerChanged { team_id: Some(0), .. }
-        )), "should emit LandOwnerChanged events for territory");
+        assert!(
+            state.land_owner(MapCoord::new(3, 4)).is_some(),
+            "tile near city should be claimed"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, TurnEvent::LandOwnerChanged { team_id: Some(0), .. })),
+            "should emit LandOwnerChanged events for territory"
+        );
     }
 }

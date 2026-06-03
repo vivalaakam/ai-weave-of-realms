@@ -1,7 +1,5 @@
 //! Chunk — a 32×32 tile region of the game map.
 
-use alloc::{format, vec, vec::Vec};
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::EngineError;

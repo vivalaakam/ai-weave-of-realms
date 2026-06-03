@@ -9,11 +9,6 @@
 //! The binary should call [`init_team_catalog`](crate::config::init_team_catalog)
 //! once at start-up (e.g. in `main`), passing the contents of `assets/teams.yaml`.
 
-use alloc::boxed::Box;
-use alloc::format;
-use alloc::string::String;
-use alloc::vec::Vec;
-
 use serde::{Deserialize, Serialize};
 
 use crate::config::tile_config::parse_hex_color;
