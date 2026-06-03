@@ -7,6 +7,15 @@ Update status as work progresses.
 
 ---
 
+## Active
+
+| ID  | Task                                           | Assignee | Status      | Notes |
+|-----|------------------------------------------------|----------|-------------|-------|
+| A.1 | Fix Rust workspace build after local refactor | Codex    | DONE        | `cargo check --workspace`; `cargo test --workspace` |
+| A.2 | Remove Rust workspace warnings               | Codex    | DONE        | `cargo check --workspace`; `cargo test --workspace` |
+| A.3 | Fix hero map atlas tile after refactor       | Codex    | DONE        | `cargo check --workspace`; `cargo test --workspace` |
+| A.4 | Store loaded tile/team/hero config in engine GameState | Codex | IN PROGRESS |       |
+
 ## Phase 0 — Foundation
 
 | ID  | Task                                                                           | Assignee | Status | Notes                                         |

@@ -5,8 +5,7 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::hero::HeroId;
-use crate::map::game_map::MapCoord;
-
+use crate::map_coord::MapCoord;
 // ─── Point values ─────────────────────────────────────────────────────────────
 
 const CITY_CAPTURE_POINTS: i32 = 500;

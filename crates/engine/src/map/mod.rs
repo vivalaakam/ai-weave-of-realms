@@ -10,5 +10,5 @@ pub mod game_map;
 pub mod tile;
 
 pub use chunk::{Chunk, ChunkCoord, CHUNK_SIZE, CHUNK_TILE_COUNT};
-pub use game_map::{GameMap, MapCoord};
+pub use game_map::GameMap;
 pub use tile::{Tile, Tiles};

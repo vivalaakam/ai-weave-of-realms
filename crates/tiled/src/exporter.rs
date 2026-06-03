@@ -8,9 +8,9 @@
 
 use std::path::Path;
 
-use engine::map::game_map::{GameMap, MapCoord};
-
 use crate::error::TiledError;
+use engine::map::game_map::GameMap;
+use engine::MapCoord;
 
 /// Pixel width and height of each isometric tile in the tileset.
 pub const TILE_PIXEL_WIDTH: u32 = 64;

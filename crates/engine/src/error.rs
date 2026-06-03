@@ -59,4 +59,16 @@ pub enum EngineError {
     ActiveTeamNotFound(TeamId),
     #[error("spawn error: {0}")]
     SpawnError(#[from] SpawnError),
+    /// A purchase was attempted without enough gold to cover its cost.
+    #[error("not enough gold: need {needed}, have {have}")]
+    InsufficientGold {
+        /// Gold required for the action.
+        needed: u32,
+        /// Gold currently available to the team.
+        have: u32,
+    },
+    #[error("minicbor serialization error: {0}")]
+    MinicborEncode(#[from] minicbor_serde::error::EncodeError<core::convert::Infallible>),
+    #[error("minicbor deserialization error: {0}")]
+    MinicborDecode(#[from] minicbor_serde::error::DecodeError),
 }

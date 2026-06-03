@@ -2,12 +2,10 @@
 
 use alloc::{format, string::String};
 
-use serde::{Deserialize, Serialize};
-
-use crate::hero_class::HeroClass;
-use crate::map::game_map::MapCoord;
+use crate::hero_candidate::HeroCandidate;
+use crate::map_coord::MapCoord;
 use crate::rng::SeededRng;
-
+use serde::{Deserialize, Serialize};
 // ─── HeroId / TeamId ──────────────────────────────────────────────────────────
 
 /// Numeric identifier for a hero; equals the hero's index in [`GameState::heroes`].
@@ -33,46 +31,44 @@ pub type TeamId = u8;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hero {
     /// Unique identifier within the game session; equals the hero's index in [`GameState::heroes`].
-    id: HeroId,
+    pub(crate) id: HeroId,
     /// Hero class — determines sprite, base stats, and identity.
-    pub class: HeroClass,
+    pub(crate) class_id: u32,
+    /// Sprite index in the shared tile atlas.
+    #[serde(default)]
+    pub(crate) atlas_index: usize,
     /// Display name.
-    pub name: String,
+    pub(crate) name: String,
     /// Current hit points.
-    pub hp: u32,
+    pub(crate) hp: u32,
     /// Maximum hit points.
-    pub max_hp: u32,
+    pub(crate) max_hp: u32,
     /// Attack power.
-    pub atk: u32,
+    pub(crate) atk: u32,
     /// Defence rating.
-    pub def: u32,
+    pub(crate) def: u32,
     /// Speed (combat initiative).
-    pub spd: u32,
+    pub(crate) spd: u32,
     /// Total movement points per turn.
-    pub mov: u32,
+    pub(crate) mov: u32,
     /// Movement points remaining this turn.
-    pub mov_remaining: u32,
+    pub(crate) mov_remaining: u32,
     /// Current tile position on the map.
     ///
     /// This is the **authoritative** position.  Visual layers must query the
     /// engine for position rather than caching it themselves.
-    pub position: MapCoord,
+    pub(crate) position: MapCoord,
     /// The team this hero belongs to.
     /// Look up [`crate::team::Team`] in [`GameState::teams`] by this id to get the full team data.
-    pub team_id: TeamId,
+    pub(crate) team_id: TeamId,
     /// Personal RNG for this hero, derived from the session seed.
     ///
     /// Used during combat to compute this hero's attack rolls.
     /// Derive with [`SeededRng::derive_for_hero`] from the session RNG.
-    pub rng: SeededRng,
+    pub(crate) rng: SeededRng,
 }
 
 impl Hero {
-    pub(crate) fn reset(&mut self, id: HeroId, seed: &SeededRng) {
-        self.id = id;
-        self.rng = seed.update(&format!("hero_{}", self.id));
-    }
-
     pub fn get_id(&self) -> HeroId {
         self.id
     }
@@ -95,34 +91,33 @@ impl Hero {
     /// in favour of the class base — use [`Hero::new_with_stats`] to override.
     ///
     /// Movement is derived automatically from spd via [`Hero::movement_for_spd`].
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: HeroId,
-        class: HeroClass,
-        name: impl Into<String>,
-        position: MapCoord,
+        hero: &HeroCandidate,
+        position: &MapCoord,
         team_id: TeamId,
+        seed: &SeededRng,
     ) -> Self {
-        let hp = class.base_hp();
-        let atk = class.base_atk();
-        let def = class.base_def();
-        let spd = class.base_spd();
-        let mov = Self::movement_for_spd(spd);
         Self {
             id,
-            class,
-            name: name.into(),
-            hp,
-            max_hp: hp,
-            atk,
-            def,
-            spd,
-            mov,
-            mov_remaining: mov,
-            position,
+            class_id: hero.get_class_id(),
+            atlas_index: hero.get_atlas_index(),
+            name: hero.get_name().to_owned(),
+            hp: hero.get_hp(),
+            max_hp: hero.get_hp(),
+            atk: hero.get_atk(),
+            def: hero.get_def(),
+            spd: hero.get_spd(),
+            mov: hero.get_mov(),
+            mov_remaining: hero.get_mov(),
+            position: position.clone(),
             team_id,
-            rng: SeededRng::new("default"),
+            rng: seed.update(&format!("hero_{}", id)),
         }
+    }
+
+    pub fn get_atlas_index(&self) -> usize {
+        self.atlas_index
     }
 
     /// Returns `true` if the hero is still alive (`hp > 0`).
@@ -131,46 +126,49 @@ impl Hero {
     }
 
     /// Applies `damage` to the hero, clamping HP at zero.
-    pub fn take_damage(&mut self, damage: u32) {
+    pub(crate) fn take_damage(&mut self, damage: u32) {
         self.hp = self.hp.saturating_sub(damage);
     }
 
     /// Resets movement points to the full `mov` value (call at turn start).
-    pub fn reset_movement(&mut self) {
+    pub(crate) fn reset_movement(&mut self) {
         self.mov_remaining = self.mov;
     }
 
-    /// Creates a hero with **custom stats** overriding the class defaults.
-    ///
-    /// Use this in tests and save-file loading where stats must be precise.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_with_stats(
-        id: HeroId,
-        class: HeroClass,
-        name: impl Into<String>,
-        hp: u32,
-        atk: u32,
-        def: u32,
-        spd: u32,
-        position: MapCoord,
-        team_id: TeamId,
-    ) -> Self {
-        let mov = Self::movement_for_spd(spd);
-        Self {
-            id,
-            class,
-            name: name.into(),
-            hp,
-            max_hp: hp,
-            atk,
-            def,
-            spd,
-            mov,
-            mov_remaining: mov,
-            position,
-            team_id,
-            rng: SeededRng::new("default"),
-        }
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn get_hp(&self) -> u32 {
+        self.hp
+    }
+
+    pub fn get_max_hp(&self) -> u32 {
+        self.max_hp
+    }
+
+    pub fn get_atk(&self) -> u32 {
+        self.atk
+    }
+
+    pub fn get_def(&self) -> u32 {
+        self.def
+    }
+
+    pub fn get_spd(&self) -> u32 {
+        self.spd
+    }
+
+    pub fn get_mov(&self) -> u32 {
+        self.mov
+    }
+
+    pub fn get_mov_remaining(&self) -> u32 {
+        self.mov_remaining
+    }
+
+    pub fn get_position(&self) -> &MapCoord {
+        &self.position
     }
 }
 
@@ -181,7 +179,21 @@ mod tests {
     use super::*;
 
     fn hero() -> Hero {
-        Hero::new(0, HeroClass::Knight, "Arthur", MapCoord::new(0, 0), 1)
+        let hero_candidate = HeroCandidate {
+            class_id: 0,
+            name: "default_hero".to_owned(),
+            description: "default_description".to_owned(),
+            atlas_index: 0,
+            cost: 50,
+            hp: 10,
+            atk: 10,
+            def: 10,
+            spd: 8,
+        };
+
+        let rnd = SeededRng::new("default");
+
+        Hero::new(0, &hero_candidate, &MapCoord::new(0, 0), 0, &rnd)
     }
 
     #[test]
@@ -194,8 +206,8 @@ mod tests {
     #[test]
     fn take_damage_reduces_hp() {
         let mut h = hero();
-        h.take_damage(30);
-        assert_eq!(h.hp, 90);
+        h.take_damage(3);
+        assert_eq!(h.hp, 7);
     }
 
     #[test]
@@ -220,5 +232,29 @@ mod tests {
         h.mov_remaining = 0;
         h.reset_movement();
         assert_eq!(h.mov_remaining, h.mov);
+    }
+
+    #[test]
+    fn atlas_index_comes_from_candidate_not_class_id() {
+        let h = hero();
+        assert_eq!(h.class_id, 0);
+        assert_eq!(h.get_atlas_index(), 0);
+
+        let hero_candidate = HeroCandidate {
+            class_id: 0,
+            name: "knight".to_owned(),
+            description: "default_description".to_owned(),
+            atlas_index: 24,
+            cost: 50,
+            hp: 10,
+            atk: 10,
+            def: 10,
+            spd: 8,
+        };
+        let rnd = SeededRng::new("default");
+        let h = Hero::new(0, &hero_candidate, &MapCoord::new(0, 0), 0, &rnd);
+
+        assert_eq!(h.class_id, 0);
+        assert_eq!(h.get_atlas_index(), 24);
     }
 }

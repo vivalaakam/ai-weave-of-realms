@@ -14,7 +14,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::tile_config::parse_hex_color;
 use crate::error::EngineError;
@@ -22,7 +22,7 @@ use crate::error::EngineError;
 // ─── TeamKind ───────────────────────────────────────────────────────────────
 
 /// What role a catalogue team plays in a game session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TeamKind {
     /// The player may choose to control this team (Human or CPU). Several
@@ -37,7 +37,7 @@ pub enum TeamKind {
 // ─── TeamLogo ───────────────────────────────────────────────────────────────
 
 /// A team logo, either a sprite from the tile atlas or a 16x16 bitmap.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TeamLogo {
     /// Atlas sprite index in the tile sheet (`1_main.png`).
     Tile(u32),
@@ -66,7 +66,7 @@ impl TeamLogo {
 // ─── TeamDef / TeamCatalog ────────────────────────────────────────────────────
 
 /// A single catalogue team definition.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamDef {
     /// Display name; also the stable key used to resolve the logo at render time.
     pub name: String,
@@ -79,7 +79,7 @@ pub struct TeamDef {
 }
 
 /// The full team catalogue loaded from YAML, preserving file order.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamCatalog {
     teams: Vec<TeamDef>,
 }

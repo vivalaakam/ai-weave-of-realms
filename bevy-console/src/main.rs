@@ -63,15 +63,25 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    if let Err(error) = engine::config::init_tile_config(include_str!("../../assets/tiles.yaml")) {
-        eprintln!("failed to load tile config: {error}");
+    let Ok(tiles) = engine::config::init_tile_config(include_str!("../../assets/tiles.yaml"))
+    else {
+        eprintln!("failed to load tile config");
         std::process::exit(1);
-    }
+    };
 
-    if let Err(error) = engine::config::init_team_catalog(include_str!("../../assets/teams.yaml")) {
-        eprintln!("failed to load team catalog: {error}");
+    let Ok(team_catalog) =
+        engine::config::init_team_catalog(include_str!("../../assets/teams.yaml"))
+    else {
+        eprintln!("failed to load team catalog");
         std::process::exit(1);
-    }
+    };
+
+    let Ok(hero_catalog) =
+        engine::config::init_hero_catalog(include_str!("../../assets/heroes.yaml"))
+    else {
+        eprintln!("failed to load hero catalog:");
+        std::process::exit(1);
+    };
 
     let window_mode = if args.window_mode {
         WindowMode::Windowed
@@ -98,6 +108,9 @@ fn main() {
             validator_dir: args.validator_dir,
             validator: args.validator,
             evaluator: args.evaluator,
+            tiles,
+            team_catalog,
+            hero_catalog,
         })
         .init_state::<screens::AppState>()
         .add_plugins(atlas::TileAtlasPlugin)

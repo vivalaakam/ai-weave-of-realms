@@ -2,25 +2,11 @@
 
 use alloc::{format, vec::Vec};
 
-use serde::{Deserialize, Serialize};
-
 use crate::error::EngineError;
-use crate::game_state::GameState;
-use crate::hero::Hero;
-use crate::hero_class::HeroClass;
 use crate::map::tile::{Tile, Tiles};
-use crate::spawn;
-use crate::team::Team;
+use crate::MapCoord;
+use serde::{Deserialize, Serialize};
 // ─── MapCoord ─────────────────────────────────────────────────────────────────
-
-/// Absolute tile coordinates within the full game map.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct MapCoord {
-    /// Horizontal tile index from the left edge of the map.
-    pub x: u32,
-    /// Vertical tile index from the top edge of the map.
-    pub y: u32,
-}
 
 /// Resource node subtype used for resource deposits on the map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -65,7 +51,22 @@ impl ResourceKind {
             _ => Err(EngineError::InvalidTileKind(format!("unknown resource kind {id}"))),
         }
     }
+
+    /// Treasury slot index (0–3) for the four common resources, or `None` for
+    /// gold mines (which pay into the gold balance instead).
+    pub fn resource_index(self) -> Option<usize> {
+        match self {
+            Self::Resource1 => Some(0),
+            Self::Resource2 => Some(1),
+            Self::Resource3 => Some(2),
+            Self::Resource4 => Some(3),
+            Self::GoldMine => None,
+        }
+    }
 }
+
+/// Number of distinct common (non-gold) resource types a team can stockpile.
+pub const RESOURCE_KIND_COUNT: usize = 4;
 
 /// A resource point placed on the world map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,13 +75,6 @@ pub struct ResourceNode {
     pub coord: MapCoord,
     /// Resource subtype, including gold mines.
     pub kind: ResourceKind,
-}
-
-impl MapCoord {
-    /// Creates a new map coordinate.
-    pub fn new(x: u32, y: u32) -> Self {
-        Self { x, y }
-    }
 }
 
 // ─── Direction ────────────────────────────────────────────────────────────────
@@ -188,27 +182,6 @@ impl GameMap {
             resource_nodes: Vec::new(),
             seed,
         })
-    }
-
-    pub fn default_state(&self, seed: &str) -> Result<GameState, EngineError> {
-        let spawns = spawn::find_spawn_positions(self)?;
-        let map_width = self.tile_width();
-        let mut state = GameState::new(self.clone(), seed);
-        let player_team_id = state.add_team(Team::new(0, "Red", (220, 50, 50), true));
-        let enemy_team_id = state.add_team(Team::new(2, "Enemy", (150, 80, 200), false));
-
-        let offset =
-            MapCoord::new(spawns.player.x.saturating_add(1).min(map_width - 1), spawns.player.y);
-        state.add_hero(Hero::new(0, HeroClass::Knight, "Red Hero", spawns.player, player_team_id));
-        state.add_hero(Hero::new(1, HeroClass::Rogue, "Orange Hero", offset, player_team_id));
-
-        let enemy_offset =
-            MapCoord::new(spawns.enemy.x.saturating_add(1).min(map_width - 1), spawns.enemy.y);
-        state.add_hero(Hero::new(2, HeroClass::Warrior, "Enemy 1", spawns.enemy, enemy_team_id));
-        state.add_hero(Hero::new(3, HeroClass::Paladin, "Big Boss", enemy_offset, enemy_team_id));
-        let _ = state.set_city_owner(spawns.player, Some(player_team_id));
-        let _ = state.on_turn();
-        Ok(state)
     }
 
     /// Returns the total width of the map in tiles.

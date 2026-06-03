@@ -11,7 +11,7 @@ use core::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::get_tile_config;
+use crate::config::{default_tile_config, TileConfig};
 use crate::error::EngineError;
 
 // ─── Tiles ────────────────────────────────────────────────────────────────────
@@ -46,33 +46,28 @@ impl Tiles {
     /// This is the `tile_id` of the **first** variant declared in the YAML
     /// config.  It is used for save/load serialization and TMX export.
     pub fn base_tile_id(self) -> u32 {
-        let cfg = get_tile_config();
-        cfg.base_tile_id(self.as_str()).unwrap_or(0)
+        self.base_tile_id_with_config(&default_tile_config())
     }
 
     /// Returns the atlas index (sprite atlas position) of the first variant.
     /// For renderers that need the real tile graphic, not the canonical ID.
     pub fn atlas_index(self) -> u32 {
-        let cfg = get_tile_config();
-        cfg.atlas_index(self.as_str()).unwrap_or(0)
+        self.atlas_index_with_config(&default_tile_config())
     }
 
     /// Returns the representative RGB colour for minimap and debug rendering.
     pub fn as_color(self) -> (u8, u8, u8) {
-        let cfg = get_tile_config();
-        cfg.color(self.as_str()).unwrap_or((255, 0, 255))
+        self.color_with_config(&default_tile_config())
     }
 
     /// Returns `true` if a unit can enter this tile without special equipment.
     pub fn is_passable(self) -> bool {
-        let cfg = get_tile_config();
-        cfg.is_passable(self.as_str()).unwrap_or(false)
+        self.is_passable_with_config(&default_tile_config())
     }
 
     /// Returns `true` if a building can be constructed on this tile.
     pub fn is_buildable(self) -> bool {
-        let cfg = get_tile_config();
-        cfg.is_buildable(self.as_str()).unwrap_or(false)
+        self.is_buildable_with_config(&default_tile_config())
     }
 
     /// Returns `true` if a city entrance can be placed adjacent to this tile.
@@ -86,19 +81,48 @@ impl Tiles {
     /// Effective cost is always `max(1, 1 + modifier)`.
     /// Impassable tiles should be checked via [`is_passable`](Self::is_passable) first.
     pub fn movement_cost_modifier(self) -> i32 {
-        let cfg = get_tile_config();
-        cfg.movement_cost(self.as_str()).unwrap_or(0)
+        self.movement_cost_modifier_with_config(&default_tile_config())
     }
 
     /// Returns `true` if this tile is a point of interest that may trigger events.
     pub fn is_point_of_interest(self) -> bool {
-        let cfg = get_tile_config();
-        cfg.is_poi(self.as_str()).unwrap_or(false)
+        self.is_point_of_interest_with_config(&default_tile_config())
     }
 
     /// Returns the single-character symbol used in ASCII / terminal display.
     pub fn as_char(self) -> char {
-        let cfg = get_tile_config();
+        self.as_char_with_config(&default_tile_config())
+    }
+
+    pub fn base_tile_id_with_config(self, cfg: &TileConfig) -> u32 {
+        cfg.base_tile_id(self.as_str()).unwrap_or(0)
+    }
+
+    pub fn atlas_index_with_config(self, cfg: &TileConfig) -> u32 {
+        cfg.atlas_index(self.as_str()).unwrap_or(0)
+    }
+
+    pub fn color_with_config(self, cfg: &TileConfig) -> (u8, u8, u8) {
+        cfg.color(self.as_str()).unwrap_or((255, 0, 255))
+    }
+
+    pub fn is_passable_with_config(self, cfg: &TileConfig) -> bool {
+        cfg.is_passable(self.as_str()).unwrap_or(false)
+    }
+
+    pub fn is_buildable_with_config(self, cfg: &TileConfig) -> bool {
+        cfg.is_buildable(self.as_str()).unwrap_or(false)
+    }
+
+    pub fn movement_cost_modifier_with_config(self, cfg: &TileConfig) -> i32 {
+        cfg.movement_cost(self.as_str()).unwrap_or(0)
+    }
+
+    pub fn is_point_of_interest_with_config(self, cfg: &TileConfig) -> bool {
+        cfg.is_poi(self.as_str()).unwrap_or(false)
+    }
+
+    pub fn as_char_with_config(self, cfg: &TileConfig) -> char {
         cfg.ascii_char(self.as_str()).unwrap_or('?')
     }
 
@@ -145,7 +169,10 @@ impl Tiles {
     /// # Errors
     /// Returns [`EngineError::InvalidTileKind`] if the ID is out of range.
     pub fn from_id(id: u32) -> Result<Self, EngineError> {
-        let cfg = get_tile_config();
+        Self::from_id_with_config(id, &default_tile_config())
+    }
+
+    pub fn from_id_with_config(id: u32, cfg: &TileConfig) -> Result<Self, EngineError> {
         let name = cfg
             .find_by_base_id(id)
             .ok_or_else(|| EngineError::InvalidTileKind(format!("unknown tile ID {id}")))?;
@@ -273,7 +300,7 @@ mod tests {
 
     #[test]
     fn tile_count_matches_config() {
-        let cfg = get_tile_config();
+        let cfg = default_tile_config();
         assert_eq!(Tiles::all().len(), cfg.tiles.len());
     }
 
@@ -287,7 +314,7 @@ mod tests {
 
     #[test]
     fn all_tiles_defined_in_config() {
-        let cfg = get_tile_config();
+        let cfg = default_tile_config();
         for &tile in Tiles::all() {
             assert!(cfg.tiles.contains_key(tile.as_str()), "tile {:?} missing from config", tile);
         }

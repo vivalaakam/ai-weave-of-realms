@@ -2,11 +2,11 @@ use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 use bevy::prelude::Resource;
+use engine::MapCoord;
+use engine::config::GameConfig;
 use engine::error::EngineError;
 use engine::game_state::GameState;
-use engine::hero::Hero;
-use engine::hero_class::HeroClass;
-use engine::map::game_map::{GameMap, MapCoord};
+use engine::map::game_map::GameMap;
 use engine::team::Team;
 use helpers::ListEntry;
 use helpers::sanitize_save_filename;
@@ -53,12 +53,14 @@ pub struct AppHost {
     pub validator_dir: Option<PathBuf>,
     pub validator: Option<PathBuf>,
     pub evaluator: Option<PathBuf>,
+    pub tiles: engine::config::TileConfig,
+    pub team_catalog: engine::config::TeamCatalog,
+    pub hero_catalog: engine::config::HeroCatalog,
 }
 
 /// Data loaded from a save or map file.
 #[derive(Resource)]
 pub struct LoadedGame {
-    pub map_name: String,
     pub state: GameState,
 }
 
@@ -70,6 +72,10 @@ pub struct PendingMapData {
 }
 
 impl AppHost {
+    pub fn game_config(&self) -> GameConfig {
+        GameConfig::new(self.tiles.clone(), self.team_catalog.clone(), self.hero_catalog.clone())
+    }
+
     pub fn discover_maps(&mut self) -> Result<Vec<ListEntry>, AppHostError> {
         let mut entries = discover_rpgs_dir(&self.maps_dir, "map:").map_err(|e| {
             AppHostError::DiscoverDir(self.maps_dir.to_string_lossy().into_owned(), e)
@@ -107,8 +113,9 @@ impl AppHost {
         if let Some(path) = entry.id.strip_prefix("map:") {
             let bytes =
                 fs::read(path).map_err(|e| AppHostError::LoadMapReadFailed(path.to_string(), e))?;
-            let state = GameState::from_save_bytes(&bytes)
+            let mut state = GameState::from_save_bytes(&bytes)
                 .map_err(|e| AppHostError::LoadMapEngineError(path.to_string(), e))?;
+            state.set_config(self.game_config());
             return Ok(state.map);
         }
         Err(AppHostError::LoadMapFailed())
@@ -121,9 +128,10 @@ impl AppHost {
             .ok_or_else(|| AppHostError::LoadSaveEntryUnknown(entry.id.clone()))?;
         let bytes =
             fs::read(path).map_err(|e| AppHostError::LoadSaveLoadFailed(entry.id.clone(), e))?;
-        let state = GameState::from_save_bytes(&bytes)
+        let mut state = GameState::from_save_bytes(&bytes)
             .map_err(|e| AppHostError::LoadSaveEngineError(entry.id.clone(), e))?;
-        Ok(LoadedGame { map_name: entry.label.clone(), state })
+        state.set_config(self.game_config());
+        Ok(LoadedGame { state })
     }
 
     pub fn generate_and_save_map(&mut self, seed: &str) -> Result<ListEntry, AppHostError> {
@@ -137,14 +145,14 @@ impl AppHost {
             self.evaluator.as_deref(),
         )
         .map_err(AppHostError::LoadMapGeneratedState)?;
-        let state = build_default_state(map, seed).map_err(AppHostError::LoadMapGeneratedState)?;
+        let state = build_default_state(map, seed, self.game_config())
+            .map_err(AppHostError::LoadMapGeneratedState)?;
         fs::create_dir_all(&self.maps_dir).map_err(|e| {
             AppHostError::SaveGameCreateDirFailed(self.maps_dir.to_string_lossy().to_string(), e)
         })?;
         let file_name = sanitize_save_filename(seed);
         let path = self.maps_dir.join(&file_name);
-        let bytes =
-            state.to_save_bytes_with_name(seed).map_err(AppHostError::SaveGameEngineError)?;
+        let bytes = state.to_save_bytes().map_err(AppHostError::SaveGameEngineError)?;
         fs::write(&path, bytes).map_err(|e| {
             AppHostError::SaveGameWriteFailed(path.to_string_lossy().to_string(), e)
         })?;
@@ -216,12 +224,12 @@ fn generate_map(
     }
 }
 
-fn build_default_state(map: GameMap, seed: &str) -> Result<GameState, String> {
+fn build_default_state(map: GameMap, seed: &str, config: GameConfig) -> Result<GameState, String> {
     let team_cfgs = vec![
         TeamConfig { name: "Red".to_string(), color: (220, 50, 50), player_controlled: true },
         TeamConfig { name: "Enemy".to_string(), color: (150, 80, 200), player_controlled: false },
     ];
-    build_state_with_teams(map, seed, &team_cfgs).map_err(|e| e.to_string())
+    build_state_with_teams(map, seed, &team_cfgs, config).map_err(|e| e.to_string())
 }
 
 /// Configuration for a single team when building a game state.
@@ -236,9 +244,10 @@ pub fn build_state_with_teams(
     map: GameMap,
     seed: &str,
     teams: &[TeamConfig],
+    config: GameConfig,
 ) -> Result<GameState, EngineError> {
     let entrance_spawns = engine::spawn::find_city_entrance_spawns(&map, teams.len());
-    let mut state = GameState::new(map, seed);
+    let mut state = GameState::new_with_config(map, seed, config);
     for (i, cfg) in teams.iter().enumerate() {
         let team_id =
             state.add_team(Team::new(i as u8, &cfg.name, cfg.color, cfg.player_controlled));
@@ -247,13 +256,18 @@ pub fn build_state_with_teams(
         // Player-controlled teams start without a hero — they must hire one at a city entrance.
         // AI-controlled teams get a hero immediately.
         if !cfg.player_controlled {
-            let hero_name = cfg.name.to_string();
-            state.add_hero(Hero::new(i as u8, HeroClass::Knight, &hero_name, hero_pos, team_id));
+            if let Some(hero) = state.get_hero_candidate_at(0).cloned() {
+                state.add_hero(team_id, &hero, &hero_pos);
+            }
         }
 
         // The city always belongs to the team regardless of whether a hero is placed.
         state.set_city_owner(hero_pos, Some(team_id));
     }
     let _ = state.on_turn();
+    // Grant the first active team its start-of-turn income.
+    if let Ok(team_id) = state.get_active_team_id().copied() {
+        let _ = state.grant_turn_income(team_id);
+    }
     Ok(state)
 }

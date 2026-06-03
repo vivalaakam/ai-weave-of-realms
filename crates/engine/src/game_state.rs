@@ -12,23 +12,20 @@
 //! state.advance_turn();      // resets AI-team movement, awards survival points, bumps global turn
 //! ```
 
-use alloc::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    format,
-    string::String,
-    vec,
-    vec::Vec,
-};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use tracing::{info, instrument};
 
 use crate::combat::{self, CombatResult};
+use crate::config::{GameConfig, HeroCatalog, TeamCatalog, TileConfig};
+use crate::entrance_info::EntranceInfo;
 use crate::error::EngineError;
 use crate::hero::{Hero, HeroId, TeamId};
-use crate::map::game_map::{Direction, GameMap, MapCoord};
+use crate::hero_candidate::HeroCandidate;
+use crate::map::game_map::{Direction, GameMap, ResourceKind};
 use crate::map::tile::Tiles;
+use crate::map_coord::MapCoord;
 use crate::rng::SeededRng;
-use crate::save;
 use crate::score::{ScoreBoard, ScoreEvent};
 use crate::state_flood::flood_city;
 use crate::team::Team;
@@ -50,6 +47,17 @@ pub enum GameOutcome {
     /// All heroes of every player team are dead.
     Defeat,
 }
+
+// ─── Economy ────────────────────────────────────────────────────────────────
+
+/// Gold granted to a team at the start of each of its turns.
+pub const TURN_GOLD_INCOME: u32 = 50;
+/// Gold cost to place a resource-control rod.
+pub const ROD_COST: u32 = 50;
+/// Gold earned per turn from each owned gold mine.
+pub const GOLD_MINE_INCOME: u32 = 25;
+/// Resource units earned per turn from each owned resource mine.
+pub const RESOURCE_MINE_INCOME: u32 = 10;
 
 // ─── TurnEvent ────────────────────────────────────────────────────────────────
 
@@ -76,11 +84,14 @@ pub enum TurnEvent {
     TurnAdvanced { turn: u32 },
     /// A team's per-team turn counter advanced (emitted at the start of that team's turn).
     TeamTurnStarted { team_id: TeamId, turn: u32 },
+    /// A team collected its start-of-turn income (base gold plus mine output).
+    TeamIncomeCollected { team_id: TeamId, gold: u32 },
 }
 
 // ─── GameState ────────────────────────────────────────────────────────────────
 
 /// Complete state of a running game session.
+#[derive(Serialize, Deserialize)]
 pub struct GameState {
     /// The assembled game map.
     pub map: GameMap,
@@ -105,6 +116,10 @@ pub struct GameState {
     /// Session RNG, seeded at construction time.
     pub(crate) rng: SeededRng,
     pub(crate) hero_pointer: HeroId,
+
+    #[serde(default)]
+    config: GameConfig,
+    hero_candidates: Vec<HeroCandidate>,
 }
 
 impl GameState {
@@ -113,6 +128,12 @@ impl GameState {
     /// Add teams via [`add_team`](Self::add_team) and heroes via
     /// [`add_hero`](Self::add_hero) before the first turn.
     pub fn new(map: GameMap, seed: impl AsRef<str>) -> Self {
+        Self::new_with_config(map, seed, GameConfig::default())
+    }
+
+    /// Creates a new empty game session with static config loaded by the host.
+    pub fn new_with_config(map: GameMap, seed: impl AsRef<str>, config: GameConfig) -> Self {
+        let hero_candidates = config.heroes.heroes().to_vec();
         Self {
             map,
             heroes: BTreeMap::new(),
@@ -126,20 +147,92 @@ impl GameState {
             teams_order: VecDeque::new(),
             rng: SeededRng::new(seed.as_ref()),
             hero_pointer: 0,
+            config,
+            hero_candidates,
         }
+    }
+
+    /// Replaces static configuration after loading a save produced by an older
+    /// schema or a host that stores config outside the save file.
+    pub fn set_config(&mut self, config: GameConfig) {
+        for hero in self.heroes.values_mut() {
+            if hero.atlas_index == 0 {
+                if let Some(candidate) = config
+                    .heroes
+                    .heroes()
+                    .iter()
+                    .find(|candidate| candidate.get_class_id() == hero.class_id)
+                {
+                    hero.atlas_index = candidate.get_atlas_index();
+                }
+            }
+        }
+        self.hero_candidates = config.heroes.heroes().to_vec();
+        self.config = config;
+    }
+
+    pub fn config(&self) -> &GameConfig {
+        &self.config
+    }
+
+    pub fn tile_config(&self) -> &TileConfig {
+        &self.config.tiles
+    }
+
+    pub fn team_catalog(&self) -> &TeamCatalog {
+        &self.config.teams
+    }
+
+    pub fn hero_catalog(&self) -> &HeroCatalog {
+        &self.config.heroes
     }
 
     /// Adds a hero to the session, auto-assigning `id = heroes.len()`.
     ///
     /// Returns the assigned [`HeroId`].
     #[instrument(level = "info", skip(self))]
-    pub fn add_hero(&mut self, mut hero: Hero) -> HeroId {
+    pub fn add_hero(&mut self, team_id: TeamId, hero: &HeroCandidate, coord: &MapCoord) -> HeroId {
         let next_hero_id = self.hero_pointer;
-        hero.reset(next_hero_id, &self.rng);
+
+        let hero = Hero::new(next_hero_id, hero, coord, team_id, &self.rng);
+
         self.heroes.insert(next_hero_id, hero);
         self.hero_pointer += 1;
         info!(hero_id = next_hero_id, "Added hero");
         next_hero_id
+    }
+
+    /// Hires a hero of `class` for `team_id` at `coord`, charging the class's
+    /// [`hire_cost`](HeroClass::hire_cost) from the team's gold.
+    ///
+    /// The tile must be a city owned by the team and free of other heroes.
+    ///
+    /// # Errors
+    /// - [`EngineError::InvalidTiles`] if the tile is occupied or not an owned city.
+    /// - [`EngineError::InsufficientGold`] if the team cannot afford the hire.
+    pub fn hire_hero(
+        &mut self,
+        hero: &HeroCandidate,
+        coord: &MapCoord,
+    ) -> Result<HeroId, EngineError> {
+        let active_team_id = *self.get_active_team_id()?;
+
+        if self.hero_at(coord).is_some() || self.city_owner(coord) != Some(active_team_id) {
+            return Err(EngineError::InvalidTiles("cannot hire on this tile".into()));
+        }
+
+        let Some(team) = self.teams.get_mut(&active_team_id) else {
+            return Err(EngineError::ActiveTeamNotFound(active_team_id));
+        };
+
+        if !team.spend_gold(hero.get_cost()) {
+            return Err(EngineError::InsufficientGold {
+                needed: hero.get_cost(),
+                have: team.gold(),
+            });
+        }
+
+        Ok(self.add_hero(active_team_id, hero, coord))
     }
 
     pub fn get_hero(&self, id: HeroId) -> Option<&Hero> {
@@ -152,6 +245,22 @@ impl GameState {
 
     pub fn get_total_heroes(&self) -> usize {
         self.heroes.len()
+    }
+
+    pub fn add_hero_candidates(&mut self, heroes: Vec<HeroCandidate>) {
+        self.hero_candidates.extend(heroes);
+    }
+
+    pub fn get_hero_candidates(&self) -> &[HeroCandidate] {
+        &self.hero_candidates
+    }
+
+    pub fn get_hero_candidate_at(&self, index: usize) -> Option<&HeroCandidate> {
+        self.hero_candidates.get(index)
+    }
+
+    pub fn get_hero_candidate_count(&self) -> usize {
+        self.hero_candidates.len()
     }
 
     /// Adds a team to the session, auto-assigning `id = teams.len()`.
@@ -257,6 +366,56 @@ impl GameState {
         Ok(TurnEvent::TeamTurnStarted { team_id, turn })
     }
 
+    /// Grants `team_id` its start-of-turn income: a flat gold stipend plus the
+    /// output of every mine the team owns. Gold mines pay gold; resource mines
+    /// add to the matching resource stockpile.
+    ///
+    /// Call this once when a team's turn begins (after [`on_turn`](Self::on_turn)).
+    pub fn grant_turn_income(&mut self, team_id: TeamId) -> TurnEvent {
+        // Tally mine output first to avoid borrowing the team while reading the map.
+        let mut gold = TURN_GOLD_INCOME;
+        let mut resources = [0u32; 4];
+        for (&coord, &owner) in self.resource_owners.iter() {
+            if owner != team_id {
+                continue;
+            }
+            match self.resource_income_kind(coord) {
+                Some(kind) if kind.is_gold() => gold += GOLD_MINE_INCOME,
+                Some(kind) => {
+                    if let Some(idx) = kind.resource_index() {
+                        resources[idx] += RESOURCE_MINE_INCOME;
+                    }
+                }
+                None => {}
+            }
+        }
+
+        if let Some(team) = self.teams.get_mut(&team_id) {
+            team.add_gold(gold);
+            for (idx, amount) in resources.iter().enumerate() {
+                if *amount > 0 {
+                    team.add_resource(idx, *amount);
+                }
+            }
+        }
+
+        TurnEvent::TeamIncomeCollected { team_id, gold }
+    }
+
+    /// Returns the resource kind produced by the mine at `coord`, falling back
+    /// to the tile kind for maps (e.g. Tiled imports) that carry no resource
+    /// nodes. Returns `None` when the tile is not a mine at all.
+    fn resource_income_kind(&self, coord: MapCoord) -> Option<ResourceKind> {
+        if let Some(node) = self.map.resource_node_at(coord) {
+            return Some(node.kind);
+        }
+        match self.map.get_tile(coord).map(|t| t.kind) {
+            Ok(Tiles::Gold) => Some(ResourceKind::GoldMine),
+            Ok(Tiles::Resource) => Some(ResourceKind::Resource1),
+            _ => None,
+        }
+    }
+
     // ── Queries ───────────────────────────────────────────────────────────────
 
     /// Returns `true` if the team with `team_id` is player-controlled.
@@ -284,13 +443,13 @@ impl GameState {
     }
 
     /// Returns a reference to the living hero at `pos`, or `None`.
-    pub fn hero_at(&self, pos: MapCoord) -> Option<&Hero> {
-        self.heroes.values().find(|h| h.is_alive() && h.position == pos)
+    pub fn hero_at(&self, pos: &MapCoord) -> Option<&Hero> {
+        self.heroes.values().find(|h| h.is_alive() && h.position.eq(pos))
     }
 
     /// Returns the team id that owns the city at `coord`, or `None` if neutral.
-    pub fn city_owner(&self, coord: MapCoord) -> Option<TeamId> {
-        self.city_owners.get(&coord).copied()
+    pub fn city_owner(&self, coord: &MapCoord) -> Option<TeamId> {
+        self.city_owners.get(coord).copied()
     }
 
     /// Returns the team id that owns the resource at `coord`, or `None` if neutral.
@@ -467,19 +626,20 @@ impl GameState {
 
         // Check passability.
         let tile = self.map.get_tile(target)?;
-        if !tile.kind.is_passable() {
+        if !tile.kind.is_passable_with_config(self.tile_config()) {
             return Err(EngineError::ImpassableTile { x: target.x, y: target.y });
         }
 
         // Check occupancy.
-        if let Some(other) = self.hero_at(target) {
+        if let Some(other) = self.hero_at(&target) {
             if other.get_id() != hero_id {
                 return Err(EngineError::OccupiedTile { x: target.x, y: target.y });
             }
         }
 
         // Deduct the movement cost for entering the target tile.
-        let cost = (1i32 + tile.kind.movement_cost_modifier()).max(1) as u32;
+        let cost =
+            (1i32 + tile.kind.movement_cost_modifier_with_config(self.tile_config())).max(1) as u32;
         if self.heroes[&hero_id].mov_remaining < cost {
             return Err(EngineError::NoMovementPoints { hero_id });
         }
@@ -491,7 +651,7 @@ impl GameState {
 
         // Trigger POI score events.
         if let Ok(tile) = self.map.get_tile(target) {
-            if tile.kind.is_point_of_interest() {
+            if tile.kind.is_point_of_interest_with_config(self.tile_config()) {
                 events.push(TurnEvent::PoiVisited { hero_id, coord: target });
                 match tile.kind {
                     Tiles::City | Tiles::CityEntrance => {
@@ -552,6 +712,11 @@ impl GameState {
         let Some(new_position) = self.first_available_adjacent_tile(rod_coord, hero_id) else {
             return Err(EngineError::InvalidTiles("no adjacent passable tile for hero".into()));
         };
+
+        let team = self.teams.get_mut(&team_id).ok_or(EngineError::ActiveTeamNotFound(team_id))?;
+        if !team.spend_gold(ROD_COST) {
+            return Err(EngineError::InsufficientGold { needed: ROD_COST, have: team.gold() });
+        }
 
         self.resource_rods.insert(rod_coord, team_id);
         self.heroes.get_mut(&hero_id).unwrap().position = new_position;
@@ -659,9 +824,12 @@ impl GameState {
             .into_iter()
             .filter_map(|direction| direction.apply(coord, w, h))
             .find(|candidate| {
-                self.map.get_tile(*candidate).map(|tile| tile.kind.is_passable()).unwrap_or(false)
+                self.map
+                    .get_tile(*candidate)
+                    .map(|tile| tile.kind.is_passable_with_config(self.tile_config()))
+                    .unwrap_or(false)
                     && self
-                        .hero_at(*candidate)
+                        .hero_at(candidate)
                         .map(|other| other.get_id() == hero_id)
                         .unwrap_or(true)
                     && !self.resource_rods.contains_key(candidate)
@@ -761,85 +929,33 @@ impl GameState {
         None
     }
 
+    pub fn get_entrance_info_at_coord(&self, coord: &MapCoord) -> EntranceInfo {
+        let Ok(active_team_id) = self.get_active_team_id() else {
+            return EntranceInfo::NoOwnership;
+        };
+
+        let Some(owner) = self.city_owner(coord) else {
+            return EntranceInfo::NoOwnership;
+        };
+
+        if owner.ne(active_team_id) {
+            return EntranceInfo::NoOwnership;
+        }
+
+        if let Some(hero) = self.hero_at(coord) {
+            return EntranceInfo::Occupied { name: hero.get_team_id() };
+        };
+
+        EntranceInfo::CanHire
+    }
+
     /// Serializes the entire game state into a compact binary save format.
     pub fn to_save_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        save::to_save_bytes(
-            &self.map,
-            &self.heroes,
-            &self.score,
-            &self.city_owners,
-            &self.resource_owners,
-            &self.land_owners,
-            &self.resource_rods,
-            &self.teams,
-            &self.teams_order,
-            &self.active_hero,
-            &self.rng,
-            self.hero_pointer,
-        )
+        minicbor_serde::to_vec(&self).map_err(EngineError::from)
     }
 
-    /// Serializes the entire game state with a save name embedded in the header.
-    pub fn to_save_bytes_with_name(&self, name: &str) -> Result<Vec<u8>, EngineError> {
-        save::to_save_bytes_with_name(
-            &self.map,
-            &self.heroes,
-            &self.score,
-            &self.city_owners,
-            &self.resource_owners,
-            &self.land_owners,
-            &self.resource_rods,
-            &self.teams,
-            &self.teams_order,
-            &self.active_hero,
-            &self.rng,
-            self.hero_pointer,
-            name,
-        )
-    }
-
-    /// Reads only the header name from a save file.
-    pub fn read_save_name(bytes: &[u8]) -> Result<String, EngineError> {
-        save::read_save_name(bytes)
-    }
-
-    /// Deserializes a game state from the `RPGS` binary save format.
-    pub fn from_save_bytes(bytes: &[u8]) -> Result<Self, EngineError> {
-        save::from_save_bytes(bytes)
-    }
-
-    /// Constructs a [`GameState`] from raw parts (used by save deserialization).
-    #[instrument(level = "info", skip_all)]
-    pub(crate) fn from_parts(
-        map: GameMap,
-        heroes: BTreeMap<HeroId, Hero>,
-        score: ScoreBoard,
-        city_owners: BTreeMap<MapCoord, TeamId>,
-        resource_owners: BTreeMap<MapCoord, TeamId>,
-        land_owners: BTreeMap<MapCoord, TeamId>,
-        resource_rods: BTreeMap<MapCoord, TeamId>,
-        teams: BTreeMap<TeamId, Team>,
-        teams_order: VecDeque<TeamId>,
-        active_hero: BTreeMap<TeamId, Option<HeroId>>,
-        rng_state: [u8; 32],
-        rng_position: u8,
-        hero_pointer: HeroId,
-    ) -> Self {
-        info!("load data from save");
-        Self {
-            map,
-            heroes,
-            score,
-            city_owners,
-            resource_owners,
-            land_owners,
-            resource_rods,
-            teams,
-            teams_order,
-            active_hero,
-            rng: SeededRng::from_state_and_position(rng_state, rng_position),
-            hero_pointer,
-        }
+    pub fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
+        minicbor_serde::from_slice(bytes).map_err(EngineError::from)
     }
 }
 
@@ -848,9 +964,9 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hero_class::HeroClass;
     use crate::map::game_map::{ResourceKind, ResourceNode};
     use crate::map::tile::Tile;
+    use crate::team::STARTING_GOLD;
 
     fn meadow_map(w: u32, h: u32) -> GameMap {
         let tiles = vec![Tile { kind: Tiles::Meadow }; (w * h) as usize];
@@ -866,21 +982,43 @@ mod tests {
         state
     }
 
+    fn candidate(name: &str, hp: u32, atk: u32, def: u32, spd: u32) -> HeroCandidate {
+        HeroCandidate {
+            class_id: 0,
+            name: name.to_owned(),
+            description: "test hero".to_owned(),
+            atlas_index: 0,
+            cost: 50,
+            hp,
+            atk,
+            def,
+            spd,
+        }
+    }
+
     // team_id=0 = Team::red() at index 0 (default active team); spd=10 → mov=30
-    fn player(pos: MapCoord) -> Hero {
-        Hero::new_with_stats(0, HeroClass::Knight, "Player", 100, 20, 10, 10, pos, 0)
+    fn player_candidate() -> HeroCandidate {
+        candidate("Player", 100, 20, 10, 10)
     }
 
     // team_id=2 = Team::enemy() (non-player-controlled); spd=5 → mov=25
-    fn enemy(pos: MapCoord) -> Hero {
-        Hero::new_with_stats(0, HeroClass::Knight, "Enemy", 30, 10, 5, 5, pos, 2)
+    fn enemy_candidate() -> HeroCandidate {
+        candidate("Enemy", 30, 10, 5, 5)
+    }
+
+    fn add_player(state: &mut GameState, pos: MapCoord) -> HeroId {
+        state.add_hero(0, &player_candidate(), &pos)
+    }
+
+    fn add_enemy(state: &mut GameState, pos: MapCoord) -> HeroId {
+        state.add_hero(2, &enemy_candidate(), &pos)
     }
 
     #[test]
     fn move_hero_updates_position_and_spends_movement() {
         let map = meadow_map(10, 10);
         let mut state = make_state(map);
-        state.add_hero(player(MapCoord::new(0, 0)));
+        add_player(&mut state, MapCoord::new(0, 0));
 
         // Move East three times — each step costs 1 movement point on Meadow.
         state.move_hero(0, Direction::East).unwrap();
@@ -900,7 +1038,7 @@ mod tests {
         }])
         .unwrap();
         let mut state = make_state(map);
-        state.add_hero(player(MapCoord::new(0, 0)));
+        add_player(&mut state, MapCoord::new(0, 0));
 
         state.move_hero(0, Direction::East).unwrap();
 
@@ -932,7 +1070,7 @@ mod tests {
         }])
         .unwrap();
         let mut state = make_state(map);
-        let hero_id = state.add_hero(player(MapCoord::new(2, 2)));
+        let hero_id = add_player(&mut state, MapCoord::new(2, 2));
 
         let events = state.place_resource_rod(hero_id).unwrap();
 
@@ -951,13 +1089,90 @@ mod tests {
         let gold = MapCoord::new(3, 2);
         map.get_tile_mut(gold).unwrap().kind = Tiles::Gold;
         let mut state = make_state(map);
-        let hero_id = state.add_hero(player(MapCoord::new(2, 2)));
+        let hero_id = add_player(&mut state, MapCoord::new(2, 2));
 
         state.place_resource_rod(hero_id).unwrap();
 
         assert_eq!(state.resource_owner(gold), Some(0));
         assert_eq!(state.land_owner(gold), Some(0));
         assert_eq!(state.land_owner(MapCoord::new(4, 3)), Some(0));
+    }
+
+    #[test]
+    fn place_resource_rod_charges_gold() {
+        let map = meadow_map(5, 5);
+        let mut state = make_state(map);
+        let hero_id = add_player(&mut state, MapCoord::new(2, 2));
+        let before = state.get_team(0).unwrap().gold();
+
+        state.place_resource_rod(hero_id).unwrap();
+
+        assert_eq!(state.get_team(0).unwrap().gold(), before - ROD_COST);
+    }
+
+    #[test]
+    fn place_resource_rod_fails_without_gold() {
+        let map = meadow_map(5, 5);
+        let mut state = make_state(map);
+        let hero_id = add_player(&mut state, MapCoord::new(2, 2));
+        state.teams.get_mut(&0).unwrap().spend_gold(STARTING_GOLD);
+
+        let err = state.place_resource_rod(hero_id).unwrap_err();
+
+        assert!(matches!(err, EngineError::InsufficientGold { needed: ROD_COST, .. }));
+        // No rod placed, no gold spent below zero.
+        assert_eq!(state.resource_rod_owner(MapCoord::new(2, 2)), None);
+        assert_eq!(state.get_team(0).unwrap().gold(), 0);
+    }
+
+    #[test]
+    fn grant_turn_income_pays_base_plus_mine_output() {
+        let mut map = meadow_map(5, 5);
+        let gold_mine = MapCoord::new(1, 1);
+        let resource_mine = MapCoord::new(3, 3);
+        map.set_resource_nodes(vec![
+            ResourceNode { coord: gold_mine, kind: ResourceKind::GoldMine },
+            ResourceNode { coord: resource_mine, kind: ResourceKind::Resource2 },
+        ])
+        .unwrap();
+        let mut state = make_state(map);
+        state.set_resource_owner(gold_mine, Some(0));
+        state.set_resource_owner(resource_mine, Some(0));
+        let before = state.get_team(0).unwrap().gold();
+
+        let event = state.grant_turn_income(0);
+
+        let team = state.get_team(0).unwrap();
+        assert_eq!(team.gold(), before + TURN_GOLD_INCOME + GOLD_MINE_INCOME);
+        // Resource2 maps to treasury slot index 1.
+        assert_eq!(team.resource(1), RESOURCE_MINE_INCOME);
+        assert!(matches!(event, TurnEvent::TeamIncomeCollected { team_id: 0, .. }));
+    }
+
+    #[test]
+    fn hire_hero_charges_cost_and_blocks_when_poor() {
+        let map = meadow_map(5, 5);
+        let coord = MapCoord::new(2, 2);
+        let second = MapCoord::new(2, 3);
+        let mut state = make_state(map);
+        state.set_city_owner(coord, Some(0));
+        state.set_city_owner(second, Some(0));
+
+        let mage_candidate = candidate("Mage", 100, 10, 5, 5);
+
+        let before = state.get_team(0).unwrap().gold();
+        let hero_id = state.hire_hero(&mage_candidate, &coord).unwrap();
+        assert_eq!(state.get_hero(hero_id).unwrap().team_id, 0);
+        assert_eq!(state.get_team(0).unwrap().gold(), before - 50);
+
+        // Drain the treasury and confirm a second hire is rejected.
+        let remaining = state.get_team(0).unwrap().gold();
+        state.teams.get_mut(&0).unwrap().spend_gold(remaining);
+
+        let mage_2_candidate = candidate("Mage 2", 100, 10, 5, 5);
+
+        let err = state.hire_hero(&mage_2_candidate, &second).unwrap_err();
+        assert!(matches!(err, EngineError::InsufficientGold { .. }));
     }
 
     #[test]
@@ -978,9 +1193,8 @@ mod tests {
     fn move_hero_with_zero_budget_returns_error() {
         let map = meadow_map(10, 10);
         let mut state = make_state(map);
-        let mut h = player(MapCoord::new(0, 0));
-        h.mov_remaining = 0;
-        state.add_hero(h);
+        let hid = add_player(&mut state, MapCoord::new(0, 0));
+        state.heroes.get_mut(&hid).unwrap().mov_remaining = 0;
         let result = state.move_hero(0, Direction::East);
         assert!(matches!(result, Err(EngineError::NoMovementPoints { .. })));
     }
@@ -992,7 +1206,7 @@ mod tests {
         tiles[1] = Tile { kind: Tiles::Mountain };
         let map = GameMap::new(3, 3, tiles, [0u8; 32]).unwrap();
         let mut state = make_state(map);
-        state.add_hero(player(MapCoord::new(0, 0)));
+        add_player(&mut state, MapCoord::new(0, 0));
         let result = state.move_hero(0, Direction::East);
         assert!(matches!(result, Err(EngineError::ImpassableTile { .. })));
     }
@@ -1001,7 +1215,7 @@ mod tests {
     fn move_hero_out_of_bounds_returns_error() {
         let map = meadow_map(5, 5);
         let mut state = make_state(map);
-        state.add_hero(player(MapCoord::new(0, 0)));
+        add_player(&mut state, MapCoord::new(0, 0));
         let result = state.move_hero(0, Direction::North);
         assert!(matches!(result, Err(EngineError::OutOfBounds(_))));
     }
@@ -1010,12 +1224,10 @@ mod tests {
     fn advance_turn_increments_global_turn_and_resets_ai_movement() {
         let map = meadow_map(5, 5);
         let mut state = make_state(map);
-        let mut p = player(MapCoord::new(0, 0));
-        p.mov_remaining = 0;
-        let mut e = enemy(MapCoord::new(1, 0));
-        e.mov_remaining = 0;
-        let pid = state.add_hero(p); // id=0
-        let eid = state.add_hero(e); // id=1
+        let pid = add_player(&mut state, MapCoord::new(0, 0)); // id=0
+        state.heroes.get_mut(&pid).unwrap().mov_remaining = 0;
+        let eid = add_enemy(&mut state, MapCoord::new(1, 0)); // id=1
+        state.heroes.get_mut(&eid).unwrap().mov_remaining = 0;
         state.advance_turn();
         // Player hero is NOT reset by advance_turn — that's on_turn's job.
         assert_eq!(state.hero(pid).unwrap().mov_remaining, 0);
@@ -1028,9 +1240,8 @@ mod tests {
         let map = meadow_map(5, 5);
         // team_id=0 = Team::red(), the first active team.
         let mut state = make_state(map);
-        let mut h = player(MapCoord::new(0, 0));
-        h.mov_remaining = 0;
-        let hid = state.add_hero(h);
+        let hid = add_player(&mut state, MapCoord::new(0, 0));
+        state.heroes.get_mut(&hid).unwrap().mov_remaining = 0;
         state.on_turn().unwrap();
         assert_eq!(state.hero(hid).unwrap().mov_remaining, 30); // spd=10 → mov=30
     }
@@ -1039,8 +1250,8 @@ mod tests {
     fn attack_hero_applies_damage() {
         let map = meadow_map(5, 5);
         let mut state = make_state(map);
-        let pid = state.add_hero(player(MapCoord::new(0, 0)));
-        let eid = state.add_hero(enemy(MapCoord::new(1, 0)));
+        let pid = add_player(&mut state, MapCoord::new(0, 0));
+        let eid = add_enemy(&mut state, MapCoord::new(1, 0));
         state.attack_hero(pid, eid).unwrap();
         assert!(state.hero(eid).unwrap().hp < 30);
     }
@@ -1049,28 +1260,8 @@ mod tests {
     fn defeated_enemy_awards_score() {
         let map = meadow_map(5, 5);
         let mut state = make_state(map);
-        let pid = state.add_hero(Hero::new_with_stats(
-            0,
-            HeroClass::Knight,
-            "P",
-            100,
-            200,
-            0,
-            10,
-            MapCoord::new(0, 0),
-            0,
-        ));
-        let eid = state.add_hero(Hero::new_with_stats(
-            0,
-            HeroClass::Knight,
-            "E",
-            1,
-            1,
-            0,
-            1,
-            MapCoord::new(1, 0),
-            2,
-        ));
+        let pid = state.add_hero(0, &candidate("P", 100, 200, 0, 10), &MapCoord::new(0, 0));
+        let eid = state.add_hero(2, &candidate("E", 1, 1, 0, 1), &MapCoord::new(1, 0));
         state.attack_hero(pid, eid).unwrap();
         assert!(state.score.total() > 0);
     }
@@ -1079,10 +1270,9 @@ mod tests {
     fn living_heroes_excludes_dead() {
         let map = meadow_map(5, 5);
         let mut state = make_state(map);
-        state.add_hero(player(MapCoord::new(0, 0)));
-        let mut e = enemy(MapCoord::new(1, 0));
-        e.take_damage(30); // kill before adding
-        state.add_hero(e);
+        add_player(&mut state, MapCoord::new(0, 0));
+        let eid = add_enemy(&mut state, MapCoord::new(1, 0));
+        state.heroes.get_mut(&eid).unwrap().take_damage(30);
         assert_eq!(state.living_heroes(false).len(), 0);
         assert_eq!(state.living_heroes(true).len(), 1);
     }
@@ -1132,39 +1322,9 @@ mod tests {
 
     fn make_state_with_heroes(map: GameMap) -> (GameState, HeroId, HeroId, HeroId) {
         let mut state = make_state(map);
-        let pid = state.add_hero(Hero::new_with_stats(
-            0,
-            HeroClass::Knight,
-            "P",
-            100,
-            200,
-            0,
-            10,
-            MapCoord::new(0, 0),
-            0,
-        ));
-        let bid = state.add_hero(Hero::new_with_stats(
-            1,
-            HeroClass::Knight,
-            "P2",
-            100,
-            200,
-            0,
-            10,
-            MapCoord::new(2, 0),
-            1,
-        ));
-        let eid = state.add_hero(Hero::new_with_stats(
-            2,
-            HeroClass::Knight,
-            "E",
-            1,
-            1,
-            0,
-            1,
-            MapCoord::new(1, 0),
-            2,
-        ));
+        let pid = state.add_hero(0, &candidate("P", 100, 200, 0, 10), &MapCoord::new(0, 0));
+        let bid = state.add_hero(1, &candidate("P2", 100, 200, 0, 10), &MapCoord::new(2, 0));
+        let eid = state.add_hero(2, &candidate("E", 1, 1, 0, 1), &MapCoord::new(1, 0));
         (state, pid, bid, eid)
     }
 

@@ -12,7 +12,8 @@
 //! }
 //! ```
 
-use engine::map::game_map::{GameMap, MapCoord};
+use engine::map::game_map::GameMap;
+use engine::MapCoord;
 use mlua::{Lua, Table};
 
 /// Converts a [`GameMap`] into a Lua table for use by evaluation/validation scripts.

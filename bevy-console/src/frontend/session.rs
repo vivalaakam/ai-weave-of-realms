@@ -1,8 +1,8 @@
 use engine::Direction;
+use engine::MapCoord;
 use engine::error::EngineError;
 use engine::game_state::GameState;
 use engine::hero::HeroId;
-use engine::map::game_map::MapCoord;
 
 /// Runtime game session stored by frontend clients.
 pub struct GameSession {
@@ -48,7 +48,7 @@ impl GameSession {
     /// Returns the selected hero position, or a default (0,0) if no hero selected.
     pub fn selected_hero_position(&self) -> MapCoord {
         self.selected_hero_id
-            .and_then(|id| self.state.hero(id).map(|hero| hero.position))
+            .and_then(|id| self.state.hero(id).map(|hero| *hero.get_position()))
             .unwrap_or(MapCoord::new(0, 0))
     }
 
@@ -85,7 +85,7 @@ impl GameSession {
         let Some(id) = self.selected_hero_id else {
             return;
         };
-        let player_team = self.state.hero(id).map(|h| h.team_id);
+        let player_team = self.state.hero(id).map(|h| h.get_team_id());
         if let Some(team_id) = player_team
             && let Some(next) = self.state.get_next_hero(team_id)
         {
@@ -112,6 +112,9 @@ impl GameSession {
         // Start the new team's turn (reset movement, increment turn counter).
         self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
 
+        // Grant the new team its start-of-turn income (base gold + mine output).
+        self.state.grant_turn_income(next_team);
+
         // Select the first hero of the new team, if one exists.
         self.selected_hero_id = self.state.get_next_hero(next_team);
         if let Some(next) = self.selected_hero_id {
@@ -129,22 +132,22 @@ impl GameSession {
         let Some(hero) = self.state.hero(id) else {
             return "?".to_string();
         };
-        let team_heroes = self.state.get_team_alive_heroes_ids(hero.team_id);
+        let team_heroes = self.state.get_team_alive_heroes_ids(hero.get_team_id());
         let hero_index =
             team_heroes.iter().position(|&hid| hid == id).unwrap_or(0).saturating_add(1);
         let total_team = team_heroes.len();
 
         format!(
             "{} ({}/{}) MOV:{}/{} HP:{}/{} @{},{}",
-            hero.name,
+            hero.get_name(),
             hero_index,
             total_team,
-            hero.mov_remaining,
-            hero.mov,
-            hero.hp,
-            hero.max_hp,
-            hero.position.x,
-            hero.position.y
+            hero.get_mov_remaining(),
+            hero.get_mov(),
+            hero.get_hp(),
+            hero.get_max_hp(),
+            hero.get_position().x,
+            hero.get_position().y
         )
     }
 }

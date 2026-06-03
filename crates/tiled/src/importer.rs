@@ -13,10 +13,10 @@ use std::path::Path;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-use engine::map::game_map::{GameMap, MapCoord};
-use engine::map::tile::{Tile, Tiles};
-
 use crate::error::TiledError;
+use engine::map::game_map::GameMap;
+use engine::map::tile::{Tile, Tiles};
+use engine::MapCoord;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
