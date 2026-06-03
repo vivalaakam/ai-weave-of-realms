@@ -9,7 +9,7 @@ use alloc::format;
 use crate::error::EngineError;
 
 pub(crate) mod tile_config;
-pub use tile_config::{AtlasIndex, TileConfig, TileEntry};
+pub use tile_config::{AtlasIndex, TileConfig, TileEntry, test_tile_config};
 
 pub mod team_config;
 pub use team_config::{TeamCatalog, TeamDef, TeamKind, TeamLogo};

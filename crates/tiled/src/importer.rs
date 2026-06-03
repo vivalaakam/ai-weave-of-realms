@@ -326,6 +326,7 @@ fn hex_nibble(b: u8) -> Result<u8, TiledError> {
 mod tests {
     use super::*;
     use crate::exporter::export_tmx;
+    use engine::config::test_tile_config;
     use engine::map::game_map::GameMap;
     use engine::map::tile::{Tile, Tiles};
 
@@ -336,7 +337,7 @@ mod tests {
 
     #[test]
     fn round_trip_dimensions() {
-        let cfg = TileConfig::default();
+        let cfg = test_tile_config();
         let map = make_map(32, 32, Tiles::Meadow, [0u8; 32]);
         let xml = export_tmx(&map, "t.tsx", &cfg);
         let imported = import_tmx(&xml, &cfg).unwrap();
@@ -346,7 +347,7 @@ mod tests {
 
     #[test]
     fn round_trip_tiles() {
-        let cfg = TileConfig::default();
+        let cfg = test_tile_config();
         let map = make_map(4, 4, Tiles::Water, [1u8; 32]);
         let xml = export_tmx(&map, "t.tsx", &cfg);
         let imported = import_tmx(&xml, &cfg).unwrap();
@@ -364,7 +365,7 @@ mod tests {
             }
             s
         };
-        let cfg = TileConfig::default();
+        let cfg = test_tile_config();
         let map = make_map(2, 2, Tiles::Meadow, seed);
         let xml = export_tmx(&map, "t.tsx", &cfg);
         let imported = import_tmx(&xml, &cfg).unwrap();
@@ -387,7 +388,7 @@ mod tests {
         ];
         let tiles: Vec<Tile> = (0..10).map(|i| Tile { kind: kinds[i % kinds.len()] }).collect();
         let map = GameMap::new(10, 1, tiles, [0u8; 32]).unwrap();
-        let cfg = TileConfig::default();
+        let cfg = test_tile_config();
         let xml = export_tmx(&map, "t.tsx", &cfg);
         let imported = import_tmx(&xml, &cfg).unwrap();
         for (orig, imp) in map.tiles().iter().zip(imported.tiles()) {
@@ -403,7 +404,7 @@ mod tests {
     <data encoding="csv">1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1</data>
   </layer>
 </map>"#;
-        let cfg = TileConfig::default();
+        let cfg = test_tile_config();
         assert!(matches!(import_tmx(xml, &cfg), Err(TiledError::MissingField(_))));
     }
 
@@ -415,7 +416,7 @@ mod tests {
     <data encoding="csv">1,999,1,1</data>
   </layer>
 </map>"#;
-        let cfg = TileConfig::default();
+        let cfg = test_tile_config();
         assert!(matches!(import_tmx(xml, &cfg), Err(TiledError::UnknownGid(999))));
     }
 }

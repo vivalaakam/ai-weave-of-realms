@@ -1235,6 +1235,8 @@ mod tests {
     use crate::map::tile::Tile;
     use crate::team::STARTING_GOLD;
 
+    use crate::config::tile_config::test_tile_config;
+
     fn meadow_map(w: u32, h: u32) -> GameMap {
         let tiles = vec![Tile { kind: Tiles::Meadow }; (w * h) as usize];
         GameMap::new(w, h, tiles, [0u8; 32]).unwrap()
@@ -1242,7 +1244,8 @@ mod tests {
 
     /// Creates a state with Red (0), Blue (1), Enemy (2) teams pre-registered.
     fn make_state(map: GameMap) -> GameState {
-        let mut state = GameState::new(map, "test-session");
+        let cfg = GameConfig::new(test_tile_config(), TeamCatalog::default(), HeroCatalog::default());
+        let mut state = GameState::new_with_config(map, "test-session", cfg);
         state.add_team(Team::red());
         state.add_team(Team::blue());
         state.add_team(Team::enemy());

@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn export_contains_dimensions() {
         let map = meadow_map(32, 32);
-        let cfg = TileConfig::default();
+        let cfg = engine::config::test_tile_config();
         let xml = export_tmx(&map, "tileset.tsx", &cfg);
         assert!(xml.contains("width=\"32\""));
         assert!(xml.contains("height=\"32\""));
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn export_contains_tileset_source() {
         let map = meadow_map(4, 4);
-        let cfg = TileConfig::default();
+        let cfg = engine::config::test_tile_config();
         let xml = export_tmx(&map, "../tileset/tileset.tsx", &cfg);
         assert!(xml.contains("source=\"../tileset/tileset.tsx\""));
     }
@@ -194,7 +194,7 @@ mod tests {
         let seed = [0xabu8; 32];
         let tiles = vec![Tile { kind: Tiles::Meadow }; 4];
         let map = GameMap::new(2, 2, tiles, seed).unwrap();
-        let cfg = TileConfig::default();
+        let cfg = engine::config::test_tile_config();
         let xml = export_tmx(&map, "t.tsx", &cfg);
         let expected_hex = "ab".repeat(32);
         assert!(xml.contains(&expected_hex));
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn csv_gid_count_matches_tile_count() {
         let map = meadow_map(4, 3);
-        let cfg = TileConfig::default();
+        let cfg = engine::config::test_tile_config();
         let xml = export_tmx(&map, "t.tsx", &cfg);
         // Extract CSV text (skip past the opening tag)
         let tag = "<data encoding=\"csv\">";

@@ -174,12 +174,12 @@ pub(crate) fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
     Some((r, g, b))
 }
 
-// ─── Test helper (shared with other test modules in this crate) ───────────
+// ─── Test helper (shared with other crates) ─────────────────────────────
 
 /// Construct a minimal TileConfig for unit tests that need tile data.
-/// Only available in `#[cfg(test)]` builds.
-#[cfg(test)]
-pub(crate) fn test_tile_config() -> TileConfig {
+///
+#[doc(hidden)]
+pub fn test_tile_config() -> TileConfig {
     let mut tiles = BTreeMap::new();
 
     tiles.insert(

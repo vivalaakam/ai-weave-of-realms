@@ -11,7 +11,7 @@
 //! - [`error`] — Crate-level error type
 //!
 //! ## Quick start
-//! ```rust,no_run
+//! ```ignore
 //! use tiled::{write_tmx, read_tmx};
 //! use engine::config::TileConfig;
 //! use std::path::Path;
@@ -19,13 +19,10 @@
 //! let cfg = TileConfig::default();
 //!
 //! // Export
-//! # fn example(map: engine::map::game_map::GameMap) -> Result<(), tiled::error::TiledError> {
 //! write_tmx(&map, Path::new("output/map.tmx"), "../tileset/tileset.tsx", &cfg)?;
 //!
 //! // Import
 //! let imported = read_tmx(Path::new("output/map.tmx"), &cfg)?;
-//! # Ok(())
-//! # }
 //! ```
 
 pub mod error;

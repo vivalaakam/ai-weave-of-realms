@@ -168,9 +168,8 @@ mod tests {
         GameMap::new(5, 1, tiles, [0u8; 32]).unwrap()
     }
 
-    /// Tests use an empty TileConfig — fallback values apply (passable=true, cost=0).
     fn test_cfg() -> TileConfig {
-        TileConfig::default()
+        crate::config::tile_config::test_tile_config()
     }
 
     #[test]
