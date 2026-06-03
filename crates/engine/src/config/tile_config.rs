@@ -8,11 +8,9 @@
 //!
 //! The binary should call [`init_tile_config`](crate::config::init_tile_config)
 //! once at start-up (e.g. in `main`), passing the contents of `assets/tiles.yaml`.
-//! The built-in [`default_tile_config`] is returned if the config is not loaded.
 
 use alloc::collections::BTreeMap;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
@@ -20,7 +18,7 @@ use serde::{Deserialize, Serialize};
 // ─── TileConfig ───────────────────────────────────────────────────────────────
 
 /// Top-level YAML structure — maps logical tile name → [`TileEntry`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct TileConfig {
     pub tiles: BTreeMap<String, TileEntry>,
 }
@@ -176,28 +174,22 @@ pub(crate) fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
     Some((r, g, b))
 }
 
-// ─── Default built-in config ──────────────────────────────────────────────────
+// ─── Test helper (shared with other test modules in this crate) ───────────
 
-/// Returns the built-in default tile configuration.
-///
-/// On `std` targets this should **not** be called directly; use
-/// [`crate::config::get_tile_config`] instead, which returns the
-/// runtime-loaded configuration.
-pub fn default_tile_config() -> TileConfig {
+/// Construct a minimal TileConfig for unit tests that need tile data.
+/// Only available in `#[cfg(test)]` builds.
+#[cfg(test)]
+pub(crate) fn test_tile_config() -> TileConfig {
     let mut tiles = BTreeMap::new();
 
     tiles.insert(
-        _s("meadow"),
+        String::from("meadow"),
         TileEntry {
             tile_id: 0,
-            atlas_indexes: vec![
-                AtlasIndex { index: 5, variant: Some(_s("summer")) },
-                AtlasIndex { index: 6, variant: Some(_s("summer_bright")) },
-                AtlasIndex { index: 7, variant: Some(_s("summer_dark")) },
-            ],
-            variants: vec![_s("summer"), _s("summer_bright"), _s("summer_dark")],
-            color: _s("#7cb342"),
-            ascii: _s("."),
+            atlas_indexes: vec![AtlasIndex { index: 5, variant: Some(String::from("summer")) }],
+            variants: vec![String::from("summer"), String::from("summer_bright"), String::from("summer_dark")],
+            color: String::from("#7cb342"),
+            ascii: String::from("."),
             passable: true,
             buildable: true,
             movement_cost: 0,
@@ -207,16 +199,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("forest"),
+        String::from("forest"),
         TileEntry {
             tile_id: 1,
-            atlas_indexes: vec![
-                AtlasIndex { index: 1, variant: Some(_s("evergreen")) },
-                AtlasIndex { index: 15, variant: Some(_s("evergreen_sparse")) },
-            ],
-            variants: vec![_s("evergreen"), _s("evergreen_sparse")],
-            color: _s("#2e7d32"),
-            ascii: _s("♣"),
+            atlas_indexes: vec![AtlasIndex { index: 1, variant: Some(String::from("evergreen")) }],
+            variants: vec![String::from("evergreen"), String::from("evergreen_sparse")],
+            color: String::from("#2e7d32"),
+            ascii: String::from("♣"),
             passable: true,
             buildable: false,
             movement_cost: 1,
@@ -226,13 +215,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("mountain"),
+        String::from("mountain"),
         TileEntry {
             tile_id: 2,
-            atlas_indexes: vec![AtlasIndex { index: 2, variant: Some(_s("rocky")) }],
-            variants: vec![_s("rocky")],
-            color: _s("#8d8d8d"),
-            ascii: _s("▲"),
+            atlas_indexes: vec![AtlasIndex { index: 2, variant: Some(String::from("rocky")) }],
+            variants: vec![String::from("rocky")],
+            color: String::from("#8d8d8d"),
+            ascii: String::from("▲"),
             passable: false,
             buildable: false,
             movement_cost: 3,
@@ -242,13 +231,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("water"),
+        String::from("water"),
         TileEntry {
             tile_id: 3,
-            atlas_indexes: vec![AtlasIndex { index: 3, variant: Some(_s("calm")) }],
-            variants: vec![_s("calm")],
-            color: _s("#0d47a1"),
-            ascii: _s("~"),
+            atlas_indexes: vec![AtlasIndex { index: 3, variant: Some(String::from("calm")) }],
+            variants: vec![String::from("calm")],
+            color: String::from("#0d47a1"),
+            ascii: String::from("~"),
             passable: true,
             buildable: false,
             movement_cost: 3,
@@ -258,13 +247,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("city"),
+        String::from("city"),
         TileEntry {
             tile_id: 4,
-            atlas_indexes: vec![AtlasIndex { index: 416, variant: Some(_s("castle")) }],
-            variants: vec![_s("castle"), _s("fortress"), _s("citadel")],
-            color: _s("#ff7043"),
-            ascii: _s("⌂"),
+            atlas_indexes: vec![AtlasIndex { index: 416, variant: Some(String::from("castle")) }],
+            variants: vec![String::from("castle"), String::from("fortress"), String::from("citadel")],
+            color: String::from("#ff7043"),
+            ascii: String::from("⌂"),
             passable: false,
             buildable: false,
             movement_cost: 0,
@@ -274,13 +263,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("city_entrance"),
+        String::from("city_entrance"),
         TileEntry {
             tile_id: 5,
-            atlas_indexes: vec![AtlasIndex { index: 420, variant: Some(_s("gate")) }],
-            variants: vec![_s("gate"), _s("portcullis")],
-            color: _s("#FBC02D"),
-            ascii: _s("⌂"),
+            atlas_indexes: vec![AtlasIndex { index: 420, variant: Some(String::from("gate")) }],
+            variants: vec![String::from("gate"), String::from("portcullis")],
+            color: String::from("#FBC02D"),
+            ascii: String::from("⌂"),
             passable: true,
             buildable: false,
             movement_cost: 0,
@@ -290,13 +279,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("road"),
+        String::from("road"),
         TileEntry {
             tile_id: 6,
-            atlas_indexes: vec![AtlasIndex { index: 6, variant: Some(_s("dirt")) }],
-            variants: vec![_s("dirt"), _s("cobble"), _s("paved")],
-            color: _s("#d7b899"),
-            ascii: _s("#"),
+            atlas_indexes: vec![AtlasIndex { index: 6, variant: Some(String::from("dirt")) }],
+            variants: vec![String::from("dirt"), String::from("cobble"), String::from("paved")],
+            color: String::from("#d7b899"),
+            ascii: String::from("#"),
             passable: true,
             buildable: false,
             movement_cost: -1,
@@ -306,17 +295,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("river"),
+        String::from("river"),
         TileEntry {
             tile_id: 7,
-            atlas_indexes: vec![
-                AtlasIndex { index: 7, variant: Some(_s("shallow")) },
-                AtlasIndex { index: 21, variant: Some(_s("shallow_rocky")) },
-                AtlasIndex { index: 22, variant: Some(_s("deep")) },
-            ],
-            variants: vec![_s("shallow"), _s("shallow_rocky"), _s("deep")],
-            color: _s("#1e88e5"),
-            ascii: _s("≈"),
+            atlas_indexes: vec![AtlasIndex { index: 7, variant: Some(String::from("shallow")) }],
+            variants: vec![String::from("shallow"), String::from("shallow_rocky"), String::from("deep")],
+            color: String::from("#1e88e5"),
+            ascii: String::from("≈"),
             passable: true,
             buildable: false,
             movement_cost: 3,
@@ -326,13 +311,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("bridge"),
+        String::from("bridge"),
         TileEntry {
             tile_id: 8,
-            atlas_indexes: vec![AtlasIndex { index: 8, variant: Some(_s("wood")) }],
-            variants: vec![_s("wood"), _s("stone"), _s("rope")],
-            color: _s("#9fb7c6"),
-            ascii: _s("="),
+            atlas_indexes: vec![AtlasIndex { index: 8, variant: Some(String::from("wood")) }],
+            variants: vec![String::from("wood"), String::from("stone"), String::from("rope")],
+            color: String::from("#9fb7c6"),
+            ascii: String::from("="),
             passable: true,
             buildable: false,
             movement_cost: 0,
@@ -342,13 +327,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("village"),
+        String::from("village"),
         TileEntry {
             tile_id: 9,
-            atlas_indexes: vec![AtlasIndex { index: 9, variant: Some(_s("hamlet")) }],
-            variants: vec![_s("hamlet"), _s("town"), _s("trading_post")],
-            color: _s("#FF2D55"),
-            ascii: _s("⌘"),
+            atlas_indexes: vec![AtlasIndex { index: 9, variant: Some(String::from("hamlet")) }],
+            variants: vec![String::from("hamlet"), String::from("town"), String::from("trading_post")],
+            color: String::from("#FF2D55"),
+            ascii: String::from("⌘"),
             passable: true,
             buildable: false,
             movement_cost: 0,
@@ -358,13 +343,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("merchant"),
+        String::from("merchant"),
         TileEntry {
             tile_id: 10,
-            atlas_indexes: vec![AtlasIndex { index: 10, variant: Some(_s("tent")) }],
-            variants: vec![_s("tent"), _s("stall"), _s("caravan")],
-            color: _s("#cb30e0"),
-            ascii: _s("$"),
+            atlas_indexes: vec![AtlasIndex { index: 10, variant: Some(String::from("tent")) }],
+            variants: vec![String::from("tent"), String::from("stall"), String::from("caravan")],
+            color: String::from("#cb30e0"),
+            ascii: String::from("$"),
             passable: true,
             buildable: false,
             movement_cost: 0,
@@ -374,13 +359,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("ruins"),
+        String::from("ruins"),
         TileEntry {
             tile_id: 11,
-            atlas_indexes: vec![AtlasIndex { index: 11, variant: Some(_s("ancient")) }],
-            variants: vec![_s("ancient"), _s("crumbling"), _s("buried")],
-            color: _s("#BF6A02"),
-            ascii: _s("⍟"),
+            atlas_indexes: vec![AtlasIndex { index: 11, variant: Some(String::from("ancient")) }],
+            variants: vec![String::from("ancient"), String::from("crumbling"), String::from("buried")],
+            color: String::from("#BF6A02"),
+            ascii: String::from("⍟"),
             passable: true,
             buildable: false,
             movement_cost: 0,
@@ -390,13 +375,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("gold"),
+        String::from("gold"),
         TileEntry {
             tile_id: 12,
-            atlas_indexes: vec![AtlasIndex { index: 1091, variant: Some(_s("mine")) }],
-            variants: vec![_s("mine")],
-            color: _s("#f2c94c"),
-            ascii: _s("*"),
+            atlas_indexes: vec![AtlasIndex { index: 1091, variant: Some(String::from("mine")) }],
+            variants: vec![String::from("mine")],
+            color: String::from("#f2c94c"),
+            ascii: String::from("*"),
             passable: true,
             buildable: false,
             movement_cost: 0,
@@ -406,18 +391,13 @@ pub fn default_tile_config() -> TileConfig {
     );
 
     tiles.insert(
-        _s("resource"),
+        String::from("resource"),
         TileEntry {
             tile_id: 13,
-            atlas_indexes: vec![
-                AtlasIndex { index: 1089, variant: Some(_s("resource_1")) },
-                AtlasIndex { index: 1092, variant: Some(_s("resource_2")) },
-                AtlasIndex { index: 1093, variant: Some(_s("resource_3")) },
-                AtlasIndex { index: 1094, variant: Some(_s("resource_4")) },
-            ],
-            variants: vec![_s("resource_1"), _s("resource_2"), _s("resource_3"), _s("resource_4")],
-            color: _s("#ffffff"),
-            ascii: _s("◆"),
+            atlas_indexes: vec![AtlasIndex { index: 1089, variant: Some(String::from("resource_1")) }],
+            variants: vec![String::from("resource_1"), String::from("resource_2"), String::from("resource_3"), String::from("resource_4")],
+            color: String::from("#ffffff"),
+            ascii: String::from("◆"),
             passable: true,
             buildable: false,
             movement_cost: 0,
@@ -429,11 +409,6 @@ pub fn default_tile_config() -> TileConfig {
     TileConfig { tiles }
 }
 
-/// Shorthand for `String::from` inside the default builder.
-fn _s(s: &str) -> String {
-    String::from(s)
-}
-
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -441,8 +416,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_config_has_all_tiles() {
-        let cfg = default_tile_config();
+    fn test_config_has_all_tiles() {
+        let cfg = test_tile_config();
         let expected = [
             "meadow",
             "forest",
@@ -467,7 +442,7 @@ mod tests {
 
     #[test]
     fn color_parsing_round_trip() {
-        let cfg = default_tile_config();
+        let cfg = test_tile_config();
         for entry in cfg.tiles.values() {
             let parsed = parse_hex_color(&entry.color).unwrap();
             let rebuilt = format!("{:02X}{:02X}{:02X}", parsed.0, parsed.1, parsed.2);
@@ -477,7 +452,7 @@ mod tests {
 
     #[test]
     fn find_by_base_id_works() {
-        let cfg = default_tile_config();
+        let cfg = test_tile_config();
         assert_eq!(cfg.find_by_base_id(0), Some("meadow"));
         assert_eq!(cfg.find_by_base_id(5), Some("city_entrance"));
         assert_eq!(cfg.find_by_base_id(999), None);
@@ -485,16 +460,15 @@ mod tests {
 
     #[test]
     fn atlas_index_entry_has_variant() {
-        let cfg = default_tile_config();
+        let cfg = test_tile_config();
         let meadow = cfg.tiles.get("meadow").unwrap();
-        assert_eq!(meadow.atlas_indexes.len(), 3);
+        assert_eq!(meadow.atlas_indexes.len(), 1);
         assert_eq!(meadow.atlas_indexes[0].variant.as_deref(), Some("summer"));
-        assert_eq!(meadow.atlas_indexes[2].variant.as_deref(), Some("summer_dark"));
     }
 
     #[test]
     fn top_level_variants_present() {
-        let cfg = default_tile_config();
+        let cfg = test_tile_config();
         let city = cfg.tiles.get("city").unwrap();
         assert_eq!(city.variants, vec!["castle", "fortress", "citadel"]);
 

@@ -9,6 +9,7 @@
 use std::path::Path;
 
 use crate::error::TiledError;
+use engine::config::TileConfig;
 use engine::map::game_map::GameMap;
 use engine::MapCoord;
 
@@ -23,9 +24,9 @@ pub const TILE_PIXEL_HEIGHT: u32 = 64;
 ///
 /// `tileset_source` is the path written into the `<tileset source="…"/>` element.
 /// It should be relative to the directory where the `.tmx` file will be saved.
-pub fn export_tmx(map: &GameMap, tileset_source: &str) -> String {
+pub fn export_tmx(map: &GameMap, tileset_source: &str, cfg: &TileConfig) -> String {
     let seed_hex = hex_encode(&map.seed);
-    let csv = tile_csv(map);
+    let csv = tile_csv(map, cfg);
     let spawn_objects = spawn_objects_xml(map);
     let spawn_layer = spawn_layer_xml(&spawn_objects);
     let next_object_id = spawn_objects.len() as u32 + 1;
@@ -65,8 +66,8 @@ pub fn export_tmx(map: &GameMap, tileset_source: &str) -> String {
 ///
 /// # Errors
 /// Returns [`TiledError::Io`] if the file cannot be written.
-pub fn write_tmx(map: &GameMap, path: &Path, tileset_source: &str) -> Result<(), TiledError> {
-    let xml = export_tmx(map, tileset_source);
+pub fn write_tmx(map: &GameMap, path: &Path, tileset_source: &str, cfg: &TileConfig) -> Result<(), TiledError> {
+    let xml = export_tmx(map, tileset_source, cfg);
     std::fs::write(path, xml)?;
     tracing::info!(path = %path.display(), "TMX written");
     Ok(())
@@ -75,13 +76,13 @@ pub fn write_tmx(map: &GameMap, path: &Path, tileset_source: &str) -> Result<(),
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /// Serialises all tile GIDs as a TMX-compatible CSV string.
-fn tile_csv(map: &GameMap) -> String {
+fn tile_csv(map: &GameMap, cfg: &TileConfig) -> String {
     let mut rows: Vec<String> = Vec::with_capacity(map.tile_height() as usize);
     for ty in 0..map.tile_height() {
         let mut gids: Vec<String> = Vec::with_capacity(map.tile_width() as usize);
         for tx in 0..map.tile_width() {
             let coord = MapCoord::new(tx, ty);
-            let gid = map.get_tile(coord).map(|t| t.kind.to_gid()).unwrap_or(0);
+            let gid = map.get_tile(coord).map(|t| t.kind.to_gid_with_config(cfg)).unwrap_or(0);
             gids.push(gid.to_string());
         }
         rows.push(format!("      {}", gids.join(",")));
@@ -174,7 +175,8 @@ mod tests {
     #[test]
     fn export_contains_dimensions() {
         let map = meadow_map(32, 32);
-        let xml = export_tmx(&map, "tileset.tsx");
+        let cfg = TileConfig::default();
+        let xml = export_tmx(&map, "tileset.tsx", &cfg);
         assert!(xml.contains("width=\"32\""));
         assert!(xml.contains("height=\"32\""));
     }
@@ -182,7 +184,8 @@ mod tests {
     #[test]
     fn export_contains_tileset_source() {
         let map = meadow_map(4, 4);
-        let xml = export_tmx(&map, "../tileset/tileset.tsx");
+        let cfg = TileConfig::default();
+        let xml = export_tmx(&map, "../tileset/tileset.tsx", &cfg);
         assert!(xml.contains("source=\"../tileset/tileset.tsx\""));
     }
 
@@ -191,7 +194,8 @@ mod tests {
         let seed = [0xabu8; 32];
         let tiles = vec![Tile { kind: Tiles::Meadow }; 4];
         let map = GameMap::new(2, 2, tiles, seed).unwrap();
-        let xml = export_tmx(&map, "t.tsx");
+        let cfg = TileConfig::default();
+        let xml = export_tmx(&map, "t.tsx", &cfg);
         let expected_hex = "ab".repeat(32);
         assert!(xml.contains(&expected_hex));
     }
@@ -199,7 +203,8 @@ mod tests {
     #[test]
     fn csv_gid_count_matches_tile_count() {
         let map = meadow_map(4, 3);
-        let xml = export_tmx(&map, "t.tsx");
+        let cfg = TileConfig::default();
+        let xml = export_tmx(&map, "t.tsx", &cfg);
         // Extract CSV text (skip past the opening tag)
         let tag = "<data encoding=\"csv\">";
         let start = xml.find(tag).unwrap() + tag.len();

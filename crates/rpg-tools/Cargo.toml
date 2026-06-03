@@ -25,6 +25,8 @@ rand = "0.10.1"
 tokenizers = "0.23.1"
 hf-hub = "0.5.0"
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+serde = { workspace = true }
 
 candle-core = "0.10.2"
 candle-nn = "0.10.2"

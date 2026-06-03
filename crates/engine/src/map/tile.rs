@@ -11,7 +11,7 @@ use core::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::{default_tile_config, TileConfig};
+use crate::config::TileConfig;
 use crate::error::EngineError;
 
 // ─── Tiles ────────────────────────────────────────────────────────────────────
@@ -41,66 +41,7 @@ pub enum Tiles {
 }
 
 impl Tiles {
-    /// Returns the canonical zero-based tile index of this tile type.
-    ///
-    /// This is the `tile_id` of the **first** variant declared in the YAML
-    /// config.  It is used for save/load serialization and TMX export.
-    pub fn base_tile_id(self) -> u32 {
-        self.base_tile_id_with_config(&default_tile_config())
-    }
-
-    /// Returns the atlas index (sprite atlas position) of the first variant.
-    /// For renderers that need the real tile graphic, not the canonical ID.
-    pub fn atlas_index(self) -> u32 {
-        self.atlas_index_with_config(&default_tile_config())
-    }
-
-    /// Returns the representative RGB colour for minimap and debug rendering.
-    pub fn as_color(self) -> (u8, u8, u8) {
-        self.color_with_config(&default_tile_config())
-    }
-
-    /// Returns `true` if a unit can enter this tile without special equipment.
-    pub fn is_passable(self) -> bool {
-        self.is_passable_with_config(&default_tile_config())
-    }
-
-    /// Returns `true` if a building can be constructed on this tile.
-    pub fn is_buildable(self) -> bool {
-        self.is_buildable_with_config(&default_tile_config())
-    }
-
-    /// Returns `true` if territory can expand onto this tile.
-    ///
-    /// Mountains, water, and rivers are not terraformable even though
-    /// water and rivers are passable by units.
-    pub fn is_terraformable(self) -> bool {
-        self.is_terraformable_with_config(&default_tile_config())
-    }
-
-    /// Returns `true` if a city entrance can be placed adjacent to this tile.
-    pub fn allows_city_entrance(self) -> bool {
-        self.is_buildable()
-    }
-
-    /// Returns the extra movement point cost to enter this tile.
-    ///
-    /// Positive = slower; negative = faster.
-    /// Effective cost is always `max(1, 1 + modifier)`.
-    /// Impassable tiles should be checked via [`is_passable`](Self::is_passable) first.
-    pub fn movement_cost_modifier(self) -> i32 {
-        self.movement_cost_modifier_with_config(&default_tile_config())
-    }
-
-    /// Returns `true` if this tile is a point of interest that may trigger events.
-    pub fn is_point_of_interest(self) -> bool {
-        self.is_point_of_interest_with_config(&default_tile_config())
-    }
-
-    /// Returns the single-character symbol used in ASCII / terminal display.
-    pub fn as_char(self) -> char {
-        self.as_char_with_config(&default_tile_config())
-    }
+    // ── Config-aware property methods ──────────────────────────────────────
 
     pub fn base_tile_id_with_config(self, cfg: &TileConfig) -> u32 {
         cfg.base_tile_id(self.as_str()).unwrap_or(0)
@@ -126,6 +67,11 @@ impl Tiles {
         cfg.is_terraformable(self.as_str()).unwrap_or(false)
     }
 
+    /// Returns `true` if a city entrance can be placed adjacent to this tile.
+    pub fn allows_city_entrance_with_config(self, cfg: &TileConfig) -> bool {
+        self.is_buildable_with_config(cfg) || matches!(self, Tiles::Meadow | Tiles::CityEntrance)
+    }
+
     pub fn movement_cost_modifier_with_config(self, cfg: &TileConfig) -> i32 {
         cfg.movement_cost(self.as_str()).unwrap_or(0)
     }
@@ -137,6 +83,8 @@ impl Tiles {
     pub fn as_char_with_config(self, cfg: &TileConfig) -> char {
         cfg.ascii_char(self.as_str()).unwrap_or('?')
     }
+
+    // ── Identity helpers (no config needed) ────────────────────────────────
 
     /// Returns the Lua-facing string identifier for this tile.
     pub fn as_str(self) -> &'static str {
@@ -161,34 +109,30 @@ impl Tiles {
     /// Returns the TMX GID for this tile (1-based; GID 0 is reserved by Tiled for "empty").
     ///
     /// Assumes a single tileset whose first GID is 1.
-    pub fn to_gid(self) -> u32 {
-        self.base_tile_id() + 1
+    pub fn to_gid_with_config(self, cfg: &TileConfig) -> u32 {
+        self.base_tile_id_with_config(cfg) + 1
     }
 
-    /// Constructs a [`Tiles`] from a TMX GID (1-based).
-    ///
-    /// # Errors
-    /// Returns [`EngineError::InvalidTileKind`] if the GID does not map to a known tile.
-    pub fn from_gid(gid: u32) -> Result<Self, EngineError> {
-        if gid == 0 {
-            return Err(EngineError::InvalidTileKind("GID 0 is reserved (empty)".into()));
-        }
-        Self::from_id(gid - 1)
-    }
-
-    /// Constructs a [`Tiles`] from a zero-based tile ID.
+    /// Constructs a [`Tiles`] from a zero-based tile ID using the given config.
     ///
     /// # Errors
     /// Returns [`EngineError::InvalidTileKind`] if the ID is out of range.
-    pub fn from_id(id: u32) -> Result<Self, EngineError> {
-        Self::from_id_with_config(id, &default_tile_config())
-    }
-
     pub fn from_id_with_config(id: u32, cfg: &TileConfig) -> Result<Self, EngineError> {
         let name = cfg
             .find_by_base_id(id)
             .ok_or_else(|| EngineError::InvalidTileKind(format!("unknown tile ID {id}")))?;
         Tiles::from_str(name)
+    }
+
+    /// Constructs a [`Tiles`] from a TMX GID (1-based) using the given config.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::InvalidTileKind`] if the GID does not map to a known tile.
+    pub fn from_gid_with_config(gid: u32, cfg: &TileConfig) -> Result<Self, EngineError> {
+        if gid == 0 {
+            return Err(EngineError::InvalidTileKind("GID 0 is reserved (empty)".into()));
+        }
+        Self::from_id_with_config(gid - 1, cfg)
     }
 
     /// Returns all tile variants in definition order.
@@ -270,6 +214,7 @@ mod tests {
     use core::str::FromStr;
 
     use super::*;
+    use crate::config::tile_config::test_tile_config;
 
     #[test]
     fn str_round_trip() {
@@ -282,16 +227,18 @@ mod tests {
 
     #[test]
     fn gid_round_trip() {
+        let cfg = test_tile_config();
         for &tile in Tiles::all() {
-            let gid = tile.to_gid();
-            let restored = Tiles::from_gid(gid).unwrap();
+            let gid = tile.to_gid_with_config(&cfg);
+            let restored = Tiles::from_gid_with_config(gid, &cfg).unwrap();
             assert_eq!(tile, restored, "GID round-trip failed for {tile:?}");
         }
     }
 
     #[test]
     fn gid_zero_is_error() {
-        assert!(Tiles::from_gid(0).is_err());
+        let cfg = test_tile_config();
+        assert!(Tiles::from_gid_with_config(0, &cfg).is_err());
     }
 
     #[test]
@@ -301,24 +248,26 @@ mod tests {
 
     #[test]
     fn passability_rules() {
-        assert!(Tiles::Meadow.is_passable());
-        assert!(Tiles::Road.is_passable());
-        assert!(Tiles::Bridge.is_passable());
-        assert!(Tiles::Water.is_passable()); // passable with penalty
-        assert!(Tiles::River.is_passable()); // passable with penalty
-        assert!(!Tiles::City.is_passable()); // impassable
-        assert!(!Tiles::Mountain.is_passable()); // impassable
+        let cfg = test_tile_config();
+        assert!(Tiles::Meadow.is_passable_with_config(&cfg));
+        assert!(Tiles::Road.is_passable_with_config(&cfg));
+        assert!(Tiles::Bridge.is_passable_with_config(&cfg));
+        assert!(Tiles::Water.is_passable_with_config(&cfg)); // passable with penalty
+        assert!(Tiles::River.is_passable_with_config(&cfg)); // passable with penalty
+        assert!(!Tiles::City.is_passable_with_config(&cfg)); // impassable
+        assert!(!Tiles::Mountain.is_passable_with_config(&cfg)); // impassable
     }
 
     #[test]
     fn tile_count_matches_config() {
-        let cfg = default_tile_config();
+        let cfg = test_tile_config();
         assert_eq!(Tiles::all().len(), cfg.tiles.len());
     }
 
     #[test]
     fn all_tiles_have_unique_base_ids() {
-        let mut ids: Vec<u32> = Tiles::all().iter().map(|t| t.base_tile_id()).collect();
+        let cfg = test_tile_config();
+        let mut ids: Vec<u32> = Tiles::all().iter().map(|t| t.base_tile_id_with_config(&cfg)).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), Tiles::all().len());
@@ -326,7 +275,7 @@ mod tests {
 
     #[test]
     fn all_tiles_defined_in_config() {
-        let cfg = default_tile_config();
+        let cfg = test_tile_config();
         for &tile in Tiles::all() {
             assert!(cfg.tiles.contains_key(tile.as_str()), "tile {:?} missing from config", tile);
         }

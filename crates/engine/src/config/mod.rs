@@ -2,14 +2,14 @@
 //!
 //! [`TILE_CONFIG`] is a process-wide singleton that holds the [`TileConfig`]
 //! loaded from YAML at start-up. The binary should call [`init_tile_config`]
-//! once; the built-in defaults are used as a fallback.
+//! once to load configuration.
 
 use alloc::format;
 
 use crate::error::EngineError;
 
 pub(crate) mod tile_config;
-pub use tile_config::{default_tile_config, AtlasIndex, TileConfig, TileEntry};
+pub use tile_config::{AtlasIndex, TileConfig, TileEntry};
 
 pub mod team_config;
 pub use team_config::{TeamCatalog, TeamDef, TeamKind, TeamLogo};
@@ -37,7 +37,7 @@ impl GameConfig {
 impl Default for GameConfig {
     fn default() -> Self {
         Self {
-            tiles: default_tile_config(),
+            tiles: TileConfig::default(),
             teams: TeamCatalog::default(),
             heroes: HeroCatalog::default(),
         }

@@ -8,7 +8,7 @@ use crate::screens::team_setup::LoadedSession;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use engine::MapCoord;
-use engine::config::{TeamLogo, TileConfig, default_tile_config};
+use engine::config::{TeamLogo, TileConfig};
 use engine::game_state::GameState;
 use engine::map::game_map::{RESOURCE_KIND_COUNT, ResourceKind};
 use engine::map::tile::Tiles;
@@ -472,7 +472,7 @@ fn spawn_map_view_entities(
     let tile_config = map_view_state
         .get_game_state()
         .map(|state| state.tile_config().clone())
-        .unwrap_or_else(default_tile_config);
+        .unwrap_or_default();
     spawn_top_bar(commands, atlas_handle, layout_handle, &tile_config);
 }
 

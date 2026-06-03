@@ -9,6 +9,7 @@ use std::path::Path;
 use image::{ImageBuffer, Rgba, RgbaImage};
 use tracing::{error, info};
 
+use engine::config::TileConfig;
 use engine::map::tile::Tiles;
 
 const TILE_SIZE: u32 = 64;
@@ -26,7 +27,13 @@ fn main() {
         )
         .init();
 
-    let atlas = render_tileset();
+    let cfg: TileConfig = {
+        let yaml = std::fs::read_to_string("assets/tiles.yaml")
+            .expect("failed to read assets/tiles.yaml");
+        serde_yaml::from_str(&yaml).expect("failed to parse assets/tiles.yaml")
+    };
+
+    let atlas = render_tileset(&cfg);
 
     for path in TILESET_OUTPUTS {
         if let Some(parent) = Path::new(path).parent() {
@@ -45,19 +52,19 @@ fn main() {
     }
 }
 
-fn render_tileset() -> RgbaImage {
+fn render_tileset(cfg: &TileConfig) -> RgbaImage {
     let atlas_width = TILE_SIZE * Tiles::all().len() as u32;
     let mut atlas: RgbaImage = ImageBuffer::from_pixel(atlas_width, TILE_SIZE, Rgba([0, 0, 0, 0]));
 
     for (index, tile) in Tiles::all().iter().copied().enumerate() {
-        render_tile(&mut atlas, index as u32 * TILE_SIZE, tile);
+        render_tile(&mut atlas, index as u32 * TILE_SIZE, tile, cfg);
     }
 
     atlas
 }
 
-fn render_tile(image: &mut RgbaImage, offset_x: u32, tile: Tiles) {
-    let base = rgba(tile.as_color(), 255);
+fn render_tile(image: &mut RgbaImage, offset_x: u32, tile: Tiles, cfg: &TileConfig) {
+    let base = rgba(tile.color_with_config(cfg), 255);
     let top = lighten(base, 0.22);
     let bottom = darken(base, 0.18);
     let outline = darken(base, 0.42);

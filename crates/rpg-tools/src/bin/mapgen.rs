@@ -16,7 +16,7 @@ use clap::Parser;
 use image::{ImageBuffer, Rgb};
 use tracing::{error, info, warn};
 
-use engine::config::HeroCatalog;
+use engine::config::{HeroCatalog, TileConfig};
 use engine::game_state::GameState;
 use engine::map::game_map::GameMap;
 use engine::map::tile::Tiles;
@@ -41,6 +41,13 @@ fn main() {
     let args = Args::parse();
 
     info!(seed = %args.seed, "starting map generation");
+
+    // ── Load tile config ────────────────────────────────────────────────────
+    let cfg: TileConfig = {
+        let yaml = std::fs::read_to_string("assets/tiles.yaml")
+            .expect("failed to read assets/tiles.yaml");
+        serde_yaml::from_str(&yaml).expect("failed to parse assets/tiles.yaml")
+    };
 
     // ── Build generator pipeline ──────────────────────────────────────────────
     let mut generators: Vec<PathBuf> = args.generators.clone();
@@ -117,22 +124,22 @@ fn main() {
     let tileset_path = resolve_project_path(TILESET_PATH);
 
     // ── Print statistics ──────────────────────────────────────────────────────
-    print_stats(&map);
+    print_stats(&map, &cfg);
 
     // ── ASCII art ─────────────────────────────────────────────────────────────
     if !args.no_ascii {
-        print_ascii(&map);
+        print_ascii(&map, &cfg);
     }
 
-    save_png(&map, &png_path, args.scale);
+    save_png(&map, &png_path, args.scale, &cfg);
 
     let tileset_rel = relative_path(tmx_path.parent().unwrap_or(&tmx_path), &tileset_path);
-    if let Err(e) = write_tmx(&map, &tmx_path, &tileset_rel) {
+    if let Err(e) = write_tmx(&map, &tmx_path, &tileset_rel, &cfg) {
         error!(error = %e, path = %tmx_path.display(), "failed to save TMX");
         std::process::exit(1);
     }
 
-    if let Err(e) = save_rpgs(&map, &args.seed, &save_path) {
+    if let Err(e) = save_rpgs(&map, &args.seed, &save_path, &cfg) {
         error!(error = %e, path = %save_path.display(), "failed to save RPGS");
         std::process::exit(1);
     }
@@ -220,7 +227,7 @@ struct Args {
 // ─── Statistics ───────────────────────────────────────────────────────────────
 
 /// Counts tiles and prints a statistics summary to stdout.
-fn print_stats(map: &GameMap) {
+fn print_stats(map: &GameMap, cfg: &TileConfig) {
     let total = (map.tile_width() * map.tile_height()) as usize;
     let mut counts: HashMap<Tiles, usize> = HashMap::new();
 
@@ -242,11 +249,11 @@ fn print_stats(map: &GameMap) {
         let pct = **count as f32 / total as f32 * 100.0;
         let bar_len = (pct / 2.0) as usize;
         let bar = "█".repeat(bar_len);
-        let pass = if tile.is_passable() { "✓" } else { "✗" };
+        let pass = if tile.is_passable_with_config(cfg) { "✓" } else { "✗" };
         println!("║  {pass} {:12}  {:5} ({:5.1}%) {}", tile.as_str(), count, pct, bar);
     }
 
-    let passable: usize = counts.iter().filter(|(t, _)| t.is_passable()).map(|(_, n)| n).sum();
+    let passable: usize = counts.iter().filter(|(t, _)| t.is_passable_with_config(cfg)).map(|(_, n)| n).sum();
     let pct = passable as f32 / total as f32 * 100.0;
     println!("╠═══════════════════════════════════╣");
     println!("║  Passable: {passable}/{total} ({pct:.1}%)");
@@ -258,7 +265,7 @@ fn print_stats(map: &GameMap) {
 /// Prints the full map as ASCII art.
 ///
 /// For large maps, only the first 64 rows are printed to avoid flooding the terminal.
-fn print_ascii(map: &GameMap) {
+fn print_ascii(map: &GameMap, cfg: &TileConfig) {
     let w = map.tile_width() as usize;
     let h = map.tile_height() as usize;
     let max_rows = h.min(64);
@@ -270,7 +277,7 @@ fn print_ascii(map: &GameMap) {
         for x in 0..w {
             let coord = MapCoord::new(x as u32, y as u32);
             if let Ok(tile) = map.get_tile(coord) {
-                row.push(tile.kind.as_char());
+                row.push(tile.kind.as_char_with_config(cfg));
             } else {
                 row.push('?');
             }
@@ -287,7 +294,7 @@ fn print_ascii(map: &GameMap) {
 // ─── PNG export ───────────────────────────────────────────────────────────────
 
 /// Saves the map as a PNG image where each tile is `scale × scale` pixels.
-fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
+fn save_png(map: &GameMap, output: &PathBuf, scale: u32, cfg: &TileConfig) {
     let w = map.tile_width() * scale;
     let h = map.tile_height() * scale;
     let mut img: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::new(w, h);
@@ -299,7 +306,7 @@ fn save_png(map: &GameMap, output: &PathBuf, scale: u32) {
                 Ok(t) => t,
                 Err(_) => continue,
             };
-            let (r, g, b) = tile.kind.as_color();
+            let (r, g, b) = tile.kind.color_with_config(cfg);
             let color = Rgb([r, g, b]);
 
             // Fill the scale×scale pixel block for this tile
@@ -325,12 +332,13 @@ fn save_rpgs(
     map: &GameMap,
     seed: &str,
     output: &PathBuf,
+    cfg: &TileConfig,
 ) -> Result<(), engine::error::EngineError> {
-    let spawn = spawn::find_city_entrance_spawns(map, 1)
+    let spawn = spawn::find_city_entrance_spawns(map, 1, cfg)
         .first()
         .copied()
         .map(Ok)
-        .unwrap_or_else(|| spawn::find_player_spawn(map))?;
+        .unwrap_or_else(|| spawn::find_player_spawn(map, &cfg))?;
 
     let mut state = GameState::new(map.clone(), seed);
     let team_id = state.add_team(Team::new(0, "Red", (220, 50, 50), true));

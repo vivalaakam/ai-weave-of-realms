@@ -6,6 +6,7 @@
 
 use alloc::{vec, vec::Vec};
 
+use crate::config::TileConfig;
 use crate::map::game_map::GameMap;
 use crate::map::tile::Tiles;
 use crate::map_coord::MapCoord;
@@ -31,43 +32,53 @@ pub enum SpawnError {
 /// then any remaining passable tile. Enemy start prefers a distant
 /// non-POI passable tile.
 ///
+/// # Arguments
+/// * `map` - The game map to search.
+/// * `cfg` - Tile configuration used for passability checks.
+///
 /// # Returns
 /// Recommended coordinates for the player and enemy heroes.
 ///
 /// # Errors
 /// Returns [`Error::OutOfBounds`] if the map has no valid spawnable tiles.
-pub fn find_spawn_positions(map: &GameMap) -> Result<SpawnPositions, SpawnError> {
-    let player = find_player_spawn(map)?;
-    let enemy = find_enemy_spawn(map, player)?;
+pub fn find_spawn_positions(map: &GameMap, cfg: &TileConfig) -> Result<SpawnPositions, SpawnError> {
+    let player = find_player_spawn(map, cfg)?;
+    let enemy = find_enemy_spawn(map, player, cfg)?;
     Ok(SpawnPositions { player, enemy })
 }
 
 /// Selects a deterministic player start tile.
+///
+/// # Arguments
+/// * `map` - The game map to search.
+/// * `cfg` - Tile configuration used for passability checks.
 ///
 /// # Returns
 /// The best available player start coordinate.
 ///
 /// # Errors
 /// Returns [`Error::OutOfBounds`] if the map has no passable tiles.
-pub fn find_player_spawn(map: &GameMap) -> Result<MapCoord, SpawnError> {
-    find_best_tile(map, player_priority)
+pub fn find_player_spawn(map: &GameMap, cfg: &TileConfig) -> Result<MapCoord, SpawnError> {
+    find_best_tile(map, cfg, player_priority)
 }
 
 /// Selects a deterministic enemy start tile far from `player`.
 ///
 /// # Arguments
+/// * `map` - The game map to search.
 /// * `player` - The already chosen player spawn coordinate.
+/// * `cfg` - Tile configuration used for passability checks.
 ///
 /// # Returns
 /// The best available enemy start coordinate.
 ///
 /// # Errors
 /// Returns [`Error::OutOfBounds`] if the map has no valid enemy spawn tile.
-pub fn find_enemy_spawn(map: &GameMap, player: MapCoord) -> Result<MapCoord, SpawnError> {
+pub fn find_enemy_spawn(map: &GameMap, player: MapCoord, cfg: &TileConfig) -> Result<MapCoord, SpawnError> {
     let mut best: Option<(MapCoord, i32, i64)> = None;
 
     for_each_coord(map, |coord, kind| {
-        if !is_enemy_spawnable(kind) || coord == player {
+        if !is_enemy_spawnable(kind, cfg) || coord == player {
             return;
         }
 
@@ -86,7 +97,7 @@ pub fn find_enemy_spawn(map: &GameMap, player: MapCoord) -> Result<MapCoord, Spa
         return Ok(coord);
     }
 
-    find_best_tile(map, fallback_passable_priority)
+    find_best_tile(map, cfg, fallback_passable_priority)
 }
 
 /// Selects up to `count` [`Tiles::CityEntrance`] tiles spread across the map.
@@ -95,8 +106,13 @@ pub fn find_enemy_spawn(map: &GameMap, player: MapCoord) -> Result<MapCoord, Spa
 /// chosen spawns.  If fewer than `count` city entrance tiles exist, falls
 /// back to plain [`Tiles::City`] tiles, then to any passable tile.
 ///
+/// # Arguments
+/// * `map` - The game map to search.
+/// * `count` - Maximum number of spawn points to return.
+/// * `cfg` - Tile configuration used for passability checks.
+///
 /// Returns an empty `Vec` only when the map has no passable tiles at all.
-pub fn find_city_entrance_spawns(map: &GameMap, count: usize) -> Vec<MapCoord> {
+pub fn find_city_entrance_spawns(map: &GameMap, count: usize, cfg: &TileConfig) -> Vec<MapCoord> {
     if count == 0 {
         return Vec::new();
     }
@@ -118,7 +134,7 @@ pub fn find_city_entrance_spawns(map: &GameMap, count: usize) -> Vec<MapCoord> {
     if candidates.is_empty() {
         // Last resort: any passable tile.
         for_each_coord(map, |coord, kind| {
-            if kind.is_passable() {
+            if kind.is_passable_with_config(cfg) {
                 candidates.push(coord);
             }
         });
@@ -180,14 +196,15 @@ pub fn find_city_entrance_spawns(map: &GameMap, count: usize) -> Vec<MapCoord> {
 
 fn find_best_tile(
     map: &GameMap,
-    priority: fn(MapCoord, Tiles, u32, u32) -> Option<i32>,
+    cfg: &TileConfig,
+    priority: fn(MapCoord, Tiles, u32, u32, &TileConfig) -> Option<i32>,
 ) -> Result<MapCoord, SpawnError> {
     let center_x = map.tile_width() / 2;
     let center_y = map.tile_height() / 2;
     let mut best: Option<(MapCoord, i32, u32)> = None;
 
     for_each_coord(map, |coord, kind| {
-        let Some(rank) = priority(coord, kind, center_x, center_y) else {
+        let Some(rank) = priority(coord, kind, center_x, center_y, cfg) else {
             return;
         };
         let center_distance = manhattan_distance(coord, MapCoord::new(center_x, center_y));
@@ -202,13 +219,13 @@ fn find_best_tile(
     best.map(|(coord, _, _)| coord).ok_or(SpawnError::OutOfBounds)
 }
 
-fn player_priority(coord: MapCoord, kind: Tiles, center_x: u32, center_y: u32) -> Option<i32> {
+fn player_priority(coord: MapCoord, kind: Tiles, center_x: u32, center_y: u32, cfg: &TileConfig) -> Option<i32> {
     let _ = (coord, center_x, center_y);
     match kind {
         Tiles::CityEntrance => Some(0),
         Tiles::Road => Some(1),
         Tiles::Meadow => Some(2),
-        other if other.is_passable() => Some(3),
+        other if other.is_passable_with_config(cfg) => Some(3),
         _ => None,
     }
 }
@@ -218,13 +235,14 @@ fn fallback_passable_priority(
     kind: Tiles,
     center_x: u32,
     center_y: u32,
+    cfg: &TileConfig,
 ) -> Option<i32> {
     let _ = (coord, center_x, center_y);
-    kind.is_passable().then_some(0)
+    kind.is_passable_with_config(cfg).then_some(0)
 }
 
-fn is_enemy_spawnable(kind: Tiles) -> bool {
-    kind.is_passable() && !matches!(kind, Tiles::CityEntrance | Tiles::Gold | Tiles::Resource)
+fn is_enemy_spawnable(kind: Tiles, cfg: &TileConfig) -> bool {
+    kind.is_passable_with_config(cfg) && !matches!(kind, Tiles::CityEntrance | Tiles::Gold | Tiles::Resource)
 }
 
 fn for_each_coord(map: &GameMap, mut callback: impl FnMut(MapCoord, Tiles)) {
@@ -245,6 +263,7 @@ fn manhattan_distance(a: MapCoord, b: MapCoord) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::tile_config::test_tile_config;
     use crate::map::tile::Tile;
 
     fn map_from_rows(rows: &[&[Tiles]]) -> GameMap {
@@ -267,7 +286,7 @@ mod tests {
             &[Tiles::Meadow, Tiles::Meadow, Tiles::Meadow],
         ]);
 
-        let spawn = find_player_spawn(&map).unwrap();
+        let spawn = find_player_spawn(&map, &test_tile_config()).unwrap();
         assert_eq!(spawn, MapCoord::new(1, 1));
     }
 
@@ -279,7 +298,7 @@ mod tests {
             &[Tiles::Water, Tiles::Water, Tiles::Water],
         ]);
 
-        let spawn = find_player_spawn(&map).unwrap();
+        let spawn = find_player_spawn(&map, &test_tile_config()).unwrap();
         assert_eq!(spawn, MapCoord::new(1, 0));
     }
 
@@ -291,8 +310,8 @@ mod tests {
             &[Tiles::Meadow, Tiles::Forest, Tiles::Meadow, Tiles::Meadow],
         ]);
 
-        let player = find_player_spawn(&map).unwrap();
-        let enemy = find_enemy_spawn(&map, player).unwrap();
+        let player = find_player_spawn(&map, &test_tile_config()).unwrap();
+        let enemy = find_enemy_spawn(&map, player, &test_tile_config()).unwrap();
 
         assert_eq!(player, MapCoord::new(0, 0));
         assert_eq!(enemy, MapCoord::new(3, 2));
@@ -303,7 +322,7 @@ mod tests {
         let map =
             map_from_rows(&[&[Tiles::City, Tiles::Mountain], &[Tiles::Mountain, Tiles::City]]);
 
-        let result = find_spawn_positions(&map);
+        let result = find_spawn_positions(&map, &test_tile_config());
         assert!(matches!(result, Err(SpawnError::OutOfBounds)));
     }
 }

@@ -246,7 +246,7 @@ pub fn build_state_with_teams(
     teams: &[TeamConfig],
     config: GameConfig,
 ) -> Result<GameState, EngineError> {
-    let entrance_spawns = engine::spawn::find_city_entrance_spawns(&map, teams.len());
+    let entrance_spawns = engine::spawn::find_city_entrance_spawns(&map, teams.len(), &config.tiles);
     let mut state = GameState::new_with_config(map, seed, config);
     for (i, cfg) in teams.iter().enumerate() {
         let team_id =

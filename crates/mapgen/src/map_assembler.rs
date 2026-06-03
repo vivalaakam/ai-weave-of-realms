@@ -19,6 +19,7 @@ use std::path::PathBuf;
 
 use tracing::{debug, info, instrument, warn};
 
+use engine::config::TileConfig;
 use engine::map::chunk::{ChunkCoord, CHUNK_SIZE};
 use engine::map::game_map::{GameMap, ResourceKind, ResourceNode};
 use engine::map::tile::Tiles;
@@ -55,6 +56,8 @@ pub struct MapConfig {
     pub validator_script: Option<PathBuf>,
     /// Optional path to the Lua evaluator script.
     pub evaluator_script: Option<PathBuf>,
+    /// Tile configuration for resolving tile properties (passability, etc.).
+    pub tile_config: TileConfig,
 }
 
 impl MapConfig {
@@ -69,6 +72,7 @@ impl MapConfig {
             validator_dir: None,
             validator_script: None,
             evaluator_script: None,
+            tile_config: TileConfig::default(),
         }
     }
 
@@ -95,6 +99,12 @@ impl MapConfig {
     /// Sets the evaluator script.
     pub fn with_evaluator(mut self, path: impl Into<PathBuf>) -> Self {
         self.evaluator_script = Some(path.into());
+        self
+    }
+
+    /// Sets the tile configuration.
+    pub fn with_tile_config(mut self, cfg: TileConfig) -> Self {
+        self.tile_config = cfg;
         self
     }
 }
@@ -146,6 +156,8 @@ pub struct MapAssembler {
     width: u32,
     /// Map height in tiles.
     height: u32,
+    /// Tile configuration for resolving tile properties.
+    tile_config: TileConfig,
 }
 
 impl MapAssembler {
@@ -198,6 +210,7 @@ impl MapAssembler {
             map_seed,
             width: config.width,
             height: config.height,
+            tile_config: config.tile_config,
         })
     }
 
@@ -258,7 +271,7 @@ impl MapAssembler {
         let resource_nodes = generate_resource_nodes(&map, &self.map_seed);
         map.set_resource_nodes(resource_nodes).map_err(MapgenError::Engine)?;
 
-        let (enemy_spawns, chest_spawns) = generate_spawn_points(&map, &self.map_seed);
+        let (enemy_spawns, chest_spawns) = generate_spawn_points(&map, &self.map_seed, &self.tile_config);
         map.set_spawn_points(enemy_spawns, chest_spawns).map_err(MapgenError::Engine)?;
 
         if let Some(ev) = &self.evaluator {
@@ -361,7 +374,7 @@ fn generate_resource_nodes(map: &GameMap, map_seed: &[u8; 32]) -> Vec<ResourceNo
     nodes
 }
 
-fn generate_spawn_points(map: &GameMap, map_seed: &[u8; 32]) -> (Vec<MapCoord>, Vec<MapCoord>) {
+fn generate_spawn_points(map: &GameMap, map_seed: &[u8; 32], cfg: &TileConfig) -> (Vec<MapCoord>, Vec<MapCoord>) {
     let mut enemy_spawns = Vec::new();
     let mut chest_spawns = Vec::new();
     let cs = CHUNK_SIZE as u32;
@@ -380,7 +393,7 @@ fn generate_spawn_points(map: &GameMap, map_seed: &[u8; 32]) -> (Vec<MapCoord>, 
                     let gy = cy * cs + y;
                     let coord = MapCoord::new(gx, gy);
                     if let Ok(tile) = map.get_tile(coord) {
-                        if is_spawnable_tile(tile.kind) {
+                        if is_spawnable_tile(tile.kind, cfg) {
                             candidates.push(coord);
                         }
                     }
@@ -419,8 +432,8 @@ fn generate_spawn_points(map: &GameMap, map_seed: &[u8; 32]) -> (Vec<MapCoord>, 
     (enemy_spawns, chest_spawns)
 }
 
-fn is_spawnable_tile(tile: Tiles) -> bool {
-    tile.is_passable()
+fn is_spawnable_tile(tile: Tiles, cfg: &TileConfig) -> bool {
+    tile.is_passable_with_config(cfg)
         && !matches!(tile, Tiles::City | Tiles::CityEntrance | Tiles::Resource | Tiles::Gold)
 }
 
