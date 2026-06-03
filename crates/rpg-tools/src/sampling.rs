@@ -47,20 +47,19 @@ pub fn euler_sample(
 
         let mut guidance = apply_cfg(cfg_scale, &noise_pred)?;
 
-        if let Some(slg_config) = slg_config.as_ref() {
-            if (num_inference_steps as f64) * slg_config.start < (step as f64)
-                && (step as f64) < (num_inference_steps as f64) * slg_config.end
-            {
-                let slg_noise_pred = mmdit.forward(
-                    &x,
-                    &Tensor::full(timestep as f32, (1,), x.device())?.contiguous()?,
-                    &y.i(..1)?,
-                    &context.i(..1)?,
-                    Some(&slg_config.layers),
-                )?;
-                guidance = (guidance
-                    + (slg_config.scale * (noise_pred.i(..1)? - slg_noise_pred.i(..1))?)?)?;
-            }
+        if let Some(slg_config) = slg_config.as_ref()
+            && (num_inference_steps as f64) * slg_config.start < (step as f64)
+            && (step as f64) < (num_inference_steps as f64) * slg_config.end
+        {
+            let slg_noise_pred = mmdit.forward(
+                &x,
+                &Tensor::full(timestep as f32, (1,), x.device())?.contiguous()?,
+                &y.i(..1)?,
+                &context.i(..1)?,
+                Some(&slg_config.layers),
+            )?;
+            guidance =
+                (guidance + (slg_config.scale * (noise_pred.i(..1)? - slg_noise_pred.i(..1))?)?)?;
         }
 
         x = (x + (guidance * (*s_prev - *s_curr))?)?;

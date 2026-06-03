@@ -187,7 +187,11 @@ pub fn test_tile_config() -> TileConfig {
         TileEntry {
             tile_id: 0,
             atlas_indexes: vec![AtlasIndex { index: 5, variant: Some(String::from("summer")) }],
-            variants: vec![String::from("summer"), String::from("summer_bright"), String::from("summer_dark")],
+            variants: vec![
+                String::from("summer"),
+                String::from("summer_bright"),
+                String::from("summer_dark"),
+            ],
             color: String::from("#7cb342"),
             ascii: String::from("."),
             passable: true,
@@ -251,7 +255,11 @@ pub fn test_tile_config() -> TileConfig {
         TileEntry {
             tile_id: 4,
             atlas_indexes: vec![AtlasIndex { index: 416, variant: Some(String::from("castle")) }],
-            variants: vec![String::from("castle"), String::from("fortress"), String::from("citadel")],
+            variants: vec![
+                String::from("castle"),
+                String::from("fortress"),
+                String::from("citadel"),
+            ],
             color: String::from("#ff7043"),
             ascii: String::from("⌂"),
             passable: false,
@@ -299,7 +307,11 @@ pub fn test_tile_config() -> TileConfig {
         TileEntry {
             tile_id: 7,
             atlas_indexes: vec![AtlasIndex { index: 7, variant: Some(String::from("shallow")) }],
-            variants: vec![String::from("shallow"), String::from("shallow_rocky"), String::from("deep")],
+            variants: vec![
+                String::from("shallow"),
+                String::from("shallow_rocky"),
+                String::from("deep"),
+            ],
             color: String::from("#1e88e5"),
             ascii: String::from("≈"),
             passable: true,
@@ -331,7 +343,11 @@ pub fn test_tile_config() -> TileConfig {
         TileEntry {
             tile_id: 9,
             atlas_indexes: vec![AtlasIndex { index: 9, variant: Some(String::from("hamlet")) }],
-            variants: vec![String::from("hamlet"), String::from("town"), String::from("trading_post")],
+            variants: vec![
+                String::from("hamlet"),
+                String::from("town"),
+                String::from("trading_post"),
+            ],
             color: String::from("#FF2D55"),
             ascii: String::from("⌘"),
             passable: true,
@@ -363,7 +379,11 @@ pub fn test_tile_config() -> TileConfig {
         TileEntry {
             tile_id: 11,
             atlas_indexes: vec![AtlasIndex { index: 11, variant: Some(String::from("ancient")) }],
-            variants: vec![String::from("ancient"), String::from("crumbling"), String::from("buried")],
+            variants: vec![
+                String::from("ancient"),
+                String::from("crumbling"),
+                String::from("buried"),
+            ],
             color: String::from("#BF6A02"),
             ascii: String::from("⍟"),
             passable: true,
@@ -394,8 +414,16 @@ pub fn test_tile_config() -> TileConfig {
         String::from("resource"),
         TileEntry {
             tile_id: 13,
-            atlas_indexes: vec![AtlasIndex { index: 1089, variant: Some(String::from("resource_1")) }],
-            variants: vec![String::from("resource_1"), String::from("resource_2"), String::from("resource_3"), String::from("resource_4")],
+            atlas_indexes: vec![AtlasIndex {
+                index: 1089,
+                variant: Some(String::from("resource_1")),
+            }],
+            variants: vec![
+                String::from("resource_1"),
+                String::from("resource_2"),
+                String::from("resource_3"),
+                String::from("resource_4"),
+            ],
             color: String::from("#ffffff"),
             ascii: String::from("◆"),
             passable: true,

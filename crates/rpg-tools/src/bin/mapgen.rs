@@ -16,13 +16,13 @@ use clap::Parser;
 use image::{ImageBuffer, Rgb};
 use tracing::{error, info, warn};
 
+use engine::MapCoord;
 use engine::config::{HeroCatalog, TileConfig};
 use engine::game_state::GameState;
 use engine::map::game_map::GameMap;
 use engine::map::tile::Tiles;
 use engine::spawn;
 use engine::team::Team;
-use engine::MapCoord;
 use mapgen::map_assembler::{MapAssembler, MapConfig};
 use tiled::write_tmx;
 
@@ -44,8 +44,8 @@ fn main() {
 
     // ── Load tile config ────────────────────────────────────────────────────
     let cfg: TileConfig = {
-        let yaml = std::fs::read_to_string("assets/tiles.yaml")
-            .expect("failed to read assets/tiles.yaml");
+        let yaml =
+            std::fs::read_to_string("assets/tiles.yaml").expect("failed to read assets/tiles.yaml");
         serde_yaml::from_str(&yaml).expect("failed to parse assets/tiles.yaml")
     };
 
@@ -144,11 +144,11 @@ fn main() {
         std::process::exit(1);
     }
 
-    if args.open {
-        if let Err(e) = open_file(&tmx_path) {
-            error!(error = %e, path = %tmx_path.display(), "failed to open generated TMX");
-            std::process::exit(1);
-        }
+    if args.open
+        && let Err(e) = open_file(&tmx_path)
+    {
+        error!(error = %e, path = %tmx_path.display(), "failed to open generated TMX");
+        std::process::exit(1);
     }
 
     info!(
@@ -243,7 +243,7 @@ fn print_stats(map: &GameMap, cfg: &TileConfig) {
     println!("╠═══════════════════════════════════╣");
 
     let mut sorted: Vec<_> = counts.iter().collect();
-    sorted.sort_by_key(|(_, &n)| std::cmp::Reverse(n));
+    sorted.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
 
     for (tile, count) in &sorted {
         let pct = **count as f32 / total as f32 * 100.0;
@@ -253,7 +253,8 @@ fn print_stats(map: &GameMap, cfg: &TileConfig) {
         println!("║  {pass} {:12}  {:5} ({:5.1}%) {}", tile.as_str(), count, pct, bar);
     }
 
-    let passable: usize = counts.iter().filter(|(t, _)| t.is_passable_with_config(cfg)).map(|(_, n)| n).sum();
+    let passable: usize =
+        counts.iter().filter(|(t, _)| t.is_passable_with_config(cfg)).map(|(_, n)| n).sum();
     let pct = passable as f32 / total as f32 * 100.0;
     println!("╠═══════════════════════════════════╣");
     println!("║  Passable: {passable}/{total} ({pct:.1}%)");
@@ -338,7 +339,7 @@ fn save_rpgs(
         .first()
         .copied()
         .map(Ok)
-        .unwrap_or_else(|| spawn::find_player_spawn(map, &cfg))?;
+        .unwrap_or_else(|| spawn::find_player_spawn(map, cfg))?;
 
     let mut state = GameState::new(map.clone(), seed);
     let team_id = state.add_team(Team::new(0, "Red", (220, 50, 50), true));

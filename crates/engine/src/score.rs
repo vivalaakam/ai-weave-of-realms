@@ -10,7 +10,6 @@
 //! The [`ScoreBoard`] also maintains per-team expansion state that controls
 //! when cities and rods grow their territory outward.
 
-use alloc::vec::Vec;
 use core::fmt;
 
 use serde::{Deserialize, Serialize};

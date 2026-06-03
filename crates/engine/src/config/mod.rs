@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 /// Static game configuration loaded at application initialization and stored
 /// with each [`crate::game_state::GameState`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GameConfig {
     pub tiles: TileConfig,
     pub teams: TeamCatalog,
@@ -31,16 +31,6 @@ pub struct GameConfig {
 impl GameConfig {
     pub fn new(tiles: TileConfig, teams: TeamCatalog, heroes: HeroCatalog) -> Self {
         Self { tiles, teams, heroes }
-    }
-}
-
-impl Default for GameConfig {
-    fn default() -> Self {
-        Self {
-            tiles: TileConfig::default(),
-            teams: TeamCatalog::default(),
-            heroes: HeroCatalog::default(),
-        }
     }
 }
 

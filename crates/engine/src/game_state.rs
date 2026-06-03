@@ -27,9 +27,9 @@ use crate::map::tile::Tiles;
 use crate::map_coord::MapCoord;
 use crate::rng::SeededRng;
 use crate::score::{
-    ScoreBoard, ScoreEvent, CITY_EXPANSION_INTERVAL, CITY_INITIAL_RADIUS, ROD_EXPANSION_INTERVAL,
-    CITY_TILE_POINTS, LAND_TILE_POINTS, RESOURCE_POINT_POINTS, ROD_POINTS, HERO_ALIVE_POINTS,
-    ScoreBreakdown,
+    CITY_EXPANSION_INTERVAL, CITY_INITIAL_RADIUS, CITY_TILE_POINTS, HERO_ALIVE_POINTS,
+    LAND_TILE_POINTS, RESOURCE_POINT_POINTS, ROD_EXPANSION_INTERVAL, ROD_POINTS, ScoreBoard,
+    ScoreBreakdown, ScoreEvent,
 };
 use crate::state_flood::flood_city;
 use crate::team::Team;
@@ -164,15 +164,14 @@ impl GameState {
     /// schema or a host that stores config outside the save file.
     pub fn set_config(&mut self, config: GameConfig) {
         for hero in self.heroes.values_mut() {
-            if hero.atlas_index == 0 {
-                if let Some(candidate) = config
+            if hero.atlas_index == 0
+                && let Some(candidate) = config
                     .heroes
                     .heroes()
                     .iter()
                     .find(|candidate| candidate.get_class_id() == hero.class_id)
-                {
-                    hero.atlas_index = candidate.get_atlas_index();
-                }
+            {
+                hero.atlas_index = candidate.get_atlas_index();
             }
         }
         self.hero_candidates = config.heroes.heroes().to_vec();
@@ -324,11 +323,7 @@ impl GameState {
             .iter()
             .filter_map(
                 |(&id, h)| {
-                    if h.team_id == team_id && h.is_alive() {
-                        Some(id)
-                    } else {
-                        None
-                    }
+                    if h.team_id == team_id && h.is_alive() { Some(id) } else { None }
                 },
             )
             .collect::<Vec<HeroId>>()
@@ -479,19 +474,15 @@ impl GameState {
     ///
     /// Useful for centering the camera when the team has no hero yet.
     pub fn city_entrance_for_team(&self, team_id: TeamId) -> Option<MapCoord> {
-        self.city_owners.iter().filter(|(_, &owner)| owner == team_id).find_map(|(coord, _)| {
+        self.city_owners.iter().filter(|(_, owner)| **owner == team_id).find_map(|(coord, _)| {
             let tile = self.map.get_tile(*coord).ok()?;
-            if tile.kind == Tiles::CityEntrance {
-                Some(*coord)
-            } else {
-                None
-            }
+            if tile.kind == Tiles::CityEntrance { Some(*coord) } else { None }
         })
     }
 
     /// Returns any city tile owned by the given team.
     pub fn city_owner_for_team(&self, team_id: TeamId) -> Option<MapCoord> {
-        self.city_owners.iter().find(|(_, &owner)| owner == team_id).map(|(coord, _)| *coord)
+        self.city_owners.iter().find(|(_, owner)| **owner == team_id).map(|(coord, _)| *coord)
     }
 
     /// Returns the last active hero ID for `team_id`, or `None` if not set.
@@ -639,10 +630,10 @@ impl GameState {
         }
 
         // Check occupancy.
-        if let Some(other) = self.hero_at(&target) {
-            if other.get_id() != hero_id {
-                return Err(EngineError::OccupiedTile { x: target.x, y: target.y });
-            }
+        if let Some(other) = self.hero_at(&target)
+            && other.get_id() != hero_id
+        {
+            return Err(EngineError::OccupiedTile { x: target.x, y: target.y });
         }
 
         // Deduct the movement cost for entering the target tile.
@@ -849,12 +840,12 @@ impl GameState {
             let team_turn = self.teams.get(&team_id).map(|t| t.get_turn()).unwrap_or(0);
 
             // City expansion.
-            if team_turn > 0 && team_turn % CITY_EXPANSION_INTERVAL == 0 {
+            if team_turn > 0 && team_turn.is_multiple_of(CITY_EXPANSION_INTERVAL) {
                 self.expand_city_territory(team_id, &mut events);
             }
 
             // Rod expansion.
-            if team_turn > 0 && team_turn % ROD_EXPANSION_INTERVAL == 0 {
+            if team_turn > 0 && team_turn.is_multiple_of(ROD_EXPANSION_INTERVAL) {
                 self.expand_rod_territory(team_id, &mut events);
             }
         }
@@ -873,7 +864,7 @@ impl GameState {
         let city_tiles: Vec<MapCoord> = self
             .city_owners
             .iter()
-            .filter(|(_, &owner)| owner == team_id)
+            .filter(|(_, owner)| **owner == team_id)
             .map(|(&coord, _)| coord)
             .collect();
 
@@ -916,15 +907,11 @@ impl GameState {
     /// Expands territory from cities: claims one new tile per owned city,
     /// choosing randomly among the nearest boundary tiles of the team's
     /// territory "island".
-    fn expand_city_territory(
-        &mut self,
-        team_id: TeamId,
-        events: &mut Vec<TurnEvent>,
-    ) {
+    fn expand_city_territory(&mut self, team_id: TeamId, events: &mut Vec<TurnEvent>) {
         let city_tiles: Vec<MapCoord> = self
             .city_owners
             .iter()
-            .filter(|(_, &owner)| owner == team_id)
+            .filter(|(_, owner)| **owner == team_id)
             .map(|(&coord, _)| coord)
             .collect();
 
@@ -942,15 +929,11 @@ impl GameState {
 
     /// Expands territory from rods: claims one new tile per rod,
     /// choosing randomly among the nearest boundary tiles.
-    fn expand_rod_territory(
-        &mut self,
-        team_id: TeamId,
-        events: &mut Vec<TurnEvent>,
-    ) {
+    fn expand_rod_territory(&mut self, team_id: TeamId, events: &mut Vec<TurnEvent>) {
         let rod_tiles: Vec<MapCoord> = self
             .resource_rods
             .iter()
-            .filter(|(_, &owner)| owner == team_id)
+            .filter(|(_, owner)| **owner == team_id)
             .map(|(&coord, _)| coord)
             .collect();
 
@@ -976,7 +959,7 @@ impl GameState {
         let owned: alloc::collections::BTreeSet<MapCoord> = self
             .land_owners
             .iter()
-            .filter(|(_, &owner)| owner == team_id)
+            .filter(|(_, owner)| **owner == team_id)
             .map(|(&coord, _)| coord)
             .collect();
 
@@ -1017,14 +1000,11 @@ impl GameState {
         // 4. Take the closest candidates (up to ~10, including ties at the
         //    boundary distance so that equidistant tiles get a fair chance).
         const MAX_CANDIDATES: usize = 10;
-        let cutoff = candidates
-            .iter()
-            .nth(MAX_CANDIDATES.saturating_sub(1))
-            .map(|(d, _)| *d);
+        let cutoff = candidates.get(MAX_CANDIDATES.saturating_sub(1)).map(|(d, _)| *d);
         // When fewer than MAX_CANDIDATES exist, cutoff is None and all pass.
         candidates
             .iter()
-            .take_while(|(d, _)| cutoff.map_or(true, |c| *d <= c))
+            .take_while(|(d, _)| cutoff.is_none_or(|c| *d <= c))
             .map(|(_, c)| *c)
             .collect()
     }
@@ -1033,36 +1013,20 @@ impl GameState {
     ///
     /// Counts cities, land, resources, rods, living heroes, and event points.
     pub fn team_score(&self, team_id: TeamId) -> ScoreBreakdown {
-        let cities = self
-            .city_owners
-            .values()
-            .filter(|&&owner| owner == team_id)
-            .count() as i32
+        let cities = self.city_owners.values().filter(|&&owner| owner == team_id).count() as i32
             * CITY_TILE_POINTS;
 
-        let land = self
-            .land_owners
-            .values()
-            .filter(|&&owner| owner == team_id)
-            .count() as i32
+        let land = self.land_owners.values().filter(|&&owner| owner == team_id).count() as i32
             * LAND_TILE_POINTS;
 
-        let resources = self
-            .resource_owners
-            .values()
-            .filter(|&&owner| owner == team_id)
-            .count() as i32
+        let resources = self.resource_owners.values().filter(|&&owner| owner == team_id).count()
+            as i32
             * RESOURCE_POINT_POINTS;
 
-        let rods = self
-            .resource_rods
-            .values()
-            .filter(|&&owner| owner == team_id)
-            .count() as i32
+        let rods = self.resource_rods.values().filter(|&&owner| owner == team_id).count() as i32
             * ROD_POINTS;
 
-        let heroes =
-            self.get_team_alive_heroes_ids(team_id).len() as i32 * HERO_ALIVE_POINTS;
+        let heroes = self.get_team_alive_heroes_ids(team_id).len() as i32 * HERO_ALIVE_POINTS;
 
         let events = self.score.team_total(team_id);
 
@@ -1213,7 +1177,7 @@ impl GameState {
 
     /// Serializes the entire game state into a compact binary save format.
     pub fn to_save_bytes(&self) -> Result<Vec<u8>, EngineError> {
-        minicbor_serde::to_vec(&self).map_err(EngineError::from)
+        minicbor_serde::to_vec(self).map_err(EngineError::from)
     }
 
     pub fn from_save_bytes(bytes: &[u8]) -> Result<GameState, EngineError> {
@@ -1244,7 +1208,8 @@ mod tests {
 
     /// Creates a state with Red (0), Blue (1), Enemy (2) teams pre-registered.
     fn make_state(map: GameMap) -> GameState {
-        let cfg = GameConfig::new(test_tile_config(), TeamCatalog::default(), HeroCatalog::default());
+        let cfg =
+            GameConfig::new(test_tile_config(), TeamCatalog::default(), HeroCatalog::default());
         let mut state = GameState::new_with_config(map, "test-session", cfg);
         state.add_team(Team::red());
         state.add_team(Team::blue());
@@ -1696,10 +1661,11 @@ mod tests {
         }
         // Tile at Manhattan distance 3 should NOT be claimed.
         assert_eq!(state.land_owner(MapCoord::new(4, 1)), None); // distance 3
-        assert!(events.iter().any(|e| matches!(
-            e,
-            TurnEvent::LandOwnerChanged { team_id: Some(0), .. }
-        )));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, TurnEvent::LandOwnerChanged { team_id: Some(0), .. }))
+        );
     }
 
     #[test]
@@ -1735,26 +1701,17 @@ mod tests {
         state.set_city_owner(city, Some(0));
         state.claim_initial_city_territory(0);
 
-        let initial_count = state
-            .land_owners
-            .values()
-            .filter(|&&o| o == 0)
-            .count();
+        let initial_count = state.land_owners.values().filter(|&&o| o == 0).count();
 
         // Manually call expand_city_territory.
         let mut events = Vec::new();
         state.expand_city_territory(0, &mut events);
 
-        let after_count = state
-            .land_owners
-            .values()
-            .filter(|&&o| o == 0)
-            .count();
+        let after_count = state.land_owners.values().filter(|&&o| o == 0).count();
         assert_eq!(after_count, initial_count + 1, "city expansion should add exactly 1 tile");
-        assert!(events.iter().any(|e| matches!(
-            e,
-            TurnEvent::CityTerritoryExpanded { team_id: 0, .. }
-        )));
+        assert!(
+            events.iter().any(|e| matches!(e, TurnEvent::CityTerritoryExpanded { team_id: 0, .. }))
+        );
     }
 
     #[test]
@@ -1771,17 +1728,12 @@ mod tests {
         let mut events = Vec::new();
         state.expand_rod_territory(0, &mut events);
 
-        let owned_count = state
-            .land_owners
-            .values()
-            .filter(|&&o| o == 0)
-            .count();
+        let owned_count = state.land_owners.values().filter(|&&o| o == 0).count();
         // 1 initial (rod tile) + 1 expansion = 2
         assert_eq!(owned_count, 2, "rod expansion should add exactly 1 tile");
-        assert!(events.iter().any(|e| matches!(
-            e,
-            TurnEvent::RodTerritoryExpanded { team_id: 0, .. }
-        )));
+        assert!(
+            events.iter().any(|e| matches!(e, TurnEvent::RodTerritoryExpanded { team_id: 0, .. }))
+        );
     }
 
     #[test]
@@ -1800,7 +1752,9 @@ mod tests {
             let mut events = Vec::new();
             state.expand_city_territory(0, &mut events);
             // At least one event per round (city exists, expansion possible).
-            assert!(!events.is_empty() || state.land_owners.values().filter(|&&o| o == 0).count() >= 13);
+            assert!(
+                !events.is_empty() || state.land_owners.values().filter(|&&o| o == 0).count() >= 13
+            );
         }
 
         // Check that territory extends in multiple directions — not just one.
@@ -1867,8 +1821,16 @@ mod tests {
             // Only (1,0) mountain is skipped.
 
             // After initial claim: (0,0), (2,0) — mountain at (1,0) is NOT claimed.
-            assert_eq!(state.land_owner(MapCoord::new(1, 0)), None, "mountain should not be claimed");
-            assert_eq!(state.land_owner(MapCoord::new(2, 0)), Some(0), "meadow behind mountain should be claimed initially");
+            assert_eq!(
+                state.land_owner(MapCoord::new(1, 0)),
+                None,
+                "mountain should not be claimed"
+            );
+            assert_eq!(
+                state.land_owner(MapCoord::new(2, 0)),
+                Some(0),
+                "meadow behind mountain should be claimed initially"
+            );
 
             // Now try to expand. The island is {(0,0), (2,0)}.
             // Boundary of (0,0): right is (1,0)=Mountain skip, left/up/down out of bounds
@@ -1876,8 +1838,16 @@ mod tests {
             // So expansion candidates: (3,0)
             let mut events = Vec::new();
             state.expand_city_territory(0, &mut events);
-            assert_eq!(state.land_owner(MapCoord::new(1, 0)), None, "mountain should never be claimed");
-            assert_eq!(state.land_owner(MapCoord::new(3, 0)), Some(0), "expansion should claim past the gap, not onto mountain");
+            assert_eq!(
+                state.land_owner(MapCoord::new(1, 0)),
+                None,
+                "mountain should never be claimed"
+            );
+            assert_eq!(
+                state.land_owner(MapCoord::new(3, 0)),
+                Some(0),
+                "expansion should claim past the gap, not onto mountain"
+            );
         }
 
         // --- Test 2: Water blocks expansion ---
@@ -1978,11 +1948,8 @@ mod tests {
     fn team_score_includes_rods_and_resources() {
         let mut map = meadow_map(9, 9);
         let res = MapCoord::new(3, 3);
-        map.set_resource_nodes(vec![ResourceNode {
-            coord: res,
-            kind: ResourceKind::Resource1,
-        }])
-        .unwrap();
+        map.set_resource_nodes(vec![ResourceNode { coord: res, kind: ResourceKind::Resource1 }])
+            .unwrap();
         let mut state = make_state(map);
         state.set_resource_owner(res, Some(0));
         state.resource_rods.insert(MapCoord::new(1, 1), 0);

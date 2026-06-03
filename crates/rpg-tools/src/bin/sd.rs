@@ -3,7 +3,7 @@ use std::ops::Div;
 
 use anyhow::{Error as E, Result};
 use candle_core::backend::BackendDevice;
-use candle_core::{DType, Device, IndexOp, MetalDevice, Module, Tensor, D};
+use candle_core::{D, DType, Device, IndexOp, MetalDevice, Module, Tensor};
 use clap::Parser;
 use rand::RngExt;
 use stable_diffusion::vae::AutoEncoderKL;

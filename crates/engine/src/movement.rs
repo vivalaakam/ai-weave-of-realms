@@ -15,21 +15,24 @@
 //!
 //! Movement is 4-directional (N/S/E/W).
 
-use alloc::collections::BinaryHeap;
-use alloc::{collections::BTreeMap, vec, vec::Vec};
-use core::cmp::Reverse;
-
 use crate::config::TileConfig;
 use crate::error::EngineError;
 use crate::map::game_map::GameMap;
 use crate::map_coord::MapCoord;
+use core::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap};
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /// Returns all tiles reachable from `start` within `mov_budget` movement points.
 ///
 /// The starting tile itself is excluded from the result.
 /// Only passable tiles are included.
-pub fn reachable_tiles(map: &GameMap, start: MapCoord, mov_budget: u32, cfg: &TileConfig) -> Vec<MapCoord> {
+pub fn reachable_tiles(
+    map: &GameMap,
+    start: MapCoord,
+    mov_budget: u32,
+    cfg: &TileConfig,
+) -> Vec<MapCoord> {
     let (costs, _) = dijkstra(map, start, mov_budget, cfg);
     costs.into_iter().filter(|(coord, _)| *coord != start).map(|(coord, _)| coord).collect()
 }
@@ -212,7 +215,8 @@ mod tests {
     #[test]
     fn find_path_returns_correct_sequence() {
         let map = flat_map(5, 1, Tiles::Meadow);
-        let path = find_path(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10, &test_cfg()).unwrap();
+        let path =
+            find_path(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10, &test_cfg()).unwrap();
         assert_eq!(path.first(), Some(&MapCoord::new(0, 0)));
         assert_eq!(path.last(), Some(&MapCoord::new(3, 0)));
         assert_eq!(path.len(), 4);
@@ -238,6 +242,9 @@ mod tests {
     #[test]
     fn cost_to_reach_correct() {
         let map = flat_map(4, 1, Tiles::Meadow);
-        assert_eq!(cost_to_reach(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10, &test_cfg()).unwrap(), 3);
+        assert_eq!(
+            cost_to_reach(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10, &test_cfg()).unwrap(),
+            3
+        );
     }
 }

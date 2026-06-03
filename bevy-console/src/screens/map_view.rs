@@ -737,6 +737,7 @@ fn update_button_style(
 
 /// Per-tile sprite layers plus the assets needed to draw team logos, bundled to
 /// keep [`update_map_view`] under the system parameter limit.
+#[allow(clippy::type_complexity)]
 #[derive(SystemParam)]
 struct TileLayers<'w, 's> {
     tiles: Query<
@@ -1392,6 +1393,7 @@ fn update_map_view(
     map_view_state.map_view = Some(map_view_box);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn exit_map_view(
     mut commands: Commands,
     query: Query<Entity, With<MapViewRoot>>,

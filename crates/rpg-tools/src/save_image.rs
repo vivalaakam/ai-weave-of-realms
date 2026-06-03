@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use candle_core::Tensor;
 
 /// Saves an image to disk using the image crate, this expects an input with shape

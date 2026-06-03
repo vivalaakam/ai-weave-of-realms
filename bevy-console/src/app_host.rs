@@ -246,7 +246,8 @@ pub fn build_state_with_teams(
     teams: &[TeamConfig],
     config: GameConfig,
 ) -> Result<GameState, EngineError> {
-    let entrance_spawns = engine::spawn::find_city_entrance_spawns(&map, teams.len(), &config.tiles);
+    let entrance_spawns =
+        engine::spawn::find_city_entrance_spawns(&map, teams.len(), &config.tiles);
     let mut state = GameState::new_with_config(map, seed, config);
     for (i, cfg) in teams.iter().enumerate() {
         let team_id =
@@ -255,10 +256,10 @@ pub fn build_state_with_teams(
 
         // Player-controlled teams start without a hero — they must hire one at a city entrance.
         // AI-controlled teams get a hero immediately.
-        if !cfg.player_controlled {
-            if let Some(hero) = state.get_hero_candidate_at(0).cloned() {
-                state.add_hero(team_id, &hero, &hero_pos);
-            }
+        if !cfg.player_controlled
+            && let Some(hero) = state.get_hero_candidate_at(0).cloned()
+        {
+            state.add_hero(team_id, &hero, &hero_pos);
         }
 
         // The city always belongs to the team regardless of whether a hero is placed.

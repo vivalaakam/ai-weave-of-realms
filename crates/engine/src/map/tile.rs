@@ -267,7 +267,8 @@ mod tests {
     #[test]
     fn all_tiles_have_unique_base_ids() {
         let cfg = test_tile_config();
-        let mut ids: Vec<u32> = Tiles::all().iter().map(|t| t.base_tile_id_with_config(&cfg)).collect();
+        let mut ids: Vec<u32> =
+            Tiles::all().iter().map(|t| t.base_tile_id_with_config(&cfg)).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), Tiles::all().len());

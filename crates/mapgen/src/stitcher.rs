@@ -211,7 +211,7 @@ impl Stitcher {
             updated[pos] = match tile {
                 Tiles::Road | Tiles::River => {
                     if Self::is_edge_anchor(pos as u32) {
-                        tile.clone()
+                        *tile
                     } else {
                         Tiles::Meadow
                     }
@@ -226,7 +226,7 @@ impl Stitcher {
                 Tiles::Forest | Tiles::Mountain | Tiles::Water => {
                     natural_fill[pos].unwrap_or(Tiles::Meadow)
                 }
-                _ => tile.clone(),
+                _ => *tile,
             };
         }
 

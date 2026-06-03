@@ -271,7 +271,8 @@ impl MapAssembler {
         let resource_nodes = generate_resource_nodes(&map, &self.map_seed);
         map.set_resource_nodes(resource_nodes).map_err(MapgenError::Engine)?;
 
-        let (enemy_spawns, chest_spawns) = generate_spawn_points(&map, &self.map_seed, &self.tile_config);
+        let (enemy_spawns, chest_spawns) =
+            generate_spawn_points(&map, &self.map_seed, &self.tile_config);
         map.set_spawn_points(enemy_spawns, chest_spawns).map_err(MapgenError::Engine)?;
 
         if let Some(ev) = &self.evaluator {
@@ -374,7 +375,11 @@ fn generate_resource_nodes(map: &GameMap, map_seed: &[u8; 32]) -> Vec<ResourceNo
     nodes
 }
 
-fn generate_spawn_points(map: &GameMap, map_seed: &[u8; 32], cfg: &TileConfig) -> (Vec<MapCoord>, Vec<MapCoord>) {
+fn generate_spawn_points(
+    map: &GameMap,
+    map_seed: &[u8; 32],
+    cfg: &TileConfig,
+) -> (Vec<MapCoord>, Vec<MapCoord>) {
     let mut enemy_spawns = Vec::new();
     let mut chest_spawns = Vec::new();
     let cs = CHUNK_SIZE as u32;

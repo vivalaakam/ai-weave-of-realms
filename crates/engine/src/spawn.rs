@@ -4,8 +4,6 @@
 //! player-controlled hero and the first enemy unit from the generated
 //! [`GameMap`](crate::map::game_map::GameMap).
 
-use alloc::{vec, vec::Vec};
-
 use crate::config::TileConfig;
 use crate::map::game_map::GameMap;
 use crate::map::tile::Tiles;
@@ -74,7 +72,11 @@ pub fn find_player_spawn(map: &GameMap, cfg: &TileConfig) -> Result<MapCoord, Sp
 ///
 /// # Errors
 /// Returns [`Error::OutOfBounds`] if the map has no valid enemy spawn tile.
-pub fn find_enemy_spawn(map: &GameMap, player: MapCoord, cfg: &TileConfig) -> Result<MapCoord, SpawnError> {
+pub fn find_enemy_spawn(
+    map: &GameMap,
+    player: MapCoord,
+    cfg: &TileConfig,
+) -> Result<MapCoord, SpawnError> {
     let mut best: Option<(MapCoord, i32, i64)> = None;
 
     for_each_coord(map, |coord, kind| {
@@ -219,7 +221,13 @@ fn find_best_tile(
     best.map(|(coord, _, _)| coord).ok_or(SpawnError::OutOfBounds)
 }
 
-fn player_priority(coord: MapCoord, kind: Tiles, center_x: u32, center_y: u32, cfg: &TileConfig) -> Option<i32> {
+fn player_priority(
+    coord: MapCoord,
+    kind: Tiles,
+    center_x: u32,
+    center_y: u32,
+    cfg: &TileConfig,
+) -> Option<i32> {
     let _ = (coord, center_x, center_y);
     match kind {
         Tiles::CityEntrance => Some(0),
@@ -242,7 +250,8 @@ fn fallback_passable_priority(
 }
 
 fn is_enemy_spawnable(kind: Tiles, cfg: &TileConfig) -> bool {
-    kind.is_passable_with_config(cfg) && !matches!(kind, Tiles::CityEntrance | Tiles::Gold | Tiles::Resource)
+    kind.is_passable_with_config(cfg)
+        && !matches!(kind, Tiles::CityEntrance | Tiles::Gold | Tiles::Resource)
 }
 
 fn for_each_coord(map: &GameMap, mut callback: impl FnMut(MapCoord, Tiles)) {

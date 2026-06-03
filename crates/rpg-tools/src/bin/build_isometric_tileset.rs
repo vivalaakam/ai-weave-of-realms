@@ -28,19 +28,19 @@ fn main() {
         .init();
 
     let cfg: TileConfig = {
-        let yaml = std::fs::read_to_string("assets/tiles.yaml")
-            .expect("failed to read assets/tiles.yaml");
+        let yaml =
+            std::fs::read_to_string("assets/tiles.yaml").expect("failed to read assets/tiles.yaml");
         serde_yaml::from_str(&yaml).expect("failed to parse assets/tiles.yaml")
     };
 
     let atlas = render_tileset(&cfg);
 
     for path in TILESET_OUTPUTS {
-        if let Some(parent) = Path::new(path).parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
-                error!(%error, output = %path, "failed to create tileset output directory");
-                std::process::exit(1);
-            }
+        if let Some(parent) = Path::new(path).parent()
+            && let Err(error) = fs::create_dir_all(parent)
+        {
+            error!(%error, output = %path, "failed to create tileset output directory");
+            std::process::exit(1);
         }
 
         if let Err(error) = atlas.save(path) {

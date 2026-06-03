@@ -10,14 +10,14 @@
 
 use std::path::Path;
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 use crate::error::TiledError;
+use engine::MapCoord;
 use engine::config::TileConfig;
 use engine::map::game_map::GameMap;
 use engine::map::tile::{Tile, Tiles};
-use engine::MapCoord;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -174,10 +174,8 @@ impl TmxParser {
                     }
                 }
 
-                if is_seed {
-                    if let Some(ref hex) = value {
-                        self.seed = hex_decode(hex)?;
-                    }
+                if is_seed && let Some(ref hex) = value {
+                    self.seed = hex_decode(hex)?;
                 }
 
                 if let (Some(active), Some(name), Some(value)) =

@@ -7,7 +7,6 @@
 //! Helper functions [`keccak256`] and [`derive_seed`] allow constructing
 //! child seeds for independent sub-systems (e.g. one seed per map chunk).
 
-use alloc::format;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 
