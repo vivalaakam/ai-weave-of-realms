@@ -27,9 +27,8 @@ use crate::map::tile::Tiles;
 use crate::map_coord::MapCoord;
 use crate::rng::SeededRng;
 use crate::score::{
-    CITY_EXPANSION_INTERVAL, CITY_INITIAL_RADIUS, CITY_TILE_POINTS, HERO_ALIVE_POINTS,
-    LAND_TILE_POINTS, RESOURCE_POINT_POINTS, ROD_EXPANSION_INTERVAL, ROD_POINTS, ScoreBoard,
-    ScoreBreakdown, ScoreEvent,
+    ScoreBoard, ScoreBreakdown, ScoreEvent, CITY_INITIAL_RADIUS,
+    CITY_TILE_POINTS, HERO_ALIVE_POINTS, LAND_TILE_POINTS, RESOURCE_POINT_POINTS, ROD_POINTS,
 };
 use crate::state_flood::flood_city;
 use crate::team::Team;
@@ -124,6 +123,11 @@ pub struct GameState {
     /// Session RNG, seeded at construction time.
     pub(crate) rng: SeededRng,
     pub(crate) hero_pointer: HeroId,
+    /// Global round counter. One round = every player-controlled team has taken
+    /// exactly one turn. Incremented by [`GameState::advance_turn`].
+    /// `#[serde(default)]` keeps older saves loadable (round=0 on load).
+    #[serde(default)]
+    round: u32,
 
     #[serde(default)]
     config: GameConfig,
@@ -155,6 +159,7 @@ impl GameState {
             teams_order: VecDeque::new(),
             rng: SeededRng::new(seed.as_ref()),
             hero_pointer: 0,
+            round: 0,
             config,
             hero_candidates,
         }
@@ -350,11 +355,14 @@ impl GameState {
     /// Must be called at the start of each team's turn, including the very first
     /// turn after game initialisation (so that turn 0 → 1 fires the same event as
     /// any subsequent team-turn start).
+    #[instrument(level = "info", skip(self))]
     pub fn on_turn(&mut self) -> Result<TurnEvent, EngineError> {
         let active_team_id = *self.get_active_team_id()?;
         let Some(team) = self.teams.get_mut(&active_team_id) else {
             return Err(EngineError::ActiveTeamNotFound(active_team_id));
         };
+
+        info!(team_id = active_team_id, "Starting turn");
 
         team.increment_turn();
         let team_id = team.get_id();
@@ -366,6 +374,12 @@ impl GameState {
             hero.reset_movement();
         }
 
+        self.grant_turn_income(team_id);
+        self.score.record_for(team_id, ScoreEvent::TurnSurvived);
+
+        self.expand_city_territory(team_id);
+        self.expand_rod_territory(team_id);
+
         Ok(TurnEvent::TeamTurnStarted { team_id, turn })
     }
 
@@ -374,7 +388,7 @@ impl GameState {
     /// add to the matching resource stockpile.
     ///
     /// Call this once when a team's turn begins (after [`on_turn`](Self::on_turn)).
-    pub fn grant_turn_income(&mut self, team_id: TeamId) -> TurnEvent {
+    fn grant_turn_income(&mut self, team_id: TeamId) -> TurnEvent {
         // Tally mine output first to avoid borrowing the team while reading the map.
         let mut gold = TURN_GOLD_INCOME;
         let mut resources = [0u32; 4];
@@ -822,39 +836,16 @@ impl GameState {
     /// Expansion grows in a circular (clock-wise sweep) pattern, picking the first
     /// unclaimed passable tile that borders the team's existing territory.
     pub fn advance_turn(&mut self) -> Vec<TurnEvent> {
-        let player_teams: BTreeSet<TeamId> =
-            self.teams.values().filter(|t| t.is_player_controlled()).map(|t| t.get_id()).collect();
+        // Bump per-team turn for every AI team so their expansion cadence
+        // (driven by per-team `turn` mod the expansion intervals) keeps moving.
+        // Player teams get their `turn` bumped in `on_turn` at the start of
+        // their own turn — calling it here would double-increment.
+        let team_turn_events: Vec<TurnEvent> = Vec::new();
 
-        for (_, hero) in self
-            .heroes
-            .iter_mut()
-            .filter(|(_, h)| h.is_alive() && !player_teams.contains(&h.team_id))
-        {
-            hero.reset_movement();
-        }
-
-        // Award survival points to each player team.
-        for &team_id in &player_teams {
-            self.score.record_for(team_id, ScoreEvent::TurnSurvived);
-        }
-
-        let mut events = vec![TurnEvent::TurnAdvanced { turn: 0 }];
-
-        // Territory expansion for all teams (player and AI).
-        let all_team_ids: Vec<TeamId> = self.teams.keys().copied().collect();
-        for team_id in all_team_ids {
-            let team_turn = self.teams.get(&team_id).map(|t| t.get_turn()).unwrap_or(0);
-
-            // City expansion.
-            if team_turn > 0 && team_turn.is_multiple_of(CITY_EXPANSION_INTERVAL) {
-                self.expand_city_territory(team_id, &mut events);
-            }
-
-            // Rod expansion.
-            if team_turn > 0 && team_turn.is_multiple_of(ROD_EXPANSION_INTERVAL) {
-                self.expand_rod_territory(team_id, &mut events);
-            }
-        }
+        // Advance the global round counter and announce it.
+        self.round += 1;
+        let mut events = vec![TurnEvent::TurnAdvanced { turn: self.round }];
+        events.extend(team_turn_events);
 
         events
     }
@@ -913,13 +904,16 @@ impl GameState {
     /// Expands territory from cities: claims one new tile per owned city,
     /// choosing randomly among the nearest boundary tiles of the team's
     /// territory "island".
-    fn expand_city_territory(&mut self, team_id: TeamId, events: &mut Vec<TurnEvent>) {
+    #[instrument(level = "info", skip(self))]
+    fn expand_city_territory(&mut self, team_id: TeamId) {
         let city_tiles: Vec<MapCoord> = self
             .city_owners
             .iter()
             .filter(|(_, owner)| **owner == team_id)
             .map(|(&coord, _)| coord)
             .collect();
+
+        info!(team_id, city_count = city_tiles.len(), "Expanding city territory");
 
         for city in city_tiles {
             let top = self.expansion_candidates(city, team_id);
@@ -929,13 +923,12 @@ impl GameState {
             let idx = self.rng.random_range_usize(0..top.len());
             let new_tile = top[idx];
             self.land_owners.insert(new_tile, team_id);
-            events.push(TurnEvent::CityTerritoryExpanded { team_id, new_tile });
         }
     }
 
     /// Expands territory from rods: claims one new tile per rod,
     /// choosing randomly among the nearest boundary tiles.
-    fn expand_rod_territory(&mut self, team_id: TeamId, events: &mut Vec<TurnEvent>) {
+    fn expand_rod_territory(&mut self, team_id: TeamId) {
         let rod_tiles: Vec<MapCoord> = self
             .resource_rods
             .iter()
@@ -951,7 +944,6 @@ impl GameState {
             let idx = self.rng.random_range_usize(0..top.len());
             let new_tile = top[idx];
             self.land_owners.insert(new_tile, team_id);
-            events.push(TurnEvent::RodTerritoryExpanded { team_id, new_tile });
         }
     }
 

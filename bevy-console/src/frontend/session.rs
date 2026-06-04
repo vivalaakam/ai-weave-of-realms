@@ -1,8 +1,9 @@
-use engine::Direction;
-use engine::MapCoord;
 use engine::error::EngineError;
 use engine::game_state::GameState;
 use engine::hero::HeroId;
+use engine::Direction;
+use engine::MapCoord;
+use tracing::instrument;
 
 /// Runtime game session stored by frontend clients.
 pub struct GameSession {
@@ -99,21 +100,21 @@ impl GameSession {
     ///
     /// If the next team has no heroes yet (e.g. player needs to hire one),
     /// `selected_hero_id` becomes `None`.
+    #[instrument(level = "info", skip(self))]
     pub fn end_turn(&mut self) -> Result<String, EngineError> {
-        // Finish the current team's turn (reset movement, increment turn counter).
-        self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
-
-        // Rotate to the next player-controlled team.
+        // Rotate to the next player-controlled team. The current team's turn
+        // has already ended by the user clicking "End Turn" — no extra
+        // bookkeeping needed for it.
         let next_team = self
             .state
             .get_next_active_team()
             .map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
 
-        // Start the new team's turn (reset movement, increment turn counter).
+        // Start the new team's turn: increment its per-team counter and
+        // reset movement for its living heroes. This is the only `on_turn`
+        // call per end-turn click — calling it twice (once for the old team,
+        // once for the new one) caused the turn counter to advance by +2.
         self.state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
-
-        // Grant the new team its start-of-turn income (base gold + mine output).
-        self.state.grant_turn_income(next_team);
 
         // Select the first hero of the new team, if one exists.
         self.selected_hero_id = self.state.get_next_hero(next_team);
