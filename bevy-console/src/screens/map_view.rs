@@ -1,18 +1,19 @@
 use crate::atlas::{TeamLogoImages, TileAtlas};
 use crate::input::{InputCooldown, UiAction};
 use crate::input_event::InputEvent;
-use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
+use crate::screens::AppState;
+use ai::{AiAction, AiContext, AiFactory, AiStrategyKind};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use engine::MapCoord;
 use engine::config::{TeamLogo, TileConfig};
 use engine::error::EngineError;
-use engine::game_state::{GameState, ROD_COST};
-use engine::hero::HeroId;
-use engine::map::game_map::{Direction as MapDir, RESOURCE_KIND_COUNT, ResourceKind};
+use engine::game_state::{GameState, TurnIncome, TurnStartReport, ROD_COST};
+use engine::hero::{HeroId, TeamId};
+use engine::map::game_map::{Direction as MapDir, ResourceKind, RESOURCE_KIND_COUNT};
 use engine::map::tile::Tiles;
-use std::collections::{BTreeSet, VecDeque};
+use engine::MapCoord;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 #[derive(Component)]
 pub struct MapViewRoot;
@@ -24,10 +25,16 @@ pub struct EndTurnOverlay;
 pub struct PauseOverlay;
 
 #[derive(Component)]
+pub struct TurnStartOverlay;
+
+#[derive(Component)]
 pub struct EndTurnConfirmButton;
 
 #[derive(Component)]
 pub struct EndTurnCancelButton;
+
+#[derive(Component)]
+pub struct TurnStartConfirmButton;
 
 #[derive(Component)]
 pub struct PauseResumeButton;
@@ -173,9 +180,49 @@ pub struct MapViewState {
     pub atlas_image: Handle<Image>,
     /// Handle to the tile atlas layout.
     pub atlas_layout: Handle<TextureAtlasLayout>,
+    pub ai_turn_state: AiTurnState,
+    pub ai_default_strategy: AiStrategyKind,
+    pub ai_strategies: BTreeMap<TeamId, AiStrategyKind>,
+    pub turn_start_overlay: bool,
+    pub pending_defeat_skip: bool,
+    pub defeated_teams: BTreeSet<TeamId>,
+}
+
+struct AiTurnState {
+    running: bool,
+    active_team: Option<TeamId>,
+    pending_actions: VecDeque<AiAction>,
+    timer: Timer,
+    strategy_name: Option<&'static str>,
+}
+
+impl Default for AiTurnState {
+    fn default() -> Self {
+        Self {
+            running: false,
+            active_team: None,
+            pending_actions: VecDeque::new(),
+            timer: Timer::from_seconds(AI_STEP_SECONDS, TimerMode::Repeating),
+            strategy_name: None,
+        }
+    }
+}
+
+impl AiTurnState {
+    fn reset(&mut self) {
+        self.running = false;
+        self.active_team = None;
+        self.pending_actions.clear();
+        self.timer.reset();
+        self.strategy_name = None;
+    }
 }
 
 impl MapViewState {
+    fn strategy_for_team(&self, team_id: TeamId) -> AiStrategyKind {
+        self.ai_strategies.get(&team_id).copied().unwrap_or(self.ai_default_strategy)
+    }
+
     pub fn load_state(&mut self, state: GameState) {
         self.state = Some(state);
         self.selected_hero_id = self.state.as_ref().and_then(select_hero);
@@ -184,6 +231,10 @@ impl MapViewState {
         self.cursor_x = 0;
         self.cursor_y = 0;
         self.status = None;
+        self.ai_turn_state.reset();
+        self.turn_start_overlay = false;
+        self.pending_defeat_skip = false;
+        self.defeated_teams.clear();
         self.sync_cursor_to_hero();
     }
 
@@ -219,9 +270,7 @@ impl MapViewState {
     ) -> Result<MapCoord, EngineError> {
         {
             let state = self.state.as_mut().ok_or_else(missing_state_error)?;
-            let id = self
-                .selected_hero_id
-                .ok_or_else(|| EngineError::InvalidTiles("no hero selected".to_string()))?;
+            let id = self.selected_hero_id.ok_or(EngineError::NoSelectedHero)?;
             state.move_hero(id, direction)?;
         }
         Ok(self.selected_hero_position())
@@ -230,9 +279,7 @@ impl MapViewState {
     pub fn place_resource_rod(&mut self) -> Result<MapCoord, EngineError> {
         {
             let state = self.state.as_mut().ok_or_else(missing_state_error)?;
-            let id = self
-                .selected_hero_id
-                .ok_or_else(|| EngineError::InvalidTiles("no hero selected".to_string()))?;
+            let id = self.selected_hero_id.ok_or(EngineError::NoSelectedHero)?;
             state.place_resource_rod(id)?;
         }
         Ok(self.selected_hero_position())
@@ -254,19 +301,18 @@ impl MapViewState {
         }
     }
 
-    pub fn end_turn(&mut self) -> Result<String, EngineError> {
-        {
+    pub fn end_turn(&mut self) -> Result<TurnStartReport, EngineError> {
+        let report = {
             let state = self.state.as_mut().ok_or_else(missing_state_error)?;
-            let next_team = state
-                .get_next_active_team()
-                .map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
-            state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
+            let next_team = state.get_next_active_team()?;
+            let report = state.on_turn()?;
             self.selected_hero_id = state.get_next_hero(next_team);
             if let Some(next) = self.selected_hero_id {
                 state.set_active_hero(next_team, Some(next));
             }
-        }
-        Ok(self.summary())
+            report
+        };
+        Ok(report)
     }
 
     pub fn summary(&self) -> String {
@@ -503,6 +549,23 @@ impl MapViewState {
         self.state.as_ref()?.hero_at(&coord).map(|hero| hero.get_id())
     }
 
+    fn attack_cursor_hero(&mut self) -> Result<(), EngineError> {
+        let attacker_id = self.selected_hero_id.ok_or(EngineError::NoSelectedHero)?;
+        let coord = self.cursor_coord().ok_or(EngineError::NoTargetCoord)?;
+        let defender_id = {
+            let state = self.state.as_ref().ok_or_else(missing_state_error)?;
+            state.can_attack(attacker_id, coord)?
+        };
+        let state = self.state.as_mut().ok_or_else(missing_state_error)?;
+        let events = state.attack_hero(attacker_id, defender_id)?;
+        let defeated = events
+            .iter()
+            .any(|event| matches!(event, engine::game_state::TurnEvent::HeroDefeated { .. }));
+        let status = if defeated { "Combat resolved (defeat)" } else { "Combat resolved" };
+        self.status = Some(status.to_string());
+        Ok(())
+    }
+
     pub fn handle_input(
         &mut self,
         event: InputEvent,
@@ -547,7 +610,26 @@ impl MapViewState {
                 if let Some(info) = self.cursor_structure() {
                     MapViewOutcome::OpenStructureOverlay { name: info.name }
                 } else if self.cursor_hero_id().is_some() {
-                    MapViewOutcome::OpenHeroInfo
+                    let can_attack = self
+                        .state
+                        .as_ref()
+                        .and_then(|state| {
+                            let attacker_id = self.selected_hero_id?;
+                            let coord = self.cursor_coord()?;
+                            state.can_attack(attacker_id, coord).ok()
+                        })
+                        .is_some();
+                    if can_attack {
+                        match self.attack_cursor_hero() {
+                            Ok(()) => MapViewOutcome::Changed,
+                            Err(e) => {
+                                self.status = Some(e.to_string());
+                                MapViewOutcome::Changed
+                            }
+                        }
+                    } else {
+                        MapViewOutcome::OpenHeroInfo
+                    }
                 } else {
                     MapViewOutcome::NoChange
                 }
@@ -736,6 +818,27 @@ impl MapViewState {
         self.view_y = target_y;
         changed
     }
+
+    pub fn focus_on_team_city(
+        &mut self,
+        team_id: TeamId,
+        visible_cols: usize,
+        visible_rows: usize,
+    ) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        let coord =
+            state.city_entrance_for_team(team_id).or_else(|| state.city_owner_for_team(team_id));
+        if let Some(coord) = coord {
+            self.cursor_x = coord.x as isize;
+            self.cursor_y = coord.y as isize;
+            self.scroll_cursor_into_view(visible_cols, visible_rows);
+            return self.center_on_hero(visible_cols, visible_rows);
+        }
+        self.sync_cursor_to_hero();
+        self.center_on_hero(visible_cols, visible_rows)
+    }
 }
 
 const TEXT_COLOR: Color = Color::srgb(0.85, 0.85, 0.88);
@@ -755,6 +858,7 @@ const BTN_BORDER_SELECTED: Color = Color::srgb(0.7, 0.7, 0.78);
 const BTN_BORDER_PRESSED: Color = Color::srgb(0.65, 0.65, 0.72);
 
 const RESOURCE_ROD_ATLAS_INDEX: usize = 344;
+const AI_STEP_SECONDS: f32 = 0.3;
 
 /// Fallback color for heroes whose team is not found.
 const HERO_COLOR: Color = Color::srgb(1.0, 1.0, 1.0);
@@ -792,12 +896,18 @@ impl Default for MapViewState {
             last_mouse_tile: None,
             atlas_image: Handle::default(),
             atlas_layout: Handle::default(),
+            ai_turn_state: AiTurnState::default(),
+            ai_default_strategy: AiStrategyKind::ResourceRush,
+            ai_strategies: BTreeMap::new(),
+            turn_start_overlay: false,
+            pending_defeat_skip: false,
+            defeated_teams: BTreeSet::new(),
         }
     }
 }
 
 fn missing_state_error() -> EngineError {
-    EngineError::InvalidTiles("no game state loaded".to_string())
+    EngineError::NoGameStateLoaded
 }
 
 fn select_hero(state: &GameState) -> Option<HeroId> {
@@ -820,12 +930,6 @@ fn tile_color_for(kind: Tiles, tile_config: &TileConfig) -> Color {
 
 fn rgb_color(r: u8, g: u8, b: u8) -> Color {
     Color::srgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
-}
-
-/// City tiles (the city body and its entrance) are tinted by ownership:
-/// the owning team's color, or magenta when neutral.
-fn is_city_tile(kind: Tiles) -> bool {
-    matches!(kind, Tiles::City | Tiles::CityEntrance)
 }
 
 fn tile_atlas_index(kind: Tiles, tile_config: &TileConfig) -> usize {
@@ -1289,6 +1393,156 @@ fn spawn_end_turn_overlay(commands: &mut Commands, team_name: &str) {
         });
 }
 
+fn spawn_turn_start_overlay(
+    commands: &mut Commands,
+    team_name: &str,
+    income: TurnIncome,
+    atlas_image: &Handle<Image>,
+    atlas_layout: &Handle<TextureAtlasLayout>,
+    tile_config: &TileConfig,
+) {
+    let resource_icons = resource_icon_indices(tile_config);
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(OVERLAY_BG),
+            TurnStartOverlay,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(420.0),
+                        height: Val::Px(240.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(14.0),
+                        border: UiRect::all(Val::Px(2.0)),
+                        ..default()
+                    },
+                    BackgroundColor(OVERLAY_PANEL_BG),
+                    BorderColor::all(OVERLAY_PANEL_BORDER),
+                ))
+                .with_children(|panel| {
+                    panel.spawn((
+                        Text::new(format!("Turn start: {team_name}")),
+                        TextFont { font_size: FontSize::Px(22.0), ..default() },
+                        TextColor(TEXT_COLOR),
+                    ));
+                    panel.spawn((
+                        Text::new(format!("Income: +{} gold", income.gold)),
+                        TextFont { font_size: FontSize::Px(18.0), ..default() },
+                        TextColor(GOLD_COLOR),
+                    ));
+                    panel
+                        .spawn((
+                            Node {
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Center,
+                                column_gap: Val::Px(10.0),
+                                row_gap: Val::Px(8.0),
+                                ..default()
+                            },
+                        ))
+                        .with_children(|row| {
+                            for (idx, icon) in resource_icons.iter().enumerate() {
+                                row.spawn((
+                                    ImageNode {
+                                        image: atlas_image.clone(),
+                                        texture_atlas: Some(TextureAtlas {
+                                            layout: atlas_layout.clone(),
+                                            index: *icon as usize,
+                                        }),
+                                        ..default()
+                                    },
+                                    Node { width: Val::Px(18.0), height: Val::Px(18.0), ..default() },
+                                ));
+                                row.spawn((
+                                    Text::new(format!("+{}", income.resources[idx])),
+                                    TextFont { font_size: FontSize::Px(16.0), ..default() },
+                                    TextColor(TEXT_COLOR),
+                                ));
+                            }
+                        });
+                    panel.spawn((
+                        Button,
+                        TurnStartConfirmButton,
+                        button_node(200.0, 50.0),
+                        BackgroundColor(BTN_BG_SELECTED),
+                        BorderColor::all(BTN_BORDER_SELECTED),
+                        children![(
+                            Text::new("Start"),
+                            TextFont { font_size: FontSize::Px(18.0), ..default() },
+                            TextColor(TEXT_COLOR),
+                        )],
+                    ));
+                });
+        });
+}
+
+fn spawn_turn_defeat_overlay(commands: &mut Commands, team_name: &str) {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(OVERLAY_BG),
+            TurnStartOverlay,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(420.0),
+                        height: Val::Px(220.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(14.0),
+                        border: UiRect::all(Val::Px(2.0)),
+                        ..default()
+                    },
+                    BackgroundColor(OVERLAY_PANEL_BG),
+                    BorderColor::all(OVERLAY_PANEL_BORDER),
+                ))
+                .with_children(|panel| {
+                    panel.spawn((
+                        Text::new(format!("Team {team_name} defeated")),
+                        TextFont { font_size: FontSize::Px(22.0), ..default() },
+                        TextColor(TEXT_COLOR),
+                    ));
+                    panel.spawn((
+                        Text::new("No cities and no heroes left."),
+                        TextFont { font_size: FontSize::Px(16.0), ..default() },
+                        TextColor(TEXT_COLOR),
+                    ));
+                    panel.spawn((
+                        Button,
+                        TurnStartConfirmButton,
+                        button_node(200.0, 50.0),
+                        BackgroundColor(BTN_BG_SELECTED),
+                        BorderColor::all(BTN_BORDER_SELECTED),
+                        children![(
+                            Text::new("Continue"),
+                            TextFont { font_size: FontSize::Px(18.0), ..default() },
+                            TextColor(TEXT_COLOR),
+                        )],
+                    ));
+                });
+        });
+}
+
 fn spawn_pause_overlay(commands: &mut Commands) {
     commands
         .spawn((
@@ -1384,6 +1638,238 @@ fn update_button_style(
     }
 }
 
+fn handle_ai_turn(
+    commands: &mut Commands,
+    map_view_state: &mut MapViewState,
+    time: &Time,
+    visible_cols: usize,
+    visible_rows: usize,
+) -> bool {
+    let Some(state) = map_view_state.state.as_ref() else {
+        map_view_state.ai_turn_state.reset();
+        return false;
+    };
+    let Ok(&team_id) = state.get_active_team_id() else {
+        map_view_state.ai_turn_state.reset();
+        return false;
+    };
+    if state.is_player_controlled(team_id) {
+        map_view_state.ai_turn_state.reset();
+        return false;
+    }
+
+    if !map_view_state.ai_turn_state.running
+        || map_view_state.ai_turn_state.active_team != Some(team_id)
+    {
+        let ctx = AiContext { team_id, state };
+        let strategy_kind = map_view_state.strategy_for_team(team_id);
+        let factory = AiFactory::new(strategy_kind);
+        let mut strategy = factory.build(team_id);
+        let strategy_name = strategy.name();
+        let actions = strategy.plan(&ctx);
+        map_view_state.ai_turn_state.running = true;
+        map_view_state.ai_turn_state.active_team = Some(team_id);
+        map_view_state.ai_turn_state.pending_actions = VecDeque::from(actions);
+        map_view_state.ai_turn_state.timer.reset();
+        map_view_state.ai_turn_state.strategy_name = Some(strategy_name);
+        let team_name = state.team_name_by_id(team_id).unwrap_or("CPU");
+        map_view_state.set_status(Some(format!("CPU {team_name}: {strategy_name}")));
+    }
+
+    map_view_state.ai_turn_state.timer.tick(time.delta());
+    if map_view_state.ai_turn_state.timer.just_finished() {
+        if let Some(action) = map_view_state.ai_turn_state.pending_actions.pop_front() {
+            let ended = execute_ai_action(
+                commands,
+                map_view_state,
+                team_id,
+                action,
+                visible_cols,
+                visible_rows,
+            );
+            if ended {
+                map_view_state.ai_turn_state.reset();
+            }
+        } else {
+            finish_ai_turn(commands, map_view_state, visible_cols, visible_rows);
+            map_view_state.ai_turn_state.reset();
+        }
+    }
+
+    true
+}
+
+fn execute_ai_action(
+    commands: &mut Commands,
+    map_view_state: &mut MapViewState,
+    team_id: TeamId,
+    action: AiAction,
+    visible_cols: usize,
+    visible_rows: usize,
+) -> bool {
+    let mut handled = false;
+    let mut ended_turn = false;
+    match action {
+        AiAction::Move { hero_id, direction } => {
+            map_view_state.set_selected_hero_id(hero_id);
+            if let Some(state) = map_view_state.get_game_state_mut() {
+                state.set_active_hero(team_id, Some(hero_id));
+            }
+            match map_view_state.move_selected_hero(direction) {
+                Ok(_) => handled = true,
+                Err(e) => map_view_state.set_status(Some(e.to_string())),
+            }
+        }
+        AiAction::PlaceRod { hero_id } => {
+            map_view_state.set_selected_hero_id(hero_id);
+            if let Some(state) = map_view_state.get_game_state_mut() {
+                state.set_active_hero(team_id, Some(hero_id));
+            }
+            match map_view_state.place_resource_rod() {
+                Ok(_) => handled = true,
+                Err(e) => map_view_state.set_status(Some(e.to_string())),
+            }
+        }
+        AiAction::HireHero { candidate_idx, coord } => {
+            let mut hired_id = None;
+            if let Some(state) = map_view_state.get_game_state_mut() {
+                if let Some(candidate) = state.get_hero_candidate_at(candidate_idx).cloned() {
+                    match state.hire_hero(&candidate, &coord) {
+                        Ok(hero_id) => {
+                            state.set_active_hero(team_id, Some(hero_id));
+                            hired_id = Some(hero_id);
+                        }
+                        Err(e) => map_view_state.set_status(Some(e.to_string())),
+                    }
+                }
+            }
+            if let Some(hero_id) = hired_id {
+                map_view_state.set_selected_hero_id(hero_id);
+                handled = true;
+            }
+        }
+        AiAction::Attack { attacker_id, defender_id } => {
+            map_view_state.set_selected_hero_id(attacker_id);
+            if let Some(state) = map_view_state.get_game_state_mut() {
+                state.set_active_hero(team_id, Some(attacker_id));
+                match state.attack_hero(attacker_id, defender_id) {
+                    Ok(_) => handled = true,
+                    Err(e) => map_view_state.set_status(Some(e.to_string())),
+                }
+            }
+        }
+        AiAction::EndTurn => {
+            finish_ai_turn(commands, map_view_state, visible_cols, visible_rows);
+            ended_turn = true;
+        }
+    }
+
+    if handled {
+        map_view_state.sync_cursor_to_hero();
+        map_view_state.center_on_hero(visible_cols, visible_rows);
+        map_view_state.needs_initial_draw = true;
+    }
+
+    ended_turn
+}
+
+fn finish_ai_turn(
+    commands: &mut Commands,
+    map_view_state: &mut MapViewState,
+    visible_cols: usize,
+    visible_rows: usize,
+) {
+    advance_turn_with_skips(commands, map_view_state, visible_cols, visible_rows);
+}
+
+fn advance_turn_with_skips(
+    commands: &mut Commands,
+    map_view_state: &mut MapViewState,
+    visible_cols: usize,
+    visible_rows: usize,
+) {
+    let mut guard = 0;
+    loop {
+        guard += 1;
+        if guard > 32 {
+            map_view_state.set_status(Some("Turn skip loop detected".to_string()));
+            break;
+        }
+        match map_view_state.end_turn() {
+            Ok(report) => {
+                map_view_state.end_turn_overlay = false;
+                let action =
+                    handle_turn_start(commands, map_view_state, report, visible_cols, visible_rows);
+                if action == TurnStartAction::Skip {
+                    continue;
+                }
+                break;
+            }
+            Err(e) => {
+                map_view_state.set_status(Some(e.to_string()));
+                break;
+            }
+        }
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum TurnStartAction {
+    Done,
+    Skip,
+}
+
+fn handle_turn_start(
+    commands: &mut Commands,
+    map_view_state: &mut MapViewState,
+    report: TurnStartReport,
+    visible_cols: usize,
+    visible_rows: usize,
+) -> TurnStartAction {
+    let (team_name, is_player, defeated) = match map_view_state.state.as_ref() {
+        Some(state) => (
+            state.team_name_by_id(report.team_id).unwrap_or("Unknown").to_string(),
+            state.is_player_controlled(report.team_id),
+            state.is_team_defeated(report.team_id),
+        ),
+        None => return TurnStartAction::Done,
+    };
+    let team_id = report.team_id;
+
+    map_view_state.focus_on_team_city(team_id, visible_cols, visible_rows);
+    map_view_state.needs_initial_draw = true;
+    map_view_state.set_status(Some(map_view_state.summary()));
+
+    if defeated {
+        let already_notified = map_view_state.defeated_teams.contains(&team_id);
+        map_view_state.defeated_teams.insert(team_id);
+        if is_player && !already_notified {
+            map_view_state.turn_start_overlay = true;
+            map_view_state.pending_defeat_skip = true;
+            spawn_turn_defeat_overlay(commands, &team_name);
+            return TurnStartAction::Done;
+        }
+        return TurnStartAction::Skip;
+    }
+
+    if is_player {
+        map_view_state.turn_start_overlay = true;
+        if let Some(state) = map_view_state.state.as_ref() {
+            spawn_turn_start_overlay(
+                commands,
+                &team_name,
+                report.income,
+                &map_view_state.atlas_image,
+                &map_view_state.atlas_layout,
+                state.tile_config(),
+            );
+        }
+    } else {
+        map_view_state.turn_start_overlay = false;
+    }
+    TurnStartAction::Done
+}
+
 /// Per-tile sprite layers plus the assets needed to draw team logos, bundled to
 /// keep [`update_map_view`] under the system parameter limit.
 #[allow(clippy::type_complexity)]
@@ -1443,6 +1929,35 @@ struct TileLayers<'w, 's> {
 }
 
 #[allow(clippy::type_complexity)]
+#[derive(SystemParam)]
+struct OverlayQueries<'w, 's> {
+    turn_start: Query<'w, 's, Entity, With<TurnStartOverlay>>,
+    end_turn: Query<'w, 's, Entity, With<EndTurnOverlay>>,
+    pause: Query<'w, 's, Entity, With<PauseOverlay>>,
+    buttons: Query<
+        'w,
+        's,
+        (
+            Option<&'static TurnStartConfirmButton>,
+            Option<&'static EndTurnConfirmButton>,
+            Option<&'static EndTurnCancelButton>,
+            Option<&'static PauseResumeButton>,
+            Option<&'static PauseQuitButton>,
+            &'static mut BackgroundColor,
+            &'static mut BorderColor,
+            &'static Interaction,
+        ),
+        Or<(
+            With<TurnStartConfirmButton>,
+            With<EndTurnConfirmButton>,
+            With<EndTurnCancelButton>,
+            With<PauseResumeButton>,
+            With<PauseQuitButton>,
+        )>,
+    >,
+}
+
+#[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
 fn update_map_view(
     mut commands: Commands,
@@ -1466,25 +1981,7 @@ fn update_map_view(
     time: Res<Time>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     window: Single<&Window>,
-    end_turn_q: Query<Entity, With<EndTurnOverlay>>,
-    pause_q: Query<Entity, With<PauseOverlay>>,
-    mut overlay_btns: Query<
-        (
-            Option<&EndTurnConfirmButton>,
-            Option<&EndTurnCancelButton>,
-            Option<&PauseResumeButton>,
-            Option<&PauseQuitButton>,
-            &mut BackgroundColor,
-            &mut BorderColor,
-            &Interaction,
-        ),
-        Or<(
-            With<EndTurnConfirmButton>,
-            With<EndTurnCancelButton>,
-            With<PauseResumeButton>,
-            With<PauseQuitButton>,
-        )>,
-    >,
+    mut overlays: OverlayQueries,
 ) {
     let visible_cols = map_view_state.visible_cols;
     let visible_rows = map_view_state.visible_rows;
@@ -1492,8 +1989,61 @@ fn update_map_view(
     if !map_view_state.has_state() {
         return;
     }
+
+    if handle_ai_turn(&mut commands, &mut map_view_state, &time, visible_cols, visible_rows) {
+        return;
+    }
+
     let actions: Vec<UiAction> = reader.read().copied().collect();
     let frame = |action: UiAction| actions.contains(&action);
+
+    // ── Turn-start overlay input handling ─────────────────────────────────
+    if map_view_state.turn_start_overlay {
+        if frame(UiAction::Confirm) || frame(UiAction::Cancel) {
+            if let Some(entity) = overlays.turn_start.iter().next() {
+                commands.entity(entity).despawn();
+            }
+            map_view_state.turn_start_overlay = false;
+            if map_view_state.pending_defeat_skip {
+                map_view_state.pending_defeat_skip = false;
+                advance_turn_with_skips(
+                    &mut commands,
+                    &mut map_view_state,
+                    visible_cols,
+                    visible_rows,
+                );
+            }
+            return;
+        }
+
+        for (turn_start_btn, _, _, _, _, mut bg, mut border, interaction) in
+            overlays.buttons.iter_mut()
+        {
+            if turn_start_btn.is_none() {
+                continue;
+            }
+            update_button_style(true, interaction, &mut bg, &mut border);
+            let clicked = frame(UiAction::Confirm);
+            let pressed = matches!(interaction, Interaction::Pressed);
+            if clicked || pressed {
+                if let Some(entity) = overlays.turn_start.iter().next() {
+                    commands.entity(entity).despawn();
+                }
+                map_view_state.turn_start_overlay = false;
+                if map_view_state.pending_defeat_skip {
+                    map_view_state.pending_defeat_skip = false;
+                    advance_turn_with_skips(
+                        &mut commands,
+                        &mut map_view_state,
+                        visible_cols,
+                        visible_rows,
+                    );
+                }
+                return;
+            }
+        }
+        return;
+    }
 
     // ── Pause overlay input handling ──────────────────────────────────────
     if map_view_state.pause_overlay {
@@ -1508,7 +2058,7 @@ fn update_map_view(
 
         // Esc always resumes
         if frame(UiAction::Cancel) {
-            if let Some(entity) = pause_q.iter().next() {
+            if let Some(entity) = overlays.pause.iter().next() {
                 commands.entity(entity).despawn();
             }
             map_view_state.pause_overlay = false;
@@ -1518,9 +2068,12 @@ fn update_map_view(
 
         // Update button styles and handle clicks
         let sel = map_view_state.pause_selected;
-        for (et_confirm, et_cancel, resume_opt, quit_opt, mut bg, mut border, interaction) in
-            overlay_btns.iter_mut()
+        for (turn_start_btn, et_confirm, et_cancel, resume_opt, quit_opt, mut bg, mut border, interaction) in
+            overlays.buttons.iter_mut()
         {
+            if turn_start_btn.is_some() {
+                continue;
+            }
             if et_confirm.is_some() || et_cancel.is_some() {
                 continue;
             }
@@ -1534,7 +2087,7 @@ fn update_map_view(
             let pressed = matches!(interaction, Interaction::Pressed);
             if clicked || pressed {
                 if resume_opt.is_some() {
-                    if let Some(entity) = pause_q.iter().next() {
+                    if let Some(entity) = overlays.pause.iter().next() {
                         commands.entity(entity).despawn();
                     }
                     map_view_state.pause_overlay = false;
@@ -1542,7 +2095,7 @@ fn update_map_view(
                     return;
                 }
                 if quit_opt.is_some() {
-                    if let Some(entity) = pause_q.iter().next() {
+                    if let Some(entity) = overlays.pause.iter().next() {
                         commands.entity(entity).despawn();
                     }
                     map_view_state.pause_overlay = false;
@@ -1569,7 +2122,7 @@ fn update_map_view(
 
         // Esc cancels
         if frame(UiAction::Cancel) {
-            if let Some(entity) = end_turn_q.iter().next() {
+            if let Some(entity) = overlays.end_turn.iter().next() {
                 commands.entity(entity).despawn();
             }
             map_view_state.end_turn_overlay = false;
@@ -1579,30 +2132,23 @@ fn update_map_view(
 
         // NextTurn action always confirms (fast action)
         if frame(UiAction::NextTurn) {
-            if let Some(entity) = end_turn_q.iter().next() {
+            if let Some(entity) = overlays.end_turn.iter().next() {
                 commands.entity(entity).despawn();
             }
             map_view_state.end_turn_overlay = false;
             map_view_state.end_turn_selected = 0;
-            match map_view_state.end_turn() {
-                Ok(summary) => {
-                    map_view_state.set_status(Some(summary));
-                }
-                Err(e) => {
-                    map_view_state.set_status(Some(e.to_string()));
-                }
-            }
-            map_view_state.sync_cursor_to_hero();
-            map_view_state.center_on_hero(visible_cols, visible_rows);
-            map_view_state.needs_initial_draw = true;
+            advance_turn_with_skips(&mut commands, &mut map_view_state, visible_cols, visible_rows);
             return;
         }
 
         // Update button styles and handle clicks
         let sel = map_view_state.end_turn_selected;
-        for (confirm_opt, cancel_opt, p_resume, p_quit, mut bg, mut border, interaction) in
-            overlay_btns.iter_mut()
+        for (turn_start_btn, confirm_opt, cancel_opt, p_resume, p_quit, mut bg, mut border, interaction) in
+            overlays.buttons.iter_mut()
         {
+            if turn_start_btn.is_some() {
+                continue;
+            }
             if p_resume.is_some() || p_quit.is_some() {
                 continue;
             }
@@ -1616,26 +2162,21 @@ fn update_map_view(
             let button_pressed = matches!(interaction, Interaction::Pressed);
             if clicked || button_pressed {
                 if confirm_opt.is_some() {
-                    if let Some(entity) = end_turn_q.iter().next() {
+                    if let Some(entity) = overlays.end_turn.iter().next() {
                         commands.entity(entity).despawn();
                     }
                     map_view_state.end_turn_overlay = false;
                     map_view_state.end_turn_selected = 0;
-                    match map_view_state.end_turn() {
-                        Ok(summary) => {
-                            map_view_state.set_status(Some(summary));
-                        }
-                        Err(e) => {
-                            map_view_state.set_status(Some(e.to_string()));
-                        }
-                    }
-                    map_view_state.sync_cursor_to_hero();
-                    map_view_state.center_on_hero(visible_cols, visible_rows);
-                    map_view_state.needs_initial_draw = true;
+                    advance_turn_with_skips(
+                        &mut commands,
+                        &mut map_view_state,
+                        visible_cols,
+                        visible_rows,
+                    );
                     return;
                 }
                 if cancel_opt.is_some() {
-                    if let Some(entity) = end_turn_q.iter().next() {
+                    if let Some(entity) = overlays.end_turn.iter().next() {
                         commands.entity(entity).despawn();
                     }
                     map_view_state.end_turn_overlay = false;
@@ -1801,6 +2342,15 @@ fn update_map_view(
     }
 
     let status_text = map_view_state.status().unwrap_or("").to_string();
+    let team_name = map_view_state
+        .get_game_state()
+        .and_then(|state| state.get_active_team().ok().map(|t| t.get_name()))
+        .unwrap_or("Unknown");
+    let status_text = if status_text.is_empty() {
+        format!("Turn: {team_name}")
+    } else {
+        format!("Turn: {team_name} | {status_text}")
+    };
     for mut text in status_query.iter_mut() {
         text.0 = status_text.clone();
     }
@@ -1874,8 +2424,8 @@ fn update_map_view(
             // rod: an explicit resource node, or a bare Gold/Resource tile (e.g.
             // mines loaded from a Tiled map that carries no resource nodes).
             // Tint it by its owner so a captured mine matches its claimed land.
-            let is_resource_point = resource_node.is_some()
-                || tile.map(|t| matches!(t.kind, Tiles::Gold | Tiles::Resource)).unwrap_or(false);
+            let is_resource_point =
+                resource_node.is_some() || tile.map(|t| t.is_resource()).unwrap_or(false);
             sprite.color = match (tile, is_resource_point) {
                 (_, true) => match state.resource_owner(coord) {
                     Some(team_id) => state
@@ -1887,7 +2437,7 @@ fn update_map_view(
                         .unwrap_or(NEUTRAL_RESOURCE_COLOR),
                     None => NEUTRAL_RESOURCE_COLOR,
                 },
-                (Some(t), false) if is_city_tile(t.kind) => {
+                (Some(t), false) if t.is_city() => {
                     match state.city_owner(&coord) {
                         // The owned city centre cell is hidden so the team logo
                         // overlay (CityLogoTile layer) takes its place; the rest of
@@ -2035,6 +2585,7 @@ fn exit_map_view(
     cursor_query: Query<Entity, With<CursorOverlay>>,
     pause_query: Query<Entity, With<PauseOverlay>>,
     end_turn_query: Query<Entity, With<EndTurnOverlay>>,
+    turn_start_query: Query<Entity, With<TurnStartOverlay>>,
     mut map_view_state: ResMut<MapViewState>,
 ) {
     for entity in query.iter() {
@@ -2064,6 +2615,13 @@ fn exit_map_view(
     for entity in end_turn_query.iter() {
         commands.entity(entity).despawn();
     }
+    for entity in turn_start_query.iter() {
+        commands.entity(entity).despawn();
+    }
     map_view_state.pause_overlay = false;
     map_view_state.end_turn_overlay = false;
+    map_view_state.turn_start_overlay = false;
+    map_view_state.ai_turn_state.reset();
+    map_view_state.pending_defeat_skip = false;
+    map_view_state.defeated_teams.clear();
 }

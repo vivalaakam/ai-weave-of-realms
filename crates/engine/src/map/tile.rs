@@ -168,6 +168,14 @@ impl Tile {
     pub fn new(kind: Tiles) -> Self {
         Self { kind }
     }
+
+    pub fn is_city(&self) -> bool {
+        matches!(self.kind, Tiles::City | Tiles::CityEntrance)
+    }
+
+    pub fn is_resource(&self) -> bool {
+        matches!(self.kind, Tiles::Gold | Tiles::Resource)
+    }
 }
 
 impl Default for Tile {

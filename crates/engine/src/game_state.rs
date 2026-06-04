@@ -22,7 +22,7 @@ use crate::entrance_info::EntranceInfo;
 use crate::error::EngineError;
 use crate::hero::{Hero, HeroId, TeamId};
 use crate::hero_candidate::HeroCandidate;
-use crate::map::game_map::{Direction, GameMap, ResourceKind};
+use crate::map::game_map::{Direction, GameMap, ResourceKind, RESOURCE_KIND_COUNT};
 use crate::map::tile::Tiles;
 use crate::map_coord::MapCoord;
 use crate::rng::SeededRng;
@@ -93,6 +93,21 @@ pub enum TurnEvent {
     CityTerritoryExpanded { team_id: TeamId, new_tile: MapCoord },
     /// Territory around a rod expanded by one tile.
     RodTerritoryExpanded { team_id: TeamId, new_tile: MapCoord },
+}
+
+/// Start-of-turn income, including gold and resources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TurnIncome {
+    pub gold: u32,
+    pub resources: [u32; RESOURCE_KIND_COUNT],
+}
+
+/// Summary of a team starting its turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TurnStartReport {
+    pub team_id: TeamId,
+    pub turn: u32,
+    pub income: TurnIncome,
 }
 
 // ─── GameState ────────────────────────────────────────────────────────────────
@@ -231,8 +246,15 @@ impl GameState {
     ) -> Result<HeroId, EngineError> {
         let active_team_id = *self.get_active_team_id()?;
 
-        if self.hero_at(coord).is_some() || self.city_owner(coord) != Some(active_team_id) {
-            return Err(EngineError::InvalidTiles("cannot hire on this tile".into()));
+        if self.hero_at(coord).is_some() {
+            return Err(EngineError::HireTileOccupied { x: coord.x, y: coord.y });
+        }
+        if self.city_owner(coord) != Some(active_team_id) {
+            return Err(EngineError::HireNotOwnedCity {
+                x: coord.x,
+                y: coord.y,
+                team_id: active_team_id,
+            });
         }
 
         let Some(team) = self.teams.get_mut(&active_team_id) else {
@@ -340,6 +362,12 @@ impl GameState {
             .collect::<Vec<HeroId>>()
     }
 
+    /// Returns `true` if the team has no cities and no living heroes.
+    pub fn is_team_defeated(&self, team_id: TeamId) -> bool {
+        self.city_owner_for_team(team_id).is_none()
+            && self.get_team_alive_heroes_ids(team_id).is_empty()
+    }
+
     /// Advances to the next player team.
     ///
     /// Returns `true` if all player teams have acted (full round completed).
@@ -362,7 +390,7 @@ impl GameState {
     /// turn after game initialisation (so that turn 0 → 1 fires the same event as
     /// any subsequent team-turn start).
     #[instrument(level = "info", skip(self))]
-    pub fn on_turn(&mut self) -> Result<TurnEvent, EngineError> {
+    pub fn on_turn(&mut self) -> Result<TurnStartReport, EngineError> {
         let active_team_id = *self.get_active_team_id()?;
         let Some(team) = self.teams.get_mut(&active_team_id) else {
             return Err(EngineError::ActiveTeamNotFound(active_team_id));
@@ -380,13 +408,13 @@ impl GameState {
             hero.reset_movement();
         }
 
-        self.grant_turn_income(team_id);
+        let income = self.grant_turn_income(team_id);
         self.score.record_for(team_id, ScoreEvent::TurnSurvived);
 
         self.expand_city_territory(team_id);
         self.expand_rod_territory(team_id);
 
-        Ok(TurnEvent::TeamTurnStarted { team_id, turn })
+        Ok(TurnStartReport { team_id, turn, income })
     }
 
     /// Grants `team_id` its start-of-turn income: a flat gold stipend plus the
@@ -394,10 +422,10 @@ impl GameState {
     /// add to the matching resource stockpile.
     ///
     /// Call this once when a team's turn begins (after [`on_turn`](Self::on_turn)).
-    fn grant_turn_income(&mut self, team_id: TeamId) -> TurnEvent {
+    fn grant_turn_income(&mut self, team_id: TeamId) -> TurnIncome {
         // Tally mine output first to avoid borrowing the team while reading the map.
         let mut gold = TURN_GOLD_INCOME;
-        let mut resources = [0u32; 4];
+        let mut resources = [0u32; RESOURCE_KIND_COUNT];
         for (&coord, &owner) in self.resource_owners.iter() {
             if owner != team_id {
                 continue;
@@ -422,7 +450,7 @@ impl GameState {
             }
         }
 
-        TurnEvent::TeamIncomeCollected { team_id, gold }
+        TurnIncome { gold, resources }
     }
 
     /// Returns the resource kind produced by the mine at `coord`, falling back
@@ -468,6 +496,38 @@ impl GameState {
     /// Returns a reference to the living hero at `pos`, or `None`.
     pub fn hero_at(&self, pos: &MapCoord) -> Option<&Hero> {
         self.heroes.values().find(|h| h.is_alive() && h.position.eq(pos))
+    }
+
+    /// Validates whether `attacker_id` can attack a hero at `coord`.
+    ///
+    /// # Returns
+    /// The defender hero id if the attack is valid.
+    ///
+    /// # Errors
+    /// - [`EngineError::OutOfBounds`] if the attacker id is unknown.
+    /// - [`EngineError::NoTargetHero`] if no defender is present at `coord`.
+    /// - [`EngineError::CannotAttackOwnHero`] if the defender belongs to the same team.
+    /// - [`EngineError::TargetNotAdjacent`] if the target is not adjacent.
+    pub fn can_attack(&self, attacker_id: HeroId, coord: MapCoord) -> Result<HeroId, EngineError> {
+        let attacker = self
+            .hero(attacker_id)
+            .ok_or_else(|| EngineError::OutOfBounds(format!("hero {attacker_id} not found")))?;
+        let defender = self
+            .hero_at(&coord)
+            .ok_or(EngineError::NoTargetHero { x: coord.x, y: coord.y })?;
+
+        if attacker.get_team_id() == defender.get_team_id() {
+            return Err(EngineError::CannotAttackOwnHero {
+                attacker_id,
+                defender_id: defender.get_id(),
+            });
+        }
+        let dist = attacker.get_position().x.abs_diff(defender.get_position().x)
+            + attacker.get_position().y.abs_diff(defender.get_position().y);
+        if dist != 1 {
+            return Err(EngineError::TargetNotAdjacent { attacker_id, x: coord.x, y: coord.y });
+        }
+        Ok(defender.get_id())
     }
 
     /// Returns the team id that owns the city at `coord`, or `None` if neutral.
@@ -746,12 +806,16 @@ impl GameState {
         self.hero_index(hero_id)?;
         let rod_coord = self.heroes[&hero_id].position;
         if self.resource_rods.contains_key(&rod_coord) {
-            return Err(EngineError::InvalidTiles("resource rod already exists here".into()));
+            return Err(EngineError::ResourceRodAlreadyExists { x: rod_coord.x, y: rod_coord.y });
         }
 
         let team_id = self.heroes[&hero_id].team_id;
         let Some(new_position) = self.first_available_adjacent_tile(rod_coord, hero_id) else {
-            return Err(EngineError::InvalidTiles("no adjacent passable tile for hero".into()));
+            return Err(EngineError::NoAdjacentPassableTile {
+                hero_id,
+                x: rod_coord.x,
+                y: rod_coord.y,
+            });
         };
 
         let team = self.teams.get_mut(&team_id).ok_or(EngineError::ActiveTeamNotFound(team_id))?;
@@ -1453,13 +1517,14 @@ teams:
         state.set_resource_owner(resource_mine, Some(0));
         let before = state.get_team(0).unwrap().gold();
 
-        let event = state.grant_turn_income(0);
+        let income = state.grant_turn_income(0);
 
         let team = state.get_team(0).unwrap();
         assert_eq!(team.gold(), before + TURN_GOLD_INCOME + GOLD_MINE_INCOME);
         // Resource2 maps to treasury slot index 1.
         assert_eq!(team.resource(1), RESOURCE_MINE_INCOME);
-        assert!(matches!(event, TurnEvent::TeamIncomeCollected { team_id: 0, .. }));
+        assert_eq!(income.gold, TURN_GOLD_INCOME + GOLD_MINE_INCOME);
+        assert_eq!(income.resources[1], RESOURCE_MINE_INCOME);
     }
 
     #[test]
@@ -1599,13 +1664,11 @@ teams:
             assert_eq!(team.get_turn(), 0);
         }
         // First team's turn begins.
-        let event = state.on_turn().unwrap();
+        let report = state.on_turn().unwrap();
         let active_id = *state.get_active_team_id().unwrap();
         assert_eq!(state.get_active_team().unwrap().get_turn(), 1);
-        assert!(matches!(
-            event,
-            TurnEvent::TeamTurnStarted { team_id, turn: 1 } if team_id == active_id
-        ));
+        assert_eq!(report.team_id, active_id);
+        assert_eq!(report.turn, 1);
     }
 
     #[test]
