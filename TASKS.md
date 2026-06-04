@@ -147,6 +147,12 @@ Update status as work progresses.
 | 6.8 | Исправить confirm/cancel в end-turn диалоге на Sony gamepad (работа через polling и авто device id) | Codex    | DONE   | Убрана зависимость от fixed `device=0`; confirm/cancel читаются через polling + rising-edge по первому подключенному gamepad |
 | 6.9 | Переназначить gamepad: D-pad двигает героя, левый стик двигает активный курсор клетки с подсветкой  | Codex    | DONE   | D-pad=hero step movement, LS=grid cursor movement with forced active highlight in `TileHighlight`                            |
 
+## Phase 7 — AI Bots
+
+| ID  | Task                                                             | Assignee | Status      | Notes |
+|-----|------------------------------------------------------------------|----------|-------------|-------|
+| 7.1 | AI bots: turn runner + pluggable strategies (CPU teams)          | Codex    | DONE        |       |
+
 ---
 
 **Latest Change (2026-04-01)**

@@ -3,16 +3,17 @@ use crate::input::{InputCooldown, UiAction};
 use crate::input_event::InputEvent;
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
+use ai::{AiAction, AiContext, AiFactory, AiStrategyKind};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use engine::MapCoord;
 use engine::config::{TeamLogo, TileConfig};
 use engine::error::EngineError;
 use engine::game_state::{GameState, ROD_COST};
-use engine::hero::HeroId;
+use engine::hero::{HeroId, TeamId};
 use engine::map::game_map::{Direction as MapDir, RESOURCE_KIND_COUNT, ResourceKind};
 use engine::map::tile::Tiles;
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 #[derive(Component)]
 pub struct MapViewRoot;
@@ -173,9 +174,46 @@ pub struct MapViewState {
     pub atlas_image: Handle<Image>,
     /// Handle to the tile atlas layout.
     pub atlas_layout: Handle<TextureAtlasLayout>,
+    pub ai_turn_state: AiTurnState,
+    pub ai_default_strategy: AiStrategyKind,
+    pub ai_strategies: BTreeMap<TeamId, AiStrategyKind>,
+}
+
+struct AiTurnState {
+    running: bool,
+    active_team: Option<TeamId>,
+    pending_actions: VecDeque<AiAction>,
+    timer: Timer,
+    strategy_name: Option<&'static str>,
+}
+
+impl Default for AiTurnState {
+    fn default() -> Self {
+        Self {
+            running: false,
+            active_team: None,
+            pending_actions: VecDeque::new(),
+            timer: Timer::from_seconds(AI_STEP_SECONDS, TimerMode::Repeating),
+            strategy_name: None,
+        }
+    }
+}
+
+impl AiTurnState {
+    fn reset(&mut self) {
+        self.running = false;
+        self.active_team = None;
+        self.pending_actions.clear();
+        self.timer.reset();
+        self.strategy_name = None;
+    }
 }
 
 impl MapViewState {
+    fn strategy_for_team(&self, team_id: TeamId) -> AiStrategyKind {
+        self.ai_strategies.get(&team_id).copied().unwrap_or(self.ai_default_strategy)
+    }
+
     pub fn load_state(&mut self, state: GameState) {
         self.state = Some(state);
         self.selected_hero_id = self.state.as_ref().and_then(select_hero);
@@ -184,6 +222,7 @@ impl MapViewState {
         self.cursor_x = 0;
         self.cursor_y = 0;
         self.status = None;
+        self.ai_turn_state.reset();
         self.sync_cursor_to_hero();
     }
 
@@ -755,6 +794,7 @@ const BTN_BORDER_SELECTED: Color = Color::srgb(0.7, 0.7, 0.78);
 const BTN_BORDER_PRESSED: Color = Color::srgb(0.65, 0.65, 0.72);
 
 const RESOURCE_ROD_ATLAS_INDEX: usize = 344;
+const AI_STEP_SECONDS: f32 = 0.3;
 
 /// Fallback color for heroes whose team is not found.
 const HERO_COLOR: Color = Color::srgb(1.0, 1.0, 1.0);
@@ -792,6 +832,9 @@ impl Default for MapViewState {
             last_mouse_tile: None,
             atlas_image: Handle::default(),
             atlas_layout: Handle::default(),
+            ai_turn_state: AiTurnState::default(),
+            ai_default_strategy: AiStrategyKind::ResourceRush,
+            ai_strategies: BTreeMap::new(),
         }
     }
 }
@@ -1384,6 +1427,139 @@ fn update_button_style(
     }
 }
 
+fn handle_ai_turn(
+    map_view_state: &mut MapViewState,
+    time: &Time,
+    visible_cols: usize,
+    visible_rows: usize,
+) -> bool {
+    let Some(state) = map_view_state.state.as_ref() else {
+        map_view_state.ai_turn_state.reset();
+        return false;
+    };
+    let Ok(&team_id) = state.get_active_team_id() else {
+        map_view_state.ai_turn_state.reset();
+        return false;
+    };
+    if state.is_player_controlled(team_id) {
+        map_view_state.ai_turn_state.reset();
+        return false;
+    }
+
+    if !map_view_state.ai_turn_state.running
+        || map_view_state.ai_turn_state.active_team != Some(team_id)
+    {
+        let ctx = AiContext { team_id, state };
+        let strategy_kind = map_view_state.strategy_for_team(team_id);
+        let factory = AiFactory::new(strategy_kind);
+        let mut strategy = factory.build(team_id);
+        let strategy_name = strategy.name();
+        let actions = strategy.plan(&ctx);
+        map_view_state.ai_turn_state.running = true;
+        map_view_state.ai_turn_state.active_team = Some(team_id);
+        map_view_state.ai_turn_state.pending_actions = VecDeque::from(actions);
+        map_view_state.ai_turn_state.timer.reset();
+        map_view_state.ai_turn_state.strategy_name = Some(strategy_name);
+        let team_name = state.team_name_by_id(team_id).unwrap_or("CPU");
+        map_view_state.set_status(Some(format!("CPU {team_name}: {strategy_name}")));
+    }
+
+    map_view_state.ai_turn_state.timer.tick(time.delta());
+    if map_view_state.ai_turn_state.timer.just_finished() {
+        if let Some(action) = map_view_state.ai_turn_state.pending_actions.pop_front() {
+            let ended = execute_ai_action(
+                map_view_state,
+                team_id,
+                action,
+                visible_cols,
+                visible_rows,
+            );
+            if ended {
+                map_view_state.ai_turn_state.reset();
+            }
+        } else {
+            finish_ai_turn(map_view_state, visible_cols, visible_rows);
+            map_view_state.ai_turn_state.reset();
+        }
+    }
+
+    true
+}
+
+fn execute_ai_action(
+    map_view_state: &mut MapViewState,
+    team_id: TeamId,
+    action: AiAction,
+    visible_cols: usize,
+    visible_rows: usize,
+) -> bool {
+    let mut handled = false;
+    let mut ended_turn = false;
+    match action {
+        AiAction::Move { hero_id, direction } => {
+            map_view_state.set_selected_hero_id(hero_id);
+            if let Some(state) = map_view_state.get_game_state_mut() {
+                state.set_active_hero(team_id, Some(hero_id));
+            }
+            match map_view_state.move_selected_hero(direction) {
+                Ok(_) => handled = true,
+                Err(e) => map_view_state.set_status(Some(e.to_string())),
+            }
+        }
+        AiAction::PlaceRod { hero_id } => {
+            map_view_state.set_selected_hero_id(hero_id);
+            if let Some(state) = map_view_state.get_game_state_mut() {
+                state.set_active_hero(team_id, Some(hero_id));
+            }
+            match map_view_state.place_resource_rod() {
+                Ok(_) => handled = true,
+                Err(e) => map_view_state.set_status(Some(e.to_string())),
+            }
+        }
+        AiAction::HireHero { candidate_idx, coord } => {
+            let mut hired_id = None;
+            if let Some(state) = map_view_state.get_game_state_mut() {
+                if let Some(candidate) = state.get_hero_candidate_at(candidate_idx).cloned() {
+                    match state.hire_hero(&candidate, &coord) {
+                        Ok(hero_id) => {
+                            state.set_active_hero(team_id, Some(hero_id));
+                            hired_id = Some(hero_id);
+                        }
+                        Err(e) => map_view_state.set_status(Some(e.to_string())),
+                    }
+                }
+            }
+            if let Some(hero_id) = hired_id {
+                map_view_state.set_selected_hero_id(hero_id);
+                handled = true;
+            }
+        }
+        AiAction::EndTurn => {
+            finish_ai_turn(map_view_state, visible_cols, visible_rows);
+            ended_turn = true;
+        }
+    }
+
+    if handled {
+        map_view_state.sync_cursor_to_hero();
+        map_view_state.center_on_hero(visible_cols, visible_rows);
+        map_view_state.needs_initial_draw = true;
+    }
+
+    ended_turn
+}
+
+fn finish_ai_turn(map_view_state: &mut MapViewState, visible_cols: usize, visible_rows: usize) {
+    match map_view_state.end_turn() {
+        Ok(summary) => map_view_state.set_status(Some(summary)),
+        Err(e) => map_view_state.set_status(Some(e.to_string())),
+    }
+    map_view_state.end_turn_overlay = false;
+    map_view_state.sync_cursor_to_hero();
+    map_view_state.center_on_hero(visible_cols, visible_rows);
+    map_view_state.needs_initial_draw = true;
+}
+
 /// Per-tile sprite layers plus the assets needed to draw team logos, bundled to
 /// keep [`update_map_view`] under the system parameter limit.
 #[allow(clippy::type_complexity)]
@@ -1492,6 +1668,11 @@ fn update_map_view(
     if !map_view_state.has_state() {
         return;
     }
+
+    if handle_ai_turn(&mut map_view_state, &time, visible_cols, visible_rows) {
+        return;
+    }
+
     let actions: Vec<UiAction> = reader.read().copied().collect();
     let frame = |action: UiAction| actions.contains(&action);
 
@@ -2066,4 +2247,5 @@ fn exit_map_view(
     }
     map_view_state.pause_overlay = false;
     map_view_state.end_turn_overlay = false;
+    map_view_state.ai_turn_state.reset();
 }

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/ai",
     "crates/engine",
     "crates/mapgen",
     "crates/tiled",
