@@ -15,6 +15,36 @@ pub enum EngineError {
     /// A tile slice or vector had the wrong length.
     #[error("invalid tile data: {0}")]
     InvalidTiles(String),
+    /// No game state is loaded when required.
+    #[error("no game state loaded")]
+    NoGameStateLoaded,
+    /// No hero is selected when required.
+    #[error("no hero selected")]
+    NoSelectedHero,
+    /// The requested attack target coordinate does not contain a hero.
+    #[error("no target hero at ({x}, {y})")]
+    NoTargetHero { x: u32, y: u32 },
+    /// The requested action has no target coordinate.
+    #[error("no target coordinate")]
+    NoTargetCoord,
+    /// Attacker and defender belong to the same team.
+    #[error("cannot attack own hero {attacker_id} -> {defender_id}")]
+    CannotAttackOwnHero { attacker_id: HeroId, defender_id: HeroId },
+    /// Target is not adjacent to the attacker.
+    #[error("target ({x}, {y}) is not adjacent to hero {attacker_id}")]
+    TargetNotAdjacent { attacker_id: HeroId, x: u32, y: u32 },
+    /// Cannot hire a hero because another hero occupies the tile.
+    #[error("cannot hire hero at ({x}, {y}): tile occupied")]
+    HireTileOccupied { x: u32, y: u32 },
+    /// Cannot hire a hero because the city is not owned by the active team.
+    #[error("cannot hire hero at ({x}, {y}): city not owned by team {team_id}")]
+    HireNotOwnedCity { x: u32, y: u32, team_id: TeamId },
+    /// Cannot place a rod because one already exists at the coordinate.
+    #[error("resource rod already exists at ({x}, {y})")]
+    ResourceRodAlreadyExists { x: u32, y: u32 },
+    /// No adjacent passable tile exists for the hero after placing a rod.
+    #[error("no adjacent passable tile for hero {hero_id} from ({x}, {y})")]
+    NoAdjacentPassableTile { hero_id: HeroId, x: u32, y: u32 },
     /// A game state operation was attempted in an invalid state.
     #[error("invalid game state: expected {expected} chunks got {got}")]
     InvalidChunksSize { expected: usize, got: usize },

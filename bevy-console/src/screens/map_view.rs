@@ -258,9 +258,7 @@ impl MapViewState {
     ) -> Result<MapCoord, EngineError> {
         {
             let state = self.state.as_mut().ok_or_else(missing_state_error)?;
-            let id = self
-                .selected_hero_id
-                .ok_or_else(|| EngineError::InvalidTiles("no hero selected".to_string()))?;
+            let id = self.selected_hero_id.ok_or(EngineError::NoSelectedHero)?;
             state.move_hero(id, direction)?;
         }
         Ok(self.selected_hero_position())
@@ -269,9 +267,7 @@ impl MapViewState {
     pub fn place_resource_rod(&mut self) -> Result<MapCoord, EngineError> {
         {
             let state = self.state.as_mut().ok_or_else(missing_state_error)?;
-            let id = self
-                .selected_hero_id
-                .ok_or_else(|| EngineError::InvalidTiles("no hero selected".to_string()))?;
+            let id = self.selected_hero_id.ok_or(EngineError::NoSelectedHero)?;
             state.place_resource_rod(id)?;
         }
         Ok(self.selected_hero_position())
@@ -296,10 +292,8 @@ impl MapViewState {
     pub fn end_turn(&mut self) -> Result<String, EngineError> {
         {
             let state = self.state.as_mut().ok_or_else(missing_state_error)?;
-            let next_team = state
-                .get_next_active_team()
-                .map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
-            state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
+            let next_team = state.get_next_active_team()?;
+            state.on_turn()?;
             self.selected_hero_id = state.get_next_hero(next_team);
             if let Some(next) = self.selected_hero_id {
                 state.set_active_hero(next_team, Some(next));
@@ -542,6 +536,25 @@ impl MapViewState {
         self.state.as_ref()?.hero_at(&coord).map(|hero| hero.get_id())
     }
 
+    fn attack_cursor_hero(&mut self) -> Result<(), EngineError> {
+        let attacker_id = self.selected_hero_id.ok_or(EngineError::NoSelectedHero)?;
+        let coord = self.cursor_coord().ok_or(EngineError::NoTargetCoord)?;
+        let defender_id = {
+            let state = self.state.as_ref().ok_or_else(missing_state_error)?;
+            state.can_attack(attacker_id, coord)?
+        };
+        let state = self.state.as_mut().ok_or_else(missing_state_error)?;
+        let events = state.attack_hero(attacker_id, defender_id)?;
+        let defeated = events.iter().any(|event| matches!(event, engine::game_state::TurnEvent::HeroDefeated { .. }));
+        let status = if defeated {
+            "Combat resolved (defeat)"
+        } else {
+            "Combat resolved"
+        };
+        self.status = Some(status.to_string());
+        Ok(())
+    }
+
     pub fn handle_input(
         &mut self,
         event: InputEvent,
@@ -586,7 +599,26 @@ impl MapViewState {
                 if let Some(info) = self.cursor_structure() {
                     MapViewOutcome::OpenStructureOverlay { name: info.name }
                 } else if self.cursor_hero_id().is_some() {
-                    MapViewOutcome::OpenHeroInfo
+                    let can_attack = self
+                        .state
+                        .as_ref()
+                        .and_then(|state| {
+                            let attacker_id = self.selected_hero_id?;
+                            let coord = self.cursor_coord()?;
+                            state.can_attack(attacker_id, coord).ok()
+                        })
+                        .is_some();
+                    if can_attack {
+                        match self.attack_cursor_hero() {
+                            Ok(()) => MapViewOutcome::Changed,
+                            Err(e) => {
+                                self.status = Some(e.to_string());
+                                MapViewOutcome::Changed
+                            }
+                        }
+                    } else {
+                        MapViewOutcome::OpenHeroInfo
+                    }
                 } else {
                     MapViewOutcome::NoChange
                 }
@@ -840,7 +872,7 @@ impl Default for MapViewState {
 }
 
 fn missing_state_error() -> EngineError {
-    EngineError::InvalidTiles("no game state loaded".to_string())
+    EngineError::NoGameStateLoaded
 }
 
 fn select_hero(state: &GameState) -> Option<HeroId> {
@@ -1532,6 +1564,16 @@ fn execute_ai_action(
             if let Some(hero_id) = hired_id {
                 map_view_state.set_selected_hero_id(hero_id);
                 handled = true;
+            }
+        }
+        AiAction::Attack { attacker_id, defender_id } => {
+            map_view_state.set_selected_hero_id(attacker_id);
+            if let Some(state) = map_view_state.get_game_state_mut() {
+                state.set_active_hero(team_id, Some(attacker_id));
+                match state.attack_hero(attacker_id, defender_id) {
+                    Ok(_) => handled = true,
+                    Err(e) => map_view_state.set_status(Some(e.to_string())),
+                }
             }
         }
         AiAction::EndTurn => {

@@ -231,8 +231,15 @@ impl GameState {
     ) -> Result<HeroId, EngineError> {
         let active_team_id = *self.get_active_team_id()?;
 
-        if self.hero_at(coord).is_some() || self.city_owner(coord) != Some(active_team_id) {
-            return Err(EngineError::InvalidTiles("cannot hire on this tile".into()));
+        if self.hero_at(coord).is_some() {
+            return Err(EngineError::HireTileOccupied { x: coord.x, y: coord.y });
+        }
+        if self.city_owner(coord) != Some(active_team_id) {
+            return Err(EngineError::HireNotOwnedCity {
+                x: coord.x,
+                y: coord.y,
+                team_id: active_team_id,
+            });
         }
 
         let Some(team) = self.teams.get_mut(&active_team_id) else {
@@ -468,6 +475,38 @@ impl GameState {
     /// Returns a reference to the living hero at `pos`, or `None`.
     pub fn hero_at(&self, pos: &MapCoord) -> Option<&Hero> {
         self.heroes.values().find(|h| h.is_alive() && h.position.eq(pos))
+    }
+
+    /// Validates whether `attacker_id` can attack a hero at `coord`.
+    ///
+    /// # Returns
+    /// The defender hero id if the attack is valid.
+    ///
+    /// # Errors
+    /// - [`EngineError::OutOfBounds`] if the attacker id is unknown.
+    /// - [`EngineError::NoTargetHero`] if no defender is present at `coord`.
+    /// - [`EngineError::CannotAttackOwnHero`] if the defender belongs to the same team.
+    /// - [`EngineError::TargetNotAdjacent`] if the target is not adjacent.
+    pub fn can_attack(&self, attacker_id: HeroId, coord: MapCoord) -> Result<HeroId, EngineError> {
+        let attacker = self
+            .hero(attacker_id)
+            .ok_or_else(|| EngineError::OutOfBounds(format!("hero {attacker_id} not found")))?;
+        let defender = self
+            .hero_at(&coord)
+            .ok_or(EngineError::NoTargetHero { x: coord.x, y: coord.y })?;
+
+        if attacker.get_team_id() == defender.get_team_id() {
+            return Err(EngineError::CannotAttackOwnHero {
+                attacker_id,
+                defender_id: defender.get_id(),
+            });
+        }
+        let dist = attacker.get_position().x.abs_diff(defender.get_position().x)
+            + attacker.get_position().y.abs_diff(defender.get_position().y);
+        if dist != 1 {
+            return Err(EngineError::TargetNotAdjacent { attacker_id, x: coord.x, y: coord.y });
+        }
+        Ok(defender.get_id())
     }
 
     /// Returns the team id that owns the city at `coord`, or `None` if neutral.
@@ -746,12 +785,16 @@ impl GameState {
         self.hero_index(hero_id)?;
         let rod_coord = self.heroes[&hero_id].position;
         if self.resource_rods.contains_key(&rod_coord) {
-            return Err(EngineError::InvalidTiles("resource rod already exists here".into()));
+            return Err(EngineError::ResourceRodAlreadyExists { x: rod_coord.x, y: rod_coord.y });
         }
 
         let team_id = self.heroes[&hero_id].team_id;
         let Some(new_position) = self.first_available_adjacent_tile(rod_coord, hero_id) else {
-            return Err(EngineError::InvalidTiles("no adjacent passable tile for hero".into()));
+            return Err(EngineError::NoAdjacentPassableTile {
+                hero_id,
+                x: rod_coord.x,
+                y: rod_coord.y,
+            });
         };
 
         let team = self.teams.get_mut(&team_id).ok_or(EngineError::ActiveTeamNotFound(team_id))?;

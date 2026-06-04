@@ -77,6 +77,10 @@ impl AiStrategy for WanderStrategy {
         let hero_ids = ctx.state.get_team_alive_heroes_ids(ctx.team_id);
         for hero_id in hero_ids {
             let Some(hero) = ctx.state.hero(hero_id) else { continue };
+            if let Some(defender_id) = adjacent_enemy(ctx, hero) {
+                actions.push(AiAction::Attack { attacker_id: hero_id, defender_id });
+                continue;
+            }
             actions.extend(fallback_step(ctx, hero));
         }
         append_end_turn(actions)
@@ -104,6 +108,11 @@ fn plan_for_team(
     for hero_id in hero_ids {
         let Some(hero) = ctx.state.hero(hero_id) else { continue };
         if hero.get_mov_remaining() == 0 {
+            continue;
+        }
+
+        if let Some(defender_id) = adjacent_enemy(ctx, hero) {
+            actions.push(AiAction::Attack { attacker_id: hero_id, defender_id });
             continue;
         }
 
@@ -278,6 +287,22 @@ fn fallback_step(ctx: &AiContext<'_>, hero: &Hero) -> Vec<AiAction> {
         }
     }
     Vec::new()
+}
+
+fn adjacent_enemy(ctx: &AiContext<'_>, hero: &Hero) -> Option<engine::hero::HeroId> {
+    let pos = hero.get_position();
+    let w = ctx.state.map.tile_width();
+    let h = ctx.state.map.tile_height();
+    let dirs = [Direction::North, Direction::East, Direction::South, Direction::West];
+    for dir in dirs {
+        let Some(coord) = dir.apply(*pos, w, h) else { continue };
+        if let Some(other) = ctx.state.hero_at(&coord) {
+            if other.get_team_id() != ctx.team_id && other.is_alive() {
+                return Some(other.get_id());
+            }
+        }
+    }
+    None
 }
 
 fn nearest_target(start: &MapCoord, targets: &[MapCoord]) -> Option<MapCoord> {

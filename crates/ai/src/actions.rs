@@ -9,4 +9,5 @@ pub enum AiAction {
     PlaceRod { hero_id: HeroId },
     HireHero { candidate_idx: usize, coord: MapCoord },
     EndTurn,
+    Attack { attacker_id: HeroId, defender_id: HeroId },
 }
