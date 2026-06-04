@@ -1393,12 +1393,15 @@ fn spawn_end_turn_overlay(commands: &mut Commands, team_name: &str) {
         });
 }
 
-fn spawn_turn_start_overlay(commands: &mut Commands, team_name: &str, income: TurnIncome) {
-    let resources = income.resources;
-    let resource_line = format!(
-        "Resources: +{} / +{} / +{} / +{}",
-        resources[0], resources[1], resources[2], resources[3]
-    );
+fn spawn_turn_start_overlay(
+    commands: &mut Commands,
+    team_name: &str,
+    income: TurnIncome,
+    atlas_image: &Handle<Image>,
+    atlas_layout: &Handle<TextureAtlasLayout>,
+    tile_config: &TileConfig,
+) {
+    let resource_icons = resource_icon_indices(tile_config);
     commands
         .spawn((
             Node {
@@ -1438,11 +1441,36 @@ fn spawn_turn_start_overlay(commands: &mut Commands, team_name: &str, income: Tu
                         TextFont { font_size: FontSize::Px(18.0), ..default() },
                         TextColor(GOLD_COLOR),
                     ));
-                    panel.spawn((
-                        Text::new(resource_line),
-                        TextFont { font_size: FontSize::Px(16.0), ..default() },
-                        TextColor(TEXT_COLOR),
-                    ));
+                    panel
+                        .spawn((
+                            Node {
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Center,
+                                column_gap: Val::Px(10.0),
+                                row_gap: Val::Px(8.0),
+                                ..default()
+                            },
+                        ))
+                        .with_children(|row| {
+                            for (idx, icon) in resource_icons.iter().enumerate() {
+                                row.spawn((
+                                    ImageNode {
+                                        image: atlas_image.clone(),
+                                        texture_atlas: Some(TextureAtlas {
+                                            layout: atlas_layout.clone(),
+                                            index: *icon as usize,
+                                        }),
+                                        ..default()
+                                    },
+                                    Node { width: Val::Px(18.0), height: Val::Px(18.0), ..default() },
+                                ));
+                                row.spawn((
+                                    Text::new(format!("+{}", income.resources[idx])),
+                                    TextFont { font_size: FontSize::Px(16.0), ..default() },
+                                    TextColor(TEXT_COLOR),
+                                ));
+                            }
+                        });
                     panel.spawn((
                         Button,
                         TurnStartConfirmButton,
@@ -1826,7 +1854,16 @@ fn handle_turn_start(
 
     if is_player {
         map_view_state.turn_start_overlay = true;
-        spawn_turn_start_overlay(commands, &team_name, report.income);
+        if let Some(state) = map_view_state.state.as_ref() {
+            spawn_turn_start_overlay(
+                commands,
+                &team_name,
+                report.income,
+                &map_view_state.atlas_image,
+                &map_view_state.atlas_layout,
+                state.tile_config(),
+            );
+        }
     } else {
         map_view_state.turn_start_overlay = false;
     }
@@ -1897,16 +1934,11 @@ struct OverlayQueries<'w, 's> {
     turn_start: Query<'w, 's, Entity, With<TurnStartOverlay>>,
     end_turn: Query<'w, 's, Entity, With<EndTurnOverlay>>,
     pause: Query<'w, 's, Entity, With<PauseOverlay>>,
-    turn_start_buttons: Query<
-        'w,
-        's,
-        (&'static Interaction, &'static mut BackgroundColor, &'static mut BorderColor),
-        With<TurnStartConfirmButton>,
-    >,
     buttons: Query<
         'w,
         's,
         (
+            Option<&'static TurnStartConfirmButton>,
             Option<&'static EndTurnConfirmButton>,
             Option<&'static EndTurnCancelButton>,
             Option<&'static PauseResumeButton>,
@@ -1916,6 +1948,7 @@ struct OverlayQueries<'w, 's> {
             &'static Interaction,
         ),
         Or<(
+            With<TurnStartConfirmButton>,
             With<EndTurnConfirmButton>,
             With<EndTurnCancelButton>,
             With<PauseResumeButton>,
@@ -1983,7 +2016,12 @@ fn update_map_view(
             return;
         }
 
-        for (interaction, mut bg, mut border) in overlays.turn_start_buttons.iter_mut() {
+        for (turn_start_btn, _, _, _, _, mut bg, mut border, interaction) in
+            overlays.buttons.iter_mut()
+        {
+            if turn_start_btn.is_none() {
+                continue;
+            }
             update_button_style(true, interaction, &mut bg, &mut border);
             let clicked = frame(UiAction::Confirm);
             let pressed = matches!(interaction, Interaction::Pressed);
@@ -2030,9 +2068,12 @@ fn update_map_view(
 
         // Update button styles and handle clicks
         let sel = map_view_state.pause_selected;
-        for (et_confirm, et_cancel, resume_opt, quit_opt, mut bg, mut border, interaction) in
+        for (turn_start_btn, et_confirm, et_cancel, resume_opt, quit_opt, mut bg, mut border, interaction) in
             overlays.buttons.iter_mut()
         {
+            if turn_start_btn.is_some() {
+                continue;
+            }
             if et_confirm.is_some() || et_cancel.is_some() {
                 continue;
             }
@@ -2102,9 +2143,12 @@ fn update_map_view(
 
         // Update button styles and handle clicks
         let sel = map_view_state.end_turn_selected;
-        for (confirm_opt, cancel_opt, p_resume, p_quit, mut bg, mut border, interaction) in
+        for (turn_start_btn, confirm_opt, cancel_opt, p_resume, p_quit, mut bg, mut border, interaction) in
             overlays.buttons.iter_mut()
         {
+            if turn_start_btn.is_some() {
+                continue;
+            }
             if p_resume.is_some() || p_quit.is_some() {
                 continue;
             }
