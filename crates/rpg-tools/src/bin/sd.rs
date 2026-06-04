@@ -3,7 +3,7 @@ use std::ops::Div;
 
 use anyhow::{Error as E, Result};
 use candle_core::backend::BackendDevice;
-use candle_core::{DType, Device, IndexOp, MetalDevice, Module, Tensor, D};
+use candle_core::{D, DType, Device, IndexOp, MetalDevice, Module, Tensor};
 use clap::Parser;
 use rand::RngExt;
 use stable_diffusion::vae::AutoEncoderKL;
@@ -359,8 +359,14 @@ fn text_embeddings(
     let tokenizer = tokenizer_file.get(tokenizer, sd_version, use_f16)?;
     let tokenizer = Tokenizer::from_file(tokenizer).map_err(E::msg)?;
     let pad_id = match &sd_config.clip.pad_with {
-        Some(padding) => *tokenizer.get_vocab(true).get(padding.as_str()).unwrap(),
-        None => *tokenizer.get_vocab(true).get("<|endoftext|>").unwrap(),
+        Some(padding) => *tokenizer
+            .get_vocab(true)
+            .get(padding.as_str())
+            .ok_or_else(|| E::msg(format!("padding token '{padding}' missing from vocab")))?,
+        None => *tokenizer
+            .get_vocab(true)
+            .get("<|endoftext|>")
+            .ok_or_else(|| E::msg("default padding token missing from vocab"))?,
     };
     println!("Running with prompt \"{prompt}\".");
     let mut tokens = tokenizer.encode(prompt, true).map_err(E::msg)?.get_ids().to_vec();
@@ -383,7 +389,11 @@ fn text_embeddings(
     } else {
         clip_weights_file.get(clip2_weights, sd_version, use_f16)?
     };
-    let clip_config = if first { &sd_config.clip } else { sd_config.clip2.as_ref().unwrap() };
+    let clip_config = if first {
+        &sd_config.clip
+    } else {
+        sd_config.clip2.as_ref().ok_or_else(|| E::msg("missing clip2 config"))?
+    };
     let text_model =
         stable_diffusion::build_clip_transformer(clip_config, clip_weights, device, DType::F32)?;
     let text_embeddings = text_model.forward(&tokens)?;
@@ -530,8 +540,10 @@ fn run(args: Args) -> Result<()> {
     } = args;
 
     let final_image = final_image_opt.unwrap_or_else(|| {
-        let ts =
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0);
         format!("tmp/{ts}.jpg")
     });
 
@@ -729,10 +741,13 @@ fn run(args: Args) -> Result<()> {
             let latent_model_input = match sd_version {
                 StableDiffusionVersion::XlInpaint
                 | StableDiffusionVersion::V2Inpaint
-                | StableDiffusionVersion::V1_5Inpaint => Tensor::cat(
-                    &[&latent_model_input, mask.as_ref().unwrap(), mask_latents.as_ref().unwrap()],
-                    1,
-                )?,
+                | StableDiffusionVersion::V1_5Inpaint => {
+                    let mask = mask.as_ref().ok_or_else(|| E::msg("missing inpaint mask"))?;
+                    let mask_latents = mask_latents
+                        .as_ref()
+                        .ok_or_else(|| E::msg("missing inpaint mask latents"))?;
+                    Tensor::cat(&[&latent_model_input, mask, mask_latents], 1)?
+                }
                 _ => latent_model_input,
             }
             .to_device(&device)?;
@@ -755,10 +770,10 @@ fn run(args: Args) -> Result<()> {
 
             // Replace all pixels in the unmasked region with the original pixels discarding any changes.
             if args.only_update_masked {
-                let mask = mask_4.as_ref().unwrap();
+                let mask = mask_4.as_ref().ok_or_else(|| E::msg("missing inpaint mask_4"))?;
                 let latent_to_keep = mask_latents
                     .as_ref()
-                    .unwrap()
+                    .ok_or_else(|| E::msg("missing inpaint mask latents"))?
                     .get_on_dim(0, 0)? // shape: [4, H, W]
                     .unsqueeze(0)?; // shape: [1, 4, H, W]
 

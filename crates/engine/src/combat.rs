@@ -93,9 +93,9 @@ fn calc_damage(source: &mut Hero, target: &Hero) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MapCoord;
     use crate::hero_candidate::HeroCandidate;
     use crate::rng::SeededRng;
-    use crate::MapCoord;
 
     fn make_hero(id: u8, hp: u32, atk: u32, def: u32, spd: u32) -> Hero {
         let hero_candidate = HeroCandidate {

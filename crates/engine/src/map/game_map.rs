@@ -1,10 +1,8 @@
 //! [`GameMap`] — the full assembled game map stored as a flat tile array.
 
-use alloc::{format, vec::Vec};
-
+use crate::MapCoord;
 use crate::error::EngineError;
 use crate::map::tile::{Tile, Tiles};
-use crate::MapCoord;
 use serde::{Deserialize, Serialize};
 // ─── MapCoord ─────────────────────────────────────────────────────────────────
 
@@ -107,19 +105,11 @@ impl Direction {
             Direction::North => coord.y.checked_sub(1).map(|y| MapCoord::new(coord.x, y)),
             Direction::East => {
                 let x = coord.x + 1;
-                if x < width {
-                    Some(MapCoord::new(x, coord.y))
-                } else {
-                    None
-                }
+                if x < width { Some(MapCoord::new(x, coord.y)) } else { None }
             }
             Direction::South => {
                 let y = coord.y + 1;
-                if y < height {
-                    Some(MapCoord::new(coord.x, y))
-                } else {
-                    None
-                }
+                if y < height { Some(MapCoord::new(coord.x, y)) } else { None }
             }
             Direction::West => coord.x.checked_sub(1).map(|x| MapCoord::new(x, coord.y)),
         }

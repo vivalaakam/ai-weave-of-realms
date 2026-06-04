@@ -9,11 +9,8 @@
 //! The binary should call [`init_hero_catalog`](crate::config::init_hero_catalog)
 //! once at start-up (e.g. in `main`), passing the contents of `assets/heroes.yaml`.
 
-use alloc::collections::BTreeMap;
-use alloc::format;
-use alloc::string::String;
-
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::error::EngineError;
 use crate::hero_candidate::HeroCandidate;

@@ -21,6 +21,7 @@ use bevy::prelude::*;
 use bevy::window::CursorOptions;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::error;
 
 // ── UiAction ─────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ pub struct KeybindingsConfig {
     pub gamepad: GamepadBindings,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct KeyboardBindings {
     pub up: Vec<String>,
     pub down: Vec<String>,
@@ -134,7 +135,7 @@ pub struct KeyboardBindings {
     pub pan_right: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct GamepadBindings {
     #[serde(default)]
     pub enabled: bool,
@@ -152,8 +153,13 @@ pub struct GamepadBindings {
 
 impl Default for KeybindingsConfig {
     fn default() -> Self {
-        toml::from_str(include_str!("../../assets/keybindings.toml"))
-            .expect("default keybindings.toml should parse")
+        match toml::from_str(include_str!("../../assets/keybindings.toml")) {
+            Ok(config) => config,
+            Err(err) => {
+                error!(error = %err, "Failed to parse default keybindings.toml; using empty bindings");
+                Self { keyboard: KeyboardBindings::default(), gamepad: GamepadBindings::default() }
+            }
+        }
     }
 }
 

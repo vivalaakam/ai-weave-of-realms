@@ -17,7 +17,7 @@ impl Plugin for CityPlugin {
 }
 
 fn enter_city(mut commands: Commands, map_view_state: Res<MapViewState>) {
-    let info = map_view_state.map_view.as_ref().and_then(|map_view| map_view.cursor_structure());
+    let info = map_view_state.cursor_structure();
 
     let title = info.as_ref().map(|city| city.name.clone()).unwrap_or_else(|| "City".to_string());
     let details = info

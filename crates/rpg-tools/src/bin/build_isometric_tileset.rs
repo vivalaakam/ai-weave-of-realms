@@ -9,6 +9,7 @@ use std::path::Path;
 use image::{ImageBuffer, Rgba, RgbaImage};
 use tracing::{error, info};
 
+use engine::config::TileConfig;
 use engine::map::tile::Tiles;
 
 const TILE_SIZE: u32 = 64;
@@ -26,14 +27,31 @@ fn main() {
         )
         .init();
 
-    let atlas = render_tileset();
-
-    for path in TILESET_OUTPUTS {
-        if let Some(parent) = Path::new(path).parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
-                error!(%error, output = %path, "failed to create tileset output directory");
+    let cfg: TileConfig = {
+        let yaml = match std::fs::read_to_string("assets/tiles.yaml") {
+            Ok(contents) => contents,
+            Err(err) => {
+                error!(error = %err, "failed to read assets/tiles.yaml");
                 std::process::exit(1);
             }
+        };
+        match serde_yaml::from_str(&yaml) {
+            Ok(cfg) => cfg,
+            Err(err) => {
+                error!(error = %err, "failed to parse assets/tiles.yaml");
+                std::process::exit(1);
+            }
+        }
+    };
+
+    let atlas = render_tileset(&cfg);
+
+    for path in TILESET_OUTPUTS {
+        if let Some(parent) = Path::new(path).parent()
+            && let Err(error) = fs::create_dir_all(parent)
+        {
+            error!(%error, output = %path, "failed to create tileset output directory");
+            std::process::exit(1);
         }
 
         if let Err(error) = atlas.save(path) {
@@ -45,19 +63,19 @@ fn main() {
     }
 }
 
-fn render_tileset() -> RgbaImage {
+fn render_tileset(cfg: &TileConfig) -> RgbaImage {
     let atlas_width = TILE_SIZE * Tiles::all().len() as u32;
     let mut atlas: RgbaImage = ImageBuffer::from_pixel(atlas_width, TILE_SIZE, Rgba([0, 0, 0, 0]));
 
     for (index, tile) in Tiles::all().iter().copied().enumerate() {
-        render_tile(&mut atlas, index as u32 * TILE_SIZE, tile);
+        render_tile(&mut atlas, index as u32 * TILE_SIZE, tile, cfg);
     }
 
     atlas
 }
 
-fn render_tile(image: &mut RgbaImage, offset_x: u32, tile: Tiles) {
-    let base = rgba(tile.as_color(), 255);
+fn render_tile(image: &mut RgbaImage, offset_x: u32, tile: Tiles, cfg: &TileConfig) {
+    let base = rgba(tile.color_with_config(cfg), 255);
     let top = lighten(base, 0.22);
     let bottom = darken(base, 0.18);
     let outline = darken(base, 0.42);

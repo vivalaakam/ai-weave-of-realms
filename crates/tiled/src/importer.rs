@@ -10,13 +10,14 @@
 
 use std::path::Path;
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 use crate::error::TiledError;
+use engine::MapCoord;
+use engine::config::TileConfig;
 use engine::map::game_map::GameMap;
 use engine::map::tile::{Tile, Tiles};
-use engine::MapCoord;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -28,8 +29,8 @@ use engine::MapCoord;
 /// - [`TiledError::InvalidAttribute`] — attribute value not parseable
 /// - [`TiledError::UnknownGid`] — CSV contains an unrecognised tile GID
 /// - [`TiledError::Engine`] — `GameMap::new` rejected the assembled tiles
-pub fn import_tmx(xml: &str) -> Result<GameMap, TiledError> {
-    let mut parser = TmxParser::default();
+pub fn import_tmx(xml: &str, cfg: &TileConfig) -> Result<GameMap, TiledError> {
+    let mut parser = TmxParser::new(cfg);
     parser.parse(xml)?;
     parser.into_game_map()
 }
@@ -38,14 +39,13 @@ pub fn import_tmx(xml: &str) -> Result<GameMap, TiledError> {
 ///
 /// # Errors
 /// Returns [`TiledError::Io`] if the file cannot be read, or any import error.
-pub fn read_tmx(path: &Path) -> Result<GameMap, TiledError> {
+pub fn read_tmx(path: &Path, cfg: &TileConfig) -> Result<GameMap, TiledError> {
     let xml = std::fs::read_to_string(path)?;
-    import_tmx(&xml)
+    import_tmx(&xml, cfg)
 }
 
 // ─── Parser state machine ─────────────────────────────────────────────────────
 
-#[derive(Default)]
 struct TmxParser {
     width: Option<u32>,
     height: Option<u32>,
@@ -60,6 +60,24 @@ struct TmxParser {
     active_object: Option<SpawnObject>,
     enemy_spawns: Vec<MapCoord>,
     chest_spawns: Vec<MapCoord>,
+    cfg: TileConfig,
+}
+
+impl TmxParser {
+    fn new(cfg: &TileConfig) -> Self {
+        Self {
+            width: None,
+            height: None,
+            seed: [0u8; 32],
+            in_csv_data: false,
+            csv: String::new(),
+            in_spawns_group: false,
+            active_object: None,
+            enemy_spawns: Vec::new(),
+            chest_spawns: Vec::new(),
+            cfg: cfg.clone(),
+        }
+    }
 }
 
 impl TmxParser {
@@ -156,10 +174,8 @@ impl TmxParser {
                     }
                 }
 
-                if is_seed {
-                    if let Some(ref hex) = value {
-                        self.seed = hex_decode(hex)?;
-                    }
+                if is_seed && let Some(ref hex) = value {
+                    self.seed = hex_decode(hex)?;
                 }
 
                 if let (Some(active), Some(name), Some(value)) =
@@ -204,7 +220,7 @@ impl TmxParser {
         let tiles: Result<Vec<Tile>, TiledError> = gids
             .into_iter()
             .map(|gid| {
-                Tiles::from_gid(gid)
+                Tiles::from_gid_with_config(gid, &self.cfg)
                     .map(|kind| Tile { kind })
                     .map_err(|_| TiledError::UnknownGid(gid))
             })
@@ -308,6 +324,7 @@ fn hex_nibble(b: u8) -> Result<u8, TiledError> {
 mod tests {
     use super::*;
     use crate::exporter::export_tmx;
+    use engine::config::test_tile_config;
     use engine::map::game_map::GameMap;
     use engine::map::tile::{Tile, Tiles};
 
@@ -318,18 +335,20 @@ mod tests {
 
     #[test]
     fn round_trip_dimensions() {
+        let cfg = test_tile_config();
         let map = make_map(32, 32, Tiles::Meadow, [0u8; 32]);
-        let xml = export_tmx(&map, "t.tsx");
-        let imported = import_tmx(&xml).unwrap();
+        let xml = export_tmx(&map, "t.tsx", &cfg);
+        let imported = import_tmx(&xml, &cfg).unwrap();
         assert_eq!(imported.tile_width(), 32);
         assert_eq!(imported.tile_height(), 32);
     }
 
     #[test]
     fn round_trip_tiles() {
+        let cfg = test_tile_config();
         let map = make_map(4, 4, Tiles::Water, [1u8; 32]);
-        let xml = export_tmx(&map, "t.tsx");
-        let imported = import_tmx(&xml).unwrap();
+        let xml = export_tmx(&map, "t.tsx", &cfg);
+        let imported = import_tmx(&xml, &cfg).unwrap();
         for tile in imported.tiles() {
             assert_eq!(tile.kind, Tiles::Water);
         }
@@ -344,9 +363,10 @@ mod tests {
             }
             s
         };
+        let cfg = test_tile_config();
         let map = make_map(2, 2, Tiles::Meadow, seed);
-        let xml = export_tmx(&map, "t.tsx");
-        let imported = import_tmx(&xml).unwrap();
+        let xml = export_tmx(&map, "t.tsx", &cfg);
+        let imported = import_tmx(&xml, &cfg).unwrap();
         assert_eq!(imported.seed, seed);
     }
 
@@ -366,8 +386,9 @@ mod tests {
         ];
         let tiles: Vec<Tile> = (0..10).map(|i| Tile { kind: kinds[i % kinds.len()] }).collect();
         let map = GameMap::new(10, 1, tiles, [0u8; 32]).unwrap();
-        let xml = export_tmx(&map, "t.tsx");
-        let imported = import_tmx(&xml).unwrap();
+        let cfg = test_tile_config();
+        let xml = export_tmx(&map, "t.tsx", &cfg);
+        let imported = import_tmx(&xml, &cfg).unwrap();
         for (orig, imp) in map.tiles().iter().zip(imported.tiles()) {
             assert_eq!(orig.kind, imp.kind);
         }
@@ -381,7 +402,8 @@ mod tests {
     <data encoding="csv">1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1</data>
   </layer>
 </map>"#;
-        assert!(matches!(import_tmx(xml), Err(TiledError::MissingField(_))));
+        let cfg = test_tile_config();
+        assert!(matches!(import_tmx(xml, &cfg), Err(TiledError::MissingField(_))));
     }
 
     #[test]
@@ -392,6 +414,7 @@ mod tests {
     <data encoding="csv">1,999,1,1</data>
   </layer>
 </map>"#;
-        assert!(matches!(import_tmx(xml), Err(TiledError::UnknownGid(999))));
+        let cfg = test_tile_config();
+        assert!(matches!(import_tmx(xml, &cfg), Err(TiledError::UnknownGid(999))));
     }
 }

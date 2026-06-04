@@ -200,10 +200,10 @@ fn write_atlas(
     tile_h: u8,
     masks: &[Vec<u8>],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
     }
 
     let count = masks.len() as u32;

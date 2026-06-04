@@ -15,21 +15,25 @@
 //!
 //! Movement is 4-directional (N/S/E/W).
 
-use alloc::collections::BinaryHeap;
-use alloc::{collections::BTreeMap, vec, vec::Vec};
-use core::cmp::Reverse;
-
+use crate::config::TileConfig;
 use crate::error::EngineError;
 use crate::map::game_map::GameMap;
 use crate::map_coord::MapCoord;
+use core::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap};
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /// Returns all tiles reachable from `start` within `mov_budget` movement points.
 ///
 /// The starting tile itself is excluded from the result.
 /// Only passable tiles are included.
-pub fn reachable_tiles(map: &GameMap, start: MapCoord, mov_budget: u32) -> Vec<MapCoord> {
-    let (costs, _) = dijkstra(map, start, mov_budget);
+pub fn reachable_tiles(
+    map: &GameMap,
+    start: MapCoord,
+    mov_budget: u32,
+    cfg: &TileConfig,
+) -> Vec<MapCoord> {
+    let (costs, _) = dijkstra(map, start, mov_budget, cfg);
     costs.into_iter().filter(|(coord, _)| *coord != start).map(|(coord, _)| coord).collect()
 }
 
@@ -42,8 +46,9 @@ pub fn find_path(
     start: MapCoord,
     target: MapCoord,
     mov_budget: u32,
+    cfg: &TileConfig,
 ) -> Option<Vec<MapCoord>> {
-    let (costs, prev) = dijkstra(map, start, mov_budget);
+    let (costs, prev) = dijkstra(map, start, mov_budget, cfg);
     if !costs.contains_key(&target) {
         return None;
     }
@@ -67,20 +72,21 @@ pub fn cost_to_reach(
     start: MapCoord,
     target: MapCoord,
     mov_budget: u32,
+    cfg: &TileConfig,
 ) -> Result<u32, EngineError> {
-    let (costs, _) = dijkstra(map, start, mov_budget);
+    let (costs, _) = dijkstra(map, start, mov_budget, cfg);
     costs.get(&target).copied().ok_or(EngineError::UnreachableTile { x: target.x, y: target.y })
 }
 
 // ─── Internals ────────────────────────────────────────────────────────────────
 
 /// Returns the movement cost to *enter* `coord`, or `None` if impassable.
-fn entry_cost(map: &GameMap, coord: MapCoord) -> Option<u32> {
+fn entry_cost(map: &GameMap, coord: MapCoord, cfg: &TileConfig) -> Option<u32> {
     let tile = map.get_tile(coord).ok()?;
-    if !tile.kind.is_passable() {
+    if !tile.kind.is_passable_with_config(cfg) {
         return None;
     }
-    Some((1i32 + tile.kind.movement_cost_modifier()).max(1) as u32)
+    Some((1i32 + tile.kind.movement_cost_modifier_with_config(cfg)).max(1) as u32)
 }
 
 /// Returns 4-directional in-bounds neighbours of `coord`.
@@ -101,6 +107,7 @@ fn dijkstra(
     map: &GameMap,
     start: MapCoord,
     budget: u32,
+    cfg: &TileConfig,
 ) -> (BTreeMap<MapCoord, u32>, BTreeMap<MapCoord, MapCoord>) {
     let mut costs: BTreeMap<MapCoord, u32> = BTreeMap::new();
     let mut prev: BTreeMap<MapCoord, MapCoord> = BTreeMap::new();
@@ -120,7 +127,7 @@ fn dijkstra(
 
         for maybe_nb in neighbours(map, coord) {
             let Some(nb) = maybe_nb else { continue };
-            let Some(step) = entry_cost(map, nb) else {
+            let Some(step) = entry_cost(map, nb, cfg) else {
                 continue;
             };
             let new_cost = cost + step;
@@ -143,6 +150,7 @@ fn dijkstra(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::TileConfig;
     use crate::map::game_map::GameMap;
     use crate::map::tile::{Tile, Tiles};
 
@@ -163,11 +171,15 @@ mod tests {
         GameMap::new(5, 1, tiles, [0u8; 32]).unwrap()
     }
 
+    fn test_cfg() -> TileConfig {
+        crate::config::tile_config::test_tile_config()
+    }
+
     #[test]
     fn reachable_on_meadow_matches_budget() {
         // 5×1 meadow, start at x=0, budget=3 → can reach x=1,2,3
         let map = flat_map(5, 1, Tiles::Meadow);
-        let mut tiles = reachable_tiles(&map, MapCoord::new(0, 0), 3);
+        let mut tiles = reachable_tiles(&map, MapCoord::new(0, 0), 3, &test_cfg());
         tiles.sort_by_key(|c| c.x);
         assert_eq!(tiles, vec![MapCoord::new(1, 0), MapCoord::new(2, 0), MapCoord::new(3, 0),]);
     }
@@ -176,7 +188,7 @@ mod tests {
     fn road_costs_zero_movement() {
         // road tile costs 0 movement, so budget=1 should reach x=2 (road at x=1)
         let map = mixed_map();
-        let reachable = reachable_tiles(&map, MapCoord::new(0, 0), 1);
+        let reachable = reachable_tiles(&map, MapCoord::new(0, 0), 1, &test_cfg());
         // x=1 (road, cost 0) and x=2 (forest, cost 2 — too expensive with budget=1)
         assert!(reachable.contains(&MapCoord::new(1, 0)));
         assert!(!reachable.contains(&MapCoord::new(2, 0)));
@@ -186,7 +198,7 @@ mod tests {
     fn water_tile_is_passable_with_penalty() {
         let map = mixed_map();
         // Water at x=3 costs 4, x=4 (meadow) costs 1 — total 5 through water.
-        let reachable = reachable_tiles(&map, MapCoord::new(0, 0), 10);
+        let reachable = reachable_tiles(&map, MapCoord::new(0, 0), 10, &test_cfg());
         assert!(reachable.contains(&MapCoord::new(3, 0)));
         assert!(reachable.contains(&MapCoord::new(4, 0)));
         // With budget 3 water is still reachable via road (cost 1) + forest (2)
@@ -195,7 +207,7 @@ mod tests {
         //   x=2 forest cost 1+1=2
         //   x=3 water cost 2+3=5 (too much)
         // So with budget 3: x=1(1), x=2(2). x=3 needs budget >=5.
-        let reachable_small = reachable_tiles(&map, MapCoord::new(0, 0), 3);
+        let reachable_small = reachable_tiles(&map, MapCoord::new(0, 0), 3, &test_cfg());
         assert!(!reachable_small.contains(&MapCoord::new(3, 0)));
         assert!(!reachable_small.contains(&MapCoord::new(4, 0)));
     }
@@ -203,7 +215,8 @@ mod tests {
     #[test]
     fn find_path_returns_correct_sequence() {
         let map = flat_map(5, 1, Tiles::Meadow);
-        let path = find_path(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10).unwrap();
+        let path =
+            find_path(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10, &test_cfg()).unwrap();
         assert_eq!(path.first(), Some(&MapCoord::new(0, 0)));
         assert_eq!(path.last(), Some(&MapCoord::new(3, 0)));
         assert_eq!(path.len(), 4);
@@ -213,7 +226,7 @@ mod tests {
     fn find_path_through_water_is_possible_with_budget() {
         let map = mixed_map();
         // x=4 reachable through water (cost: 1+1+2+4+1 = 9)
-        let path = find_path(&map, MapCoord::new(0, 0), MapCoord::new(4, 0), 10);
+        let path = find_path(&map, MapCoord::new(0, 0), MapCoord::new(4, 0), 10, &test_cfg());
         assert!(path.is_some());
     }
 
@@ -222,13 +235,16 @@ mod tests {
         let map = mixed_map();
         // x=4 costs 6 total (1+0+1+3+1=6 via road shortcut, or 1+1+2+4+1=9).
         // With budget=5 path should not exist.
-        let path = find_path(&map, MapCoord::new(0, 0), MapCoord::new(4, 0), 5);
+        let path = find_path(&map, MapCoord::new(0, 0), MapCoord::new(4, 0), 5, &test_cfg());
         assert!(path.is_none());
     }
 
     #[test]
     fn cost_to_reach_correct() {
         let map = flat_map(4, 1, Tiles::Meadow);
-        assert_eq!(cost_to_reach(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10).unwrap(), 3);
+        assert_eq!(
+            cost_to_reach(&map, MapCoord::new(0, 0), MapCoord::new(3, 0), 10, &test_cfg()).unwrap(),
+            3
+        );
     }
 }

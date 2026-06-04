@@ -10,12 +10,12 @@
 # the app — no code changes needed.
 
 [keyboard]
-up = ["ArrowUp", "KeyW"]
-down = ["ArrowDown", "KeyS"]
-left = ["ArrowLeft", "KeyA"]
-right = ["ArrowRight", "KeyD"]
-confirm = ["Enter", "Space"]
-cancel = ["Escape", "Backspace"]
+up = ["ArrowUp"]
+down = ["ArrowDown"]
+left = ["ArrowLeft"]
+right = ["ArrowRight"]
+confirm = ["Enter"]
+cancel = ["Escape"]
 next_hero = ["Tab"]
 place_rod = ["KeyR"]
 next_turn = ["Space"]

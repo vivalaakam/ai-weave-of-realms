@@ -9,8 +9,8 @@ use std::path::PathBuf;
 
 mod app_host;
 mod atlas;
-mod frontend;
 mod input;
+mod input_event;
 mod screens;
 
 use app_host::AppHost;
@@ -83,16 +83,10 @@ fn main() {
         std::process::exit(1);
     };
 
-    let window_mode = if args.window_mode {
-        WindowMode::Windowed
-    } else {
-        WindowMode::BorderlessFullscreen(MonitorSelection::Current)
-    };
-
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                mode: window_mode,
+                mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
                 title: "weave of realms".into(),
                 ..default()
             }),

@@ -1,7 +1,5 @@
 //! Hero entity — represents a unit on the map belonging to any team.
 
-use alloc::{format, string::String};
-
 use crate::hero_candidate::HeroCandidate;
 use crate::map_coord::MapCoord;
 use crate::rng::SeededRng;
@@ -110,7 +108,7 @@ impl Hero {
             spd: hero.get_spd(),
             mov: hero.get_mov(),
             mov_remaining: hero.get_mov(),
-            position: position.clone(),
+            position: *position,
             team_id,
             rng: seed.update(&format!("hero_{}", id)),
         }

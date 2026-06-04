@@ -17,6 +17,7 @@ tiles:
     passable: true
     buildable: true
     movement_cost: 0
+    terraformable: true
   forest:
     tile_id: 1
     atlas_indexes:
@@ -32,6 +33,7 @@ tiles:
     passable: true
     buildable: false
     movement_cost: 1
+    terraformable: true
   mountain:
     tile_id: 2
     atlas_indexes:
@@ -44,6 +46,7 @@ tiles:
     passable: false
     buildable: false
     movement_cost: 3
+    terraformable: false
   water:
     tile_id: 3
     atlas_indexes:
@@ -56,6 +59,7 @@ tiles:
     passable: true
     buildable: false
     movement_cost: 3
+    terraformable: false
   city:
     tile_id: 4
     atlas_indexes:
@@ -72,6 +76,7 @@ tiles:
     passable: false
     buildable: false
     movement_cost: 0
+    terraformable: false
   city_entrance:
     tile_id: 5
     atlas_indexes:
@@ -85,6 +90,7 @@ tiles:
     passable: true
     buildable: false
     movement_cost: 0
+    terraformable: false
   road:
     tile_id: 6
     atlas_indexes:
@@ -99,6 +105,7 @@ tiles:
     passable: true
     buildable: false
     movement_cost: -1
+    terraformable: true
   river:
     tile_id: 7
     atlas_indexes:
@@ -117,6 +124,7 @@ tiles:
     passable: true
     buildable: false
     movement_cost: 3
+    terraformable: false
   bridge:
     tile_id: 8
     atlas_indexes:
@@ -131,6 +139,7 @@ tiles:
     passable: true
     buildable: false
     movement_cost: 0
+    terraformable: true
   village:
     tile_id: 9
     atlas_indexes:
@@ -146,6 +155,7 @@ tiles:
     buildable: false
     movement_cost: 0
     poi: true
+    terraformable: true
   merchant:
     tile_id: 10
     atlas_indexes:
@@ -161,6 +171,7 @@ tiles:
     buildable: false
     movement_cost: 0
     poi: true
+    terraformable: false
   ruins:
     tile_id: 11
     atlas_indexes:
@@ -176,6 +187,7 @@ tiles:
     buildable: false
     movement_cost: 0
     poi: true
+    terraformable: false
   gold:
     tile_id: 12
     atlas_indexes:
@@ -189,6 +201,7 @@ tiles:
     buildable: false
     movement_cost: 0
     poi: true
+    terraformable: true
   resource:
     tile_id: 13
     atlas_indexes:
@@ -211,3 +224,4 @@ tiles:
     buildable: false
     movement_cost: 0
     poi: true
+    terraformable: true

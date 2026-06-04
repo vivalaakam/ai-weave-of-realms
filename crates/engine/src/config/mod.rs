@@ -2,14 +2,12 @@
 //!
 //! [`TILE_CONFIG`] is a process-wide singleton that holds the [`TileConfig`]
 //! loaded from YAML at start-up. The binary should call [`init_tile_config`]
-//! once; the built-in defaults are used as a fallback.
-
-use alloc::format;
+//! once to load configuration.
 
 use crate::error::EngineError;
 
 pub(crate) mod tile_config;
-pub use tile_config::{default_tile_config, AtlasIndex, TileConfig, TileEntry};
+pub use tile_config::{AtlasIndex, TileConfig, TileEntry, test_tile_config};
 
 pub mod team_config;
 pub use team_config::{TeamCatalog, TeamDef, TeamKind, TeamLogo};
@@ -21,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 /// Static game configuration loaded at application initialization and stored
 /// with each [`crate::game_state::GameState`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GameConfig {
     pub tiles: TileConfig,
     pub teams: TeamCatalog,
@@ -31,16 +29,6 @@ pub struct GameConfig {
 impl GameConfig {
     pub fn new(tiles: TileConfig, teams: TeamCatalog, heroes: HeroCatalog) -> Self {
         Self { tiles, teams, heroes }
-    }
-}
-
-impl Default for GameConfig {
-    fn default() -> Self {
-        Self {
-            tiles: default_tile_config(),
-            teams: TeamCatalog::default(),
-            heroes: HeroCatalog::default(),
-        }
     }
 }
 

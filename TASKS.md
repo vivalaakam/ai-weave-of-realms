@@ -15,6 +15,8 @@ Update status as work progresses.
 | A.2 | Remove Rust workspace warnings               | Codex    | DONE        | `cargo check --workspace`; `cargo test --workspace` |
 | A.3 | Fix hero map atlas tile after refactor       | Codex    | DONE        | `cargo check --workspace`; `cargo test --workspace` |
 | A.4 | Store loaded tile/team/hero config in engine GameState | Codex | IN PROGRESS |       |
+| A.5 | Consolidate bevy-console map view state + remove unwrap/expect | Codex | DONE | MapViewState owns session data; non-test unwrap/expect removed |
+| A.6 | Fix clippy warnings in bevy-console                           | Codex | DONE | needless_borrow + useless_vec |
 
 ## Phase 0 — Foundation
 

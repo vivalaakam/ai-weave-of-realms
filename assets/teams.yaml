@@ -22,6 +22,7 @@
 teams:
   # ── Playable teams (8) — logos: atlas 1078..1085 ──────────────────────────
   red:
+    id: 1
     name: "Red"
     color: "#dc3232"
     kind: playable
@@ -29,6 +30,7 @@ teams:
       tile: 1078
 
   blue:
+    id: 2
     name: "Blue"
     color: "#3250dc"
     kind: playable
@@ -36,6 +38,7 @@ teams:
       tile: 1079
 
   green:
+    id: 3
     name: "Green"
     color: "#32b432"
     kind: playable
@@ -43,6 +46,7 @@ teams:
       tile: 1080
 
   yellow:
+    id: 4
     name: "Yellow"
     color: "#dcc832"
     kind: playable
@@ -50,6 +54,7 @@ teams:
       tile: 1081
 
   purple:
+    id: 5
     name: "Purple"
     color: "#9632dc"
     kind: playable
@@ -57,6 +62,7 @@ teams:
       tile: 1082
 
   orange:
+    id: 6
     name: "Orange"
     color: "#e0781e"
     kind: playable
@@ -64,6 +70,7 @@ teams:
       tile: 1083
 
   teal:
+    id: 7
     name: "Teal"
     color: "#1ec8b4"
     kind: playable
@@ -71,6 +78,7 @@ teams:
       tile: 1084
 
   pink:
+    id: 8
     name: "Pink"
     color: "#e664a0"
     kind: playable
@@ -79,6 +87,7 @@ teams:
 
   # ── AI-only factions (4) — logos: atlas 1086..1089 ────────────────────────
   empire:
+    id: 9
     name: "Empire"
     color: "#c8c8d2"
     kind: faction
@@ -86,6 +95,7 @@ teams:
       tile: 1086
 
   horde:
+    id: 10
     name: "Horde"
     color: "#8c2a1e"
     kind: faction
@@ -93,6 +103,7 @@ teams:
       tile: 1087
 
   covenant:
+    id: 11
     name: "Covenant"
     color: "#2a6e8c"
     kind: faction
@@ -100,6 +111,7 @@ teams:
       tile: 1088
 
   dominion:
+    id: 12
     name: "Dominion"
     color: "#5a3c8c"
     kind: faction
@@ -108,6 +120,7 @@ teams:
 
   # ── Hostile races (against everyone) — bitmap logos ───────────────────────
   goblins:
+    id: 13
     name: "Goblins"
     color: "#5a8a3c"
     kind: race
@@ -115,6 +128,7 @@ teams:
       bitmap: "000003c007e00db00ff01bd81ff80ff005a00db01998318c6186c18302400000"
 
   undead:
+    id: 14
     name: "Undead"
     color: "#9aa0a6"
     kind: race
@@ -122,6 +136,7 @@ teams:
       bitmap: "000007e00ff01ff83c3c37b637b63ffc1ff80db00ff005a003c005a002400000"
 
   beasts:
+    id: 15
     name: "Beasts"
     color: "#a06a32"
     kind: race

@@ -1,9 +1,7 @@
 use crate::map::game_map::{Direction, GameMap};
 use crate::map::tile::Tiles;
 use crate::map_coord::MapCoord;
-use alloc::collections::{BTreeSet, VecDeque};
-use alloc::vec;
-use alloc::vec::Vec;
+use std::collections::{BTreeSet, VecDeque};
 
 pub fn flood_city(map: &GameMap, start: MapCoord) -> Vec<MapCoord> {
     let is_city = map
@@ -28,16 +26,15 @@ pub fn flood_city(map: &GameMap, start: MapCoord) -> Vec<MapCoord> {
         result.push(coord);
 
         for dir in [Direction::North, Direction::East, Direction::South, Direction::West] {
-            if let Some(neighbor) = dir.apply(coord, w, h) {
-                if !visited.contains(&neighbor)
-                    && map
-                        .get_tile(neighbor)
-                        .map(|t| matches!(t.kind, Tiles::City | Tiles::CityEntrance))
-                        .unwrap_or(false)
-                {
-                    visited.insert(neighbor);
-                    queue.push_back(neighbor);
-                }
+            if let Some(neighbor) = dir.apply(coord, w, h)
+                && !visited.contains(&neighbor)
+                && map
+                    .get_tile(neighbor)
+                    .map(|t| matches!(t.kind, Tiles::City | Tiles::CityEntrance))
+                    .unwrap_or(false)
+            {
+                visited.insert(neighbor);
+                queue.push_back(neighbor);
             }
         }
     }

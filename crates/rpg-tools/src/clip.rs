@@ -1,5 +1,5 @@
 use anyhow::{Error as E, Ok, Result};
-use candle_core::{DType, Device, IndexOp, Module, Tensor, D};
+use candle_core::{D, DType, Device, IndexOp, Module, Tensor};
 use candle_transformers::models::{stable_diffusion, t5};
 use std::path::PathBuf;
 use tokenizers::tokenizer::Tokenizer;
