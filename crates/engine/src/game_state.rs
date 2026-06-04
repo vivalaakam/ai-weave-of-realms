@@ -123,6 +123,7 @@ pub struct GameState {
     /// Session RNG, seeded at construction time.
     pub(crate) rng: SeededRng,
     pub(crate) hero_pointer: HeroId,
+    pub(crate) team_pointer: TeamId,
     /// Global round counter. One round = every player-controlled team has taken
     /// exactly one turn. Incremented by [`GameState::advance_turn`].
     /// `#[serde(default)]` keeps older saves loadable (round=0 on load).
@@ -158,7 +159,8 @@ impl GameState {
             active_hero: BTreeMap::new(),
             teams_order: VecDeque::new(),
             rng: SeededRng::new(seed.as_ref()),
-            hero_pointer: 0,
+            hero_pointer: 1,
+            team_pointer: 1,
             round: 0,
             config,
             hero_candidates,
@@ -278,13 +280,17 @@ impl GameState {
     /// Adds a team to the session, auto-assigning `id = teams.len()`.
     ///
     /// Returns the assigned [`TeamId`].
+    #[instrument(level = "info", skip(self))]
     pub fn add_team(&mut self, mut team: Team) -> TeamId {
-        team.reset_id(self.teams.len() as TeamId);
+        let next_team_id = self.team_pointer;
+
+        team.reset_id(next_team_id);
+
         let id = team.get_id();
-        if team.is_player_controlled() {
-            self.teams_order.push_back(id);
-        }
+        self.teams_order.push_back(id);
         self.teams.insert(id, team);
+        info!(team_id = id, "Added team");
+        self.team_pointer += 1;
         id
     }
 
@@ -546,6 +552,7 @@ impl GameState {
     ///
     /// # Returns
     /// The full list of tile coordinates whose ownership was updated.
+    #[instrument(level = "info", skip(self))]
     pub fn set_city_owner(&mut self, coord: MapCoord, team_id: Option<TeamId>) -> Vec<MapCoord> {
         let connected = flood_city(&self.map, coord);
         for &c in &connected {
@@ -554,6 +561,7 @@ impl GameState {
                 None => self.city_owners.remove(&c),
             };
         }
+        info!(coord = ?coord, team_id = ?team_id, tiles_updated = connected.len(), "Set city owner");
         connected
     }
 
@@ -699,6 +707,7 @@ impl GameState {
                     let already_owned =
                         self.city_owners.get(&coord).map(|&o| o == tid).unwrap_or(false);
                     if !already_owned {
+                        info!(coord = ?coord, team_id = tid, "City tile captured");
                         self.city_owners.insert(coord, tid);
                         events.push(TurnEvent::CityOwnerChanged { coord, team_id: Some(tid) });
                         city_newly_captured = true;
@@ -913,7 +922,12 @@ impl GameState {
             .map(|(&coord, _)| coord)
             .collect();
 
-        info!(team_id, city_count = city_tiles.len(), "Expanding city territory");
+        info!(
+            team_id,
+            city_count = city_tiles.len(),
+            state = ?self.city_owners,
+            "Expanding city territory"
+        );
 
         for city in city_tiles {
             let top = self.expansion_candidates(city, team_id);
