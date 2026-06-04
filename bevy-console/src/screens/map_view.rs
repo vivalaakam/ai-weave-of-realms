@@ -1,17 +1,18 @@
 use crate::atlas::{TeamLogoImages, TileAtlas};
-use crate::frontend::input::InputEvent;
-use crate::frontend::map_view::{MapViewApp, MapViewOutcome};
-use crate::frontend::session::GameSession;
 use crate::input::{InputCooldown, UiAction};
+use crate::input_event::InputEvent;
 use crate::screens::AppState;
 use crate::screens::team_setup::LoadedSession;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use engine::MapCoord;
 use engine::config::{TeamLogo, TileConfig};
-use engine::game_state::GameState;
-use engine::map::game_map::{RESOURCE_KIND_COUNT, ResourceKind};
+use engine::error::EngineError;
+use engine::game_state::{GameState, ROD_COST};
+use engine::hero::HeroId;
+use engine::map::game_map::{Direction as MapDir, RESOURCE_KIND_COUNT, ResourceKind};
 use engine::map::tile::Tiles;
+use std::collections::{BTreeSet, VecDeque};
 
 #[derive(Component)]
 pub struct MapViewRoot;
@@ -73,9 +74,92 @@ fn resource_icon_indices(tile_config: &TileConfig) -> [usize; RESOURCE_KIND_COUN
     icons
 }
 
+/// Description of a structure under the cursor.
+pub struct StructureInfo {
+    /// Display name ("City", "Ruins", etc.).
+    pub name: String,
+    /// Min x tile.
+    pub min_x: u32,
+    /// Min y tile.
+    pub min_y: u32,
+    /// Max x tile.
+    pub max_x: u32,
+    /// Max y tile.
+    pub max_y: u32,
+}
+
+impl StructureInfo {
+    /// Width in tiles.
+    pub fn width(&self) -> u32 {
+        self.max_x - self.min_x + 1
+    }
+
+    /// Height in tiles.
+    pub fn height(&self) -> u32 {
+        self.max_y - self.min_y + 1
+    }
+}
+
+/// Result of applying one shared input event to the map view.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MapViewOutcome {
+    /// State did not change.
+    NoChange,
+    /// State changed and should be redrawn.
+    Changed,
+    /// Cursor moved (triggers redraw but not status update).
+    CursorChanged,
+    /// User requested ending current turn.
+    RequestEndTurn,
+    /// User pressed Enter on a structure under the cursor.
+    OpenStructureOverlay { name: String },
+    /// User pressed Enter on a hero standing outside any structure.
+    OpenHeroInfo,
+}
+
+/// Flood-fill a connected city starting from `start`.
+fn flood_city(map: &engine::map::game_map::GameMap, start: MapCoord) -> Vec<MapCoord> {
+    let is_city = map.get_tile(start).map(|t| matches!(t.kind, Tiles::City)).unwrap_or(false);
+
+    if !is_city {
+        return vec![start];
+    }
+
+    let w = map.tile_width();
+    let h = map.tile_height();
+    let mut visited: BTreeSet<MapCoord> = BTreeSet::new();
+    let mut queue: VecDeque<MapCoord> = VecDeque::new();
+    let mut result: Vec<MapCoord> = Vec::new();
+
+    visited.insert(start);
+    queue.push_back(start);
+
+    while let Some(coord) = queue.pop_front() {
+        result.push(coord);
+
+        for dir in [MapDir::North, MapDir::East, MapDir::South, MapDir::West] {
+            if let Some(neighbor) = dir.apply(coord, w, h)
+                && !visited.contains(&neighbor)
+                && map.get_tile(neighbor).map(|t| matches!(t.kind, Tiles::City)).unwrap_or(false)
+            {
+                visited.insert(neighbor);
+                queue.push_back(neighbor);
+            }
+        }
+    }
+
+    result
+}
+
 #[derive(Resource)]
 pub struct MapViewState {
-    pub map_view: Option<Box<MapViewApp>>,
+    pub state: Option<GameState>,
+    pub selected_hero_id: Option<HeroId>,
+    pub view_x: usize,
+    pub view_y: usize,
+    pub cursor_x: isize,
+    pub cursor_y: isize,
+    pub status: Option<String>,
     pub tile_size: f32,
     pub visible_cols: usize,
     pub visible_rows: usize,
@@ -92,16 +176,565 @@ pub struct MapViewState {
 }
 
 impl MapViewState {
+    pub fn load_state(&mut self, state: GameState) {
+        self.state = Some(state);
+        self.selected_hero_id = self.state.as_ref().and_then(select_hero);
+        self.view_x = 0;
+        self.view_y = 0;
+        self.cursor_x = 0;
+        self.cursor_y = 0;
+        self.status = None;
+        self.sync_cursor_to_hero();
+    }
+
+    pub fn has_state(&self) -> bool {
+        self.state.is_some()
+    }
+
     pub fn get_game_state(&self) -> Option<&GameState> {
-        self.map_view.as_ref().map(|mv| mv.session().state())
+        self.state.as_ref()
     }
 
     pub fn get_game_state_mut(&mut self) -> Option<&mut GameState> {
-        self.map_view.as_mut().map(|mv| mv.session_mut().state_mut())
+        self.state.as_mut()
+    }
+
+    pub fn selected_hero_id(&self) -> Option<HeroId> {
+        self.selected_hero_id
+    }
+
+    pub fn set_selected_hero_id(&mut self, id: HeroId) {
+        self.selected_hero_id = Some(id);
+    }
+
+    pub fn selected_hero_position(&self) -> MapCoord {
+        self.selected_hero_id
+            .and_then(|id| self.state.as_ref()?.hero(id).map(|hero| *hero.get_position()))
+            .unwrap_or(MapCoord::new(0, 0))
+    }
+
+    pub fn move_selected_hero(
+        &mut self,
+        direction: engine::Direction,
+    ) -> Result<MapCoord, EngineError> {
+        {
+            let state = self.state.as_mut().ok_or_else(missing_state_error)?;
+            let id = self
+                .selected_hero_id
+                .ok_or_else(|| EngineError::InvalidTiles("no hero selected".to_string()))?;
+            state.move_hero(id, direction)?;
+        }
+        Ok(self.selected_hero_position())
+    }
+
+    pub fn place_resource_rod(&mut self) -> Result<MapCoord, EngineError> {
+        {
+            let state = self.state.as_mut().ok_or_else(missing_state_error)?;
+            let id = self
+                .selected_hero_id
+                .ok_or_else(|| EngineError::InvalidTiles("no hero selected".to_string()))?;
+            state.place_resource_rod(id)?;
+        }
+        Ok(self.selected_hero_position())
+    }
+
+    pub fn cycle_selected_hero(&mut self) {
+        let Some(id) = self.selected_hero_id else {
+            return;
+        };
+        let Some(state) = self.state.as_mut() else {
+            return;
+        };
+        let player_team = state.hero(id).map(|h| h.get_team_id());
+        if let Some(team_id) = player_team
+            && let Some(next) = state.get_next_hero(team_id)
+        {
+            self.selected_hero_id = Some(next);
+            state.set_active_hero(team_id, Some(next));
+        }
+    }
+
+    pub fn end_turn(&mut self) -> Result<String, EngineError> {
+        {
+            let state = self.state.as_mut().ok_or_else(missing_state_error)?;
+            let next_team = state
+                .get_next_active_team()
+                .map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
+            state.on_turn().map_err(|e| EngineError::InvalidTiles(e.to_string()))?;
+            self.selected_hero_id = state.get_next_hero(next_team);
+            if let Some(next) = self.selected_hero_id {
+                state.set_active_hero(next_team, Some(next));
+            }
+        }
+        Ok(self.summary())
+    }
+
+    pub fn summary(&self) -> String {
+        let Some(state) = self.state.as_ref() else {
+            return "No game loaded".to_string();
+        };
+        let Some(id) = self.selected_hero_id else {
+            return "No hero – hire one at a city entrance".to_string();
+        };
+        let Some(hero) = state.hero(id) else {
+            return "?".to_string();
+        };
+        let team_heroes = state.get_team_alive_heroes_ids(hero.get_team_id());
+        let hero_index =
+            team_heroes.iter().position(|&hid| hid == id).unwrap_or(0).saturating_add(1);
+        let total_team = team_heroes.len();
+
+        format!(
+            "{} ({}/{}) MOV:{}/{} HP:{}/{} @{},{}",
+            hero.get_name(),
+            hero_index,
+            total_team,
+            hero.get_mov_remaining(),
+            hero.get_mov(),
+            hero.get_hp(),
+            hero.get_max_hp(),
+            hero.get_position().x,
+            hero.get_position().y
+        )
     }
 
     pub fn cursor_coord(&self) -> Option<MapCoord> {
-        self.map_view.as_ref().and_then(|mv| mv.cursor_coord())
+        if self.cursor_x < 0 || self.cursor_y < 0 {
+            return None;
+        }
+        Some(MapCoord::new(self.cursor_x as u32, self.cursor_y as u32))
+    }
+
+    pub fn status(&self) -> Option<&str> {
+        self.status.as_deref()
+    }
+
+    pub fn set_status(&mut self, status: Option<String>) {
+        self.status = status;
+    }
+
+    pub fn view_x(&self) -> usize {
+        self.view_x
+    }
+
+    pub fn view_y(&self) -> usize {
+        self.view_y
+    }
+
+    pub fn cursor_x(&self) -> isize {
+        self.cursor_x
+    }
+
+    pub fn cursor_y(&self) -> isize {
+        self.cursor_y
+    }
+
+    pub fn sync_cursor_to_hero(&mut self) {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+        if let Some(id) = self.selected_hero_id
+            && let Some(hero) = state.hero(id)
+        {
+            self.cursor_x = hero.get_position().x as isize;
+            self.cursor_y = hero.get_position().y as isize;
+            return;
+        }
+        if let Ok(team_id) = state.get_active_team_id() {
+            if let Some(coord) = state.city_entrance_for_team(*team_id) {
+                self.cursor_x = coord.x as isize;
+                self.cursor_y = coord.y as isize;
+                return;
+            }
+            if let Some(coord) = state.city_owner_for_team(*team_id) {
+                self.cursor_x = coord.x as isize;
+                self.cursor_y = coord.y as isize;
+                return;
+            }
+        }
+        self.cursor_x = 0;
+        self.cursor_y = 0;
+    }
+
+    pub fn clamp_cursor(&mut self) {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+        let w = state.map.tile_width() as isize;
+        let h = state.map.tile_height() as isize;
+        self.cursor_x = self.cursor_x.clamp(0, w - 1);
+        self.cursor_y = self.cursor_y.clamp(0, h - 1);
+    }
+
+    pub fn set_cursor_pos(&mut self, x: u32, y: u32) {
+        self.cursor_x = x as isize;
+        self.cursor_y = y as isize;
+    }
+
+    pub fn set_cursor_from_pointer(
+        &mut self,
+        x: usize,
+        y: usize,
+        visible_cols: usize,
+        visible_rows: usize,
+    ) -> bool {
+        let previous_x = self.cursor_x;
+        let previous_y = self.cursor_y;
+        self.cursor_x = x as isize;
+        self.cursor_y = y as isize;
+        self.clamp_cursor();
+        self.snap_cursor_to_city_center();
+        self.scroll_cursor_into_view(visible_cols, visible_rows);
+        self.cursor_x != previous_x || self.cursor_y != previous_y
+    }
+
+    pub fn scroll_cursor_into_view(&mut self, visible_cols: usize, visible_rows: usize) -> bool {
+        let mut changed = false;
+        while self.cursor_x < self.view_x as isize {
+            self.view_x = self.view_x.saturating_sub(1);
+            changed = true;
+        }
+        while self.cursor_x >= (self.view_x + visible_cols) as isize {
+            self.view_x += 1;
+            changed = true;
+        }
+        while self.cursor_y < self.view_y as isize {
+            self.view_y = self.view_y.saturating_sub(1);
+            changed = true;
+        }
+        while self.cursor_y >= (self.view_y + visible_rows) as isize {
+            self.view_y += 1;
+            changed = true;
+        }
+        changed
+    }
+
+    pub fn find_city_entrance_at_cursor(&self) -> Option<MapCoord> {
+        let state = self.state.as_ref()?;
+        let coord = MapCoord::new(self.cursor_x.max(0) as u32, self.cursor_y.max(0) as u32);
+        let city_tiles = engine::state_flood::flood_city(&state.map, coord);
+        let cursor = MapCoord::new(coord.x, coord.y);
+        city_tiles
+            .iter()
+            .filter(|c| {
+                state.map.get_tile(**c).map(|t| t.kind == Tiles::CityEntrance).unwrap_or(false)
+            })
+            .min_by_key(|c| {
+                (c.x as i32).abs_diff(cursor.x as i32) + (c.y as i32).abs_diff(cursor.y as i32)
+            })
+            .copied()
+    }
+
+    pub fn cursor_structure(&self) -> Option<StructureInfo> {
+        let state = self.state.as_ref()?;
+        let map = &state.map;
+        let x = self.cursor_x as u32;
+        let y = self.cursor_y as u32;
+        let coord = MapCoord::new(x, y);
+        let Ok(tile) = map.get_tile(coord) else {
+            return None;
+        };
+        match tile.kind {
+            Tiles::City => {
+                let tiles = flood_city(map, coord);
+                if tiles.is_empty() {
+                    return None;
+                }
+                let mut min_x = u32::MAX;
+                let mut min_y = u32::MAX;
+                let mut max_x = 0u32;
+                let mut max_y = 0u32;
+                for c in &tiles {
+                    min_x = min_x.min(c.x);
+                    min_y = min_y.min(c.y);
+                    max_x = max_x.max(c.x);
+                    max_y = max_y.max(c.y);
+                }
+                Some(StructureInfo { name: "City".to_string(), min_x, min_y, max_x, max_y })
+            }
+            Tiles::CityEntrance => Some(StructureInfo {
+                name: "City Entrance".to_string(),
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            }),
+            Tiles::Ruins => Some(StructureInfo {
+                name: "Ruins".to_string(),
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            }),
+            Tiles::Merchant => Some(StructureInfo {
+                name: "Merchant".to_string(),
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            }),
+            Tiles::Village => Some(StructureInfo {
+                name: "Village".to_string(),
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            }),
+            Tiles::Gold => Some(StructureInfo {
+                name: "Gold Deposit".to_string(),
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            }),
+            Tiles::Resource => Some(StructureInfo {
+                name: "Resource Node".to_string(),
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            }),
+            _ => None,
+        }
+    }
+
+    pub fn cursor_hero_id(&self) -> Option<HeroId> {
+        let coord = self.cursor_coord()?;
+        self.state.as_ref()?.hero_at(&coord).map(|hero| hero.get_id())
+    }
+
+    pub fn handle_input(
+        &mut self,
+        event: InputEvent,
+        visible_cols: usize,
+        visible_rows: usize,
+    ) -> MapViewOutcome {
+        match event {
+            InputEvent::Up | InputEvent::Down | InputEvent::Left | InputEvent::Right => {
+                self.move_hero_or_report(event, visible_cols, visible_rows)
+            }
+            InputEvent::CursorUp
+            | InputEvent::CursorDown
+            | InputEvent::CursorLeft
+            | InputEvent::CursorRight => {
+                self.move_cursor_and_snap(event, visible_cols, visible_rows)
+            }
+            InputEvent::NextHero => {
+                self.cycle_selected_hero();
+                self.sync_cursor_to_hero();
+                self.center_on_hero(visible_cols, visible_rows);
+                self.status = Some(self.summary());
+                MapViewOutcome::Changed
+            }
+            InputEvent::PlaceRod => match self.place_resource_rod() {
+                Ok(pos) => {
+                    self.cursor_x = pos.x as isize;
+                    self.cursor_y = pos.y as isize;
+                    self.scroll_cursor_into_view(visible_cols, visible_rows);
+                    self.status = Some(format!("Resource rod placed (-{ROD_COST} gold)"));
+                    MapViewOutcome::Changed
+                }
+                Err(e) => {
+                    self.status = Some(e.to_string());
+                    MapViewOutcome::Changed
+                }
+            },
+            InputEvent::PanUp => self.pan_view(InputEvent::Up, visible_cols, visible_rows),
+            InputEvent::PanDown => self.pan_view(InputEvent::Down, visible_cols, visible_rows),
+            InputEvent::PanLeft => self.pan_view(InputEvent::Left, visible_cols, visible_rows),
+            InputEvent::PanRight => self.pan_view(InputEvent::Right, visible_cols, visible_rows),
+            InputEvent::Enter => {
+                if let Some(info) = self.cursor_structure() {
+                    MapViewOutcome::OpenStructureOverlay { name: info.name }
+                } else if self.cursor_hero_id().is_some() {
+                    MapViewOutcome::OpenHeroInfo
+                } else {
+                    MapViewOutcome::NoChange
+                }
+            }
+            InputEvent::NextTurn => MapViewOutcome::RequestEndTurn,
+        }
+    }
+
+    fn pan_view(
+        &mut self,
+        event: InputEvent,
+        visible_cols: usize,
+        visible_rows: usize,
+    ) -> MapViewOutcome {
+        let Some(state) = self.state.as_ref() else {
+            return MapViewOutcome::NoChange;
+        };
+        let map = &state.map;
+        let max_x = map.tile_width().saturating_sub(visible_cols as u32) as usize;
+        let max_y = map.tile_height().saturating_sub(visible_rows as u32) as usize;
+
+        let previous_x = self.view_x;
+        let previous_y = self.view_y;
+        match event {
+            InputEvent::Up => self.view_y = self.view_y.saturating_sub(1),
+            InputEvent::Down => self.view_y = (self.view_y + 1).min(max_y),
+            InputEvent::Left => self.view_x = self.view_x.saturating_sub(1),
+            InputEvent::Right => self.view_x = (self.view_x + 1).min(max_x),
+            _ => {}
+        }
+
+        if self.view_x != previous_x || self.view_y != previous_y {
+            MapViewOutcome::Changed
+        } else {
+            MapViewOutcome::NoChange
+        }
+    }
+
+    fn move_cursor(&mut self, event: InputEvent) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        let w = state.map.tile_width() as isize;
+        let h = state.map.tile_height() as isize;
+        let previous_x = self.cursor_x;
+        let previous_y = self.cursor_y;
+        match event {
+            InputEvent::CursorUp => self.cursor_y = (self.cursor_y - 1).clamp(0, h - 1),
+            InputEvent::CursorDown => self.cursor_y = (self.cursor_y + 1).clamp(0, h - 1),
+            InputEvent::CursorLeft => self.cursor_x = (self.cursor_x - 1).clamp(0, w - 1),
+            InputEvent::CursorRight => self.cursor_x = (self.cursor_x + 1).clamp(0, w - 1),
+            _ => {}
+        }
+        self.cursor_x != previous_x || self.cursor_y != previous_y
+    }
+
+    fn move_cursor_and_snap(
+        &mut self,
+        event: InputEvent,
+        visible_cols: usize,
+        visible_rows: usize,
+    ) -> MapViewOutcome {
+        let moved = if self.cursor_is_city_tile() {
+            self.move_cursor_out_of_city(event)
+        } else {
+            self.move_cursor(event)
+        };
+
+        if !moved {
+            return MapViewOutcome::NoChange;
+        }
+
+        self.snap_cursor_to_city_center();
+        self.scroll_cursor_into_view(visible_cols, visible_rows);
+        MapViewOutcome::CursorChanged
+    }
+
+    fn cursor_is_city_tile(&self) -> bool {
+        if self.cursor_x < 0 || self.cursor_y < 0 {
+            return false;
+        }
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        let coord = MapCoord::new(self.cursor_x as u32, self.cursor_y as u32);
+        state.map.get_tile(coord).map(|tile| matches!(tile.kind, Tiles::City)).unwrap_or(false)
+    }
+
+    fn move_cursor_out_of_city(&mut self, event: InputEvent) -> bool {
+        let (dx, dy) = match event {
+            InputEvent::CursorUp => (0, -1),
+            InputEvent::CursorDown => (0, 1),
+            InputEvent::CursorLeft => (-1, 0),
+            InputEvent::CursorRight => (1, 0),
+            _ => return false,
+        };
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        let map = &state.map;
+        let w = map.tile_width() as isize;
+        let h = map.tile_height() as isize;
+        let mut next_x = self.cursor_x + dx;
+        let mut next_y = self.cursor_y + dy;
+
+        while next_x >= 0 && next_y >= 0 && next_x < w && next_y < h {
+            let coord = MapCoord::new(next_x as u32, next_y as u32);
+            let is_city =
+                map.get_tile(coord).map(|tile| matches!(tile.kind, Tiles::City)).unwrap_or(false);
+            if !is_city {
+                self.cursor_x = next_x;
+                self.cursor_y = next_y;
+                return true;
+            }
+            next_x += dx;
+            next_y += dy;
+        }
+
+        false
+    }
+
+    fn snap_cursor_to_city_center(&mut self) -> bool {
+        let Some(info) = self.cursor_structure() else {
+            return false;
+        };
+        if info.name != "City" {
+            return false;
+        }
+
+        let center_x = ((info.min_x + info.max_x) / 2) as isize;
+        let center_y = ((info.min_y + info.max_y) / 2) as isize;
+        let changed = self.cursor_x != center_x || self.cursor_y != center_y;
+        self.cursor_x = center_x;
+        self.cursor_y = center_y;
+        changed
+    }
+
+    fn move_hero_or_report(
+        &mut self,
+        event: InputEvent,
+        visible_cols: usize,
+        visible_rows: usize,
+    ) -> MapViewOutcome {
+        let direction = match event {
+            InputEvent::Up => Some(engine::Direction::North),
+            InputEvent::Down => Some(engine::Direction::South),
+            InputEvent::Left => Some(engine::Direction::West),
+            InputEvent::Right => Some(engine::Direction::East),
+            _ => None,
+        };
+
+        let Some(direction) = direction else {
+            return MapViewOutcome::NoChange;
+        };
+
+        match self.move_selected_hero(direction) {
+            Ok(_position) => {
+                self.status = Some(self.summary());
+                self.sync_cursor_to_hero();
+                self.center_on_hero(visible_cols, visible_rows);
+                MapViewOutcome::Changed
+            }
+            Err(err) => {
+                self.status = Some(err.to_string());
+                MapViewOutcome::Changed
+            }
+        }
+    }
+
+    pub fn center_on_hero(&mut self, visible_cols: usize, visible_rows: usize) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        let cx = self.cursor_x.max(0) as usize;
+        let cy = self.cursor_y.max(0) as usize;
+
+        let map = &state.map;
+        let max_x = map.tile_width().saturating_sub(visible_cols as u32) as usize;
+        let max_y = map.tile_height().saturating_sub(visible_rows as u32) as usize;
+
+        let target_x = if cx >= visible_cols / 2 { (cx - visible_cols / 2).min(max_x) } else { 0 };
+        let target_y = if cy >= visible_rows / 2 { (cy - visible_rows / 2).min(max_y) } else { 0 };
+
+        let changed = self.view_x != target_x || self.view_y != target_y;
+        self.view_x = target_x;
+        self.view_y = target_y;
+        changed
     }
 }
 
@@ -141,7 +774,13 @@ impl Plugin for MapViewPlugin {
 impl Default for MapViewState {
     fn default() -> Self {
         Self {
-            map_view: None,
+            state: None,
+            selected_hero_id: None,
+            view_x: 0,
+            view_y: 0,
+            cursor_x: 0,
+            cursor_y: 0,
+            status: None,
             tile_size: 32.0,
             visible_cols: 0,
             visible_rows: 0,
@@ -155,6 +794,20 @@ impl Default for MapViewState {
             atlas_layout: Handle::default(),
         }
     }
+}
+
+fn missing_state_error() -> EngineError {
+    EngineError::InvalidTiles("no game state loaded".to_string())
+}
+
+fn select_hero(state: &GameState) -> Option<HeroId> {
+    let active_team = state.get_active_team_id().ok().copied();
+    // Do NOT fall back to AI heroes — if the player team has no heroes,
+    // selected_hero_id stays None and the UI shows "hire hero" prompt.
+    active_team
+        .and_then(|team_id| state.get_active_hero(team_id))
+        .or_else(|| active_team.and_then(|team_id| state.get_next_hero(team_id)))
+        .or_else(|| state.living_heroes(true).first().map(|hero| hero.get_id()))
 }
 
 /// Color used for tiles of a neutral (unowned) city.
@@ -316,7 +969,7 @@ fn enter_map_view_impl(
     window: Single<&Window>,
     atlas: Res<TileAtlas>,
 ) {
-    if map_view_state.map_view.is_none() {
+    if !map_view_state.has_state() {
         let Some(mut loaded) = loaded.take() else {
             return;
         };
@@ -325,9 +978,7 @@ fn enter_map_view_impl(
             return;
         };
 
-        let session = GameSession::from_state(state);
-
-        map_view_state.map_view = Some(Box::new(MapViewApp::new(session, 0, 0, None)));
+        map_view_state.load_state(state);
     }
 
     spawn_map_view_entities(&mut commands, &mut map_view_state, &window, &atlas);
@@ -336,10 +987,8 @@ fn enter_map_view_impl(
     // Must run after spawn_map_view_entities which computes visible_cols/rows.
     let vc = map_view_state.visible_cols;
     let vr = map_view_state.visible_rows;
-    if let Some(ref mut mv) = map_view_state.map_view {
-        mv.sync_cursor_to_hero();
-        mv.center_on_hero(vc, vr);
-    }
+    map_view_state.sync_cursor_to_hero();
+    map_view_state.center_on_hero(vc, vr);
 }
 
 fn spawn_map_view_entities(
@@ -840,11 +1489,9 @@ fn update_map_view(
     let visible_cols = map_view_state.visible_cols;
     let visible_rows = map_view_state.visible_rows;
 
-    let Some(mut map_view_box) = map_view_state.map_view.take() else {
+    if !map_view_state.has_state() {
         return;
-    };
-    let map_view = &mut *map_view_box;
-
+    }
     let actions: Vec<UiAction> = reader.read().copied().collect();
     let frame = |action: UiAction| actions.contains(&action);
 
@@ -866,7 +1513,6 @@ fn update_map_view(
             }
             map_view_state.pause_overlay = false;
             map_view_state.pause_selected = 0;
-            map_view_state.map_view = Some(map_view_box);
             return;
         }
 
@@ -893,7 +1539,6 @@ fn update_map_view(
                     }
                     map_view_state.pause_overlay = false;
                     map_view_state.pause_selected = 0;
-                    map_view_state.map_view = Some(map_view_box);
                     return;
                 }
                 if quit_opt.is_some() {
@@ -903,13 +1548,11 @@ fn update_map_view(
                     map_view_state.pause_overlay = false;
                     map_view_state.pause_selected = 0;
                     next_state.set(AppState::Splash);
-                    map_view_state.map_view = Some(map_view_box);
                     return;
                 }
             }
         }
 
-        map_view_state.map_view = Some(map_view_box);
         return;
     }
 
@@ -931,7 +1574,6 @@ fn update_map_view(
             }
             map_view_state.end_turn_overlay = false;
             map_view_state.end_turn_selected = 0;
-            map_view_state.map_view = Some(map_view_box);
             return;
         }
 
@@ -942,18 +1584,17 @@ fn update_map_view(
             }
             map_view_state.end_turn_overlay = false;
             map_view_state.end_turn_selected = 0;
-            match map_view.session_mut().end_turn() {
+            match map_view_state.end_turn() {
                 Ok(summary) => {
-                    map_view.set_status(Some(summary));
+                    map_view_state.set_status(Some(summary));
                 }
                 Err(e) => {
-                    map_view.set_status(Some(e.to_string()));
+                    map_view_state.set_status(Some(e.to_string()));
                 }
             }
-            map_view.sync_cursor_to_hero();
-            map_view.center_on_hero(visible_cols, visible_rows);
+            map_view_state.sync_cursor_to_hero();
+            map_view_state.center_on_hero(visible_cols, visible_rows);
             map_view_state.needs_initial_draw = true;
-            map_view_state.map_view = Some(map_view_box);
             return;
         }
 
@@ -980,18 +1621,17 @@ fn update_map_view(
                     }
                     map_view_state.end_turn_overlay = false;
                     map_view_state.end_turn_selected = 0;
-                    match map_view.session_mut().end_turn() {
+                    match map_view_state.end_turn() {
                         Ok(summary) => {
-                            map_view.set_status(Some(summary));
+                            map_view_state.set_status(Some(summary));
                         }
                         Err(e) => {
-                            map_view.set_status(Some(e.to_string()));
+                            map_view_state.set_status(Some(e.to_string()));
                         }
                     }
-                    map_view.sync_cursor_to_hero();
-                    map_view.center_on_hero(visible_cols, visible_rows);
+                    map_view_state.sync_cursor_to_hero();
+                    map_view_state.center_on_hero(visible_cols, visible_rows);
                     map_view_state.needs_initial_draw = true;
-                    map_view_state.map_view = Some(map_view_box);
                     return;
                 }
                 if cancel_opt.is_some() {
@@ -1000,13 +1640,11 @@ fn update_map_view(
                     }
                     map_view_state.end_turn_overlay = false;
                     map_view_state.end_turn_selected = 0;
-                    map_view_state.map_view = Some(map_view_box);
                     return;
                 }
             }
         }
 
-        map_view_state.map_view = Some(map_view_box);
         return;
     }
 
@@ -1072,15 +1710,14 @@ fn update_map_view(
         map_view_state.pause_overlay = true;
         map_view_state.pause_selected = 0;
         spawn_pause_overlay(&mut commands);
-        map_view_state.map_view = Some(map_view_box);
         return;
     }
 
     let mut needs_redraw = map_view_state.needs_initial_draw;
     map_view_state.needs_initial_draw = false;
     let mut request_end_turn = false;
-    let view_x = map_view.view_x();
-    let view_y = map_view.view_y();
+    let view_x = map_view_state.view_x();
+    let view_y = map_view_state.view_y();
 
     if let Some(cursor_position) = window.cursor_position() {
         if let Some((col, row)) = mouse_visible_tile(
@@ -1094,7 +1731,12 @@ fn update_map_view(
             let target_y = view_y + row;
             let target_tile = (target_x, target_y);
             if map_view_state.last_mouse_tile != Some(target_tile)
-                && map_view.set_cursor_from_pointer(target_x, target_y, visible_cols, visible_rows)
+                && map_view_state.set_cursor_from_pointer(
+                    target_x,
+                    target_y,
+                    visible_cols,
+                    visible_rows,
+                )
             {
                 needs_redraw = true;
             }
@@ -1116,7 +1758,7 @@ fn update_map_view(
     }
 
     for event in events {
-        let outcome = map_view.handle_input(event, visible_cols, visible_rows);
+        let outcome = map_view_state.handle_input(event, visible_cols, visible_rows);
         match outcome {
             MapViewOutcome::NoChange => {}
             MapViewOutcome::Changed | MapViewOutcome::CursorChanged => {
@@ -1129,21 +1771,19 @@ fn update_map_view(
                 "City" | "City Entrance" => {
                     // Find the nearest CityEntrance tile within the city structure
                     // so we can show the hire-hero screen.
-                    if let Some(entrance) = map_view.find_city_entrance_at_cursor() {
-                        map_view.set_cursor_pos(entrance.x, entrance.y);
+                    if let Some(entrance) = map_view_state.find_city_entrance_at_cursor() {
+                        map_view_state.set_cursor_pos(entrance.x, entrance.y);
                     }
                     next_state.set(AppState::CityEntrance);
-                    map_view_state.map_view = Some(map_view_box);
                     return;
                 }
                 _ => {
-                    map_view.set_status(Some(format!("Structure: {}", name)));
+                    map_view_state.set_status(Some(format!("Structure: {}", name)));
                     needs_redraw = true;
                 }
             },
             MapViewOutcome::OpenHeroInfo => {
                 next_state.set(AppState::Hero);
-                map_view_state.map_view = Some(map_view_box);
                 return;
             }
         }
@@ -1152,40 +1792,39 @@ fn update_map_view(
     if request_end_turn {
         map_view_state.end_turn_overlay = true;
         map_view_state.end_turn_selected = 0;
-        let team_name = {
-            let session = map_view.session();
-            let state = session.state();
-            let team = state.get_active_team().ok();
-            team.map(|t| t.get_name()).unwrap_or_else(|| "Unknown")
-        };
+        let team_name = map_view_state
+            .get_game_state()
+            .and_then(|state| state.get_active_team().ok().map(|t| t.get_name()))
+            .unwrap_or("Unknown");
         spawn_end_turn_overlay(&mut commands, team_name);
-        map_view_state.map_view = Some(map_view_box);
         return;
     }
 
-    let status_text = map_view.status().unwrap_or("").to_string();
+    let status_text = map_view_state.status().unwrap_or("").to_string();
     for mut text in status_query.iter_mut() {
         text.0 = status_text.clone();
     }
 
     if needs_redraw {
-        let session = map_view.session();
-        let map = &session.state().map;
-        let tile_config = session.state().tile_config();
-        let city_centers = owned_city_centers(session.state());
-        let view_x = map_view.view_x();
-        let view_y = map_view.view_y();
-        let cursor_x = map_view.cursor_x();
-        let cursor_y = map_view.cursor_y();
-        let selected_hero_id = session.selected_hero_id();
+        let Some(state) = map_view_state.get_game_state() else {
+            return;
+        };
+        let map = &state.map;
+        let tile_config = state.tile_config();
+        let city_centers = owned_city_centers(state);
+        let view_x = map_view_state.view_x();
+        let view_y = map_view_state.view_y();
+        let cursor_x = map_view_state.cursor_x();
+        let cursor_y = map_view_state.cursor_y();
+        let selected_hero_id = map_view_state.selected_hero_id();
 
         // Refresh the top HUD bar (turn number, score, gold, resources) for the active team.
-        if let Ok(team) = session.state().get_active_team() {
+        if let Ok(team) = state.get_active_team() {
             let turn = team.get_turn();
             let team_id = team.get_id();
             let gold = team.gold();
             let resources = team.resources();
-            let score = session.state().team_score(team_id);
+            let score = state.team_score(team_id);
             for (mut text, field) in top_bar_query.iter_mut() {
                 text.0 = match *field {
                     TopBarField::Turn => format!("T{turn} ⚑{}", score.total()),
@@ -1211,11 +1850,10 @@ fn update_map_view(
             sprite.custom_size = Some(Vec2::splat(map_view_state.tile_size));
 
             // Check for hero on this tile first — hero sprite takes priority.
-            if let Some(hero) = session.state().hero_at(&coord) {
+            if let Some(hero) = state.hero_at(&coord) {
                 let is_selected = selected_hero_id == Some(hero.get_id());
                 // Color: team color for selected, 50% alpha team color for others.
-                let team_color = session
-                    .state()
+                let team_color = state
                     .get_team(hero.get_team_id())
                     .map(|t| {
                         let (r, g, b) = t.get_color();
@@ -1239,9 +1877,8 @@ fn update_map_view(
             let is_resource_point = resource_node.is_some()
                 || tile.map(|t| matches!(t.kind, Tiles::Gold | Tiles::Resource)).unwrap_or(false);
             sprite.color = match (tile, is_resource_point) {
-                (_, true) => match session.state().resource_owner(coord) {
-                    Some(team_id) => session
-                        .state()
+                (_, true) => match state.resource_owner(coord) {
+                    Some(team_id) => state
                         .get_team(team_id)
                         .map(|team| {
                             let (r, g, b) = team.get_color();
@@ -1251,13 +1888,12 @@ fn update_map_view(
                     None => NEUTRAL_RESOURCE_COLOR,
                 },
                 (Some(t), false) if is_city_tile(t.kind) => {
-                    match session.state().city_owner(&coord) {
+                    match state.city_owner(&coord) {
                         // The owned city centre cell is hidden so the team logo
                         // overlay (CityLogoTile layer) takes its place; the rest of
                         // the city keeps its owner-tinted castle tiles.
                         Some(_) if city_centers.contains(&coord) => Color::NONE,
-                        Some(team_id) => session
-                            .state()
+                        Some(team_id) => state
                             .get_team(team_id)
                             .map(|team| {
                                 let (r, g, b) = team.get_color();
@@ -1284,10 +1920,9 @@ fn update_map_view(
             let ty = view_y + tile_pos.row;
             let coord = MapCoord::new(tx as u32, ty as u32);
             sprite.custom_size = Some(Vec2::splat(map_view_state.tile_size));
-            sprite.color = session
-                .state()
+            sprite.color = state
                 .land_owner(coord)
-                .and_then(|team_id| session.state().get_team(team_id))
+                .and_then(|team_id| state.get_team(team_id))
                 .map(|team| {
                     let (r, g, b) = team.get_color();
                     rgb_color(r, g, b).with_alpha(0.35)
@@ -1300,10 +1935,9 @@ fn update_map_view(
             let ty = view_y + tile_pos.row;
             let coord = MapCoord::new(tx as u32, ty as u32);
             sprite.custom_size = Some(Vec2::splat(map_view_state.tile_size));
-            sprite.color = session
-                .state()
+            sprite.color = state
                 .resource_rod_owner(coord)
-                .and_then(|team_id| session.state().get_team(team_id))
+                .and_then(|team_id| state.get_team(team_id))
                 .map(|team| {
                     let (r, g, b) = team.get_color();
                     rgb_color(r, g, b)
@@ -1315,7 +1949,7 @@ fn update_map_view(
         }
 
         // City logo overlay: draw the owning team's logo on its city core tile.
-        let catalog = session.state().team_catalog();
+        let catalog = state.team_catalog();
         for (tile_pos, mut sprite) in layers.logo.iter_mut() {
             let tx = view_x + tile_pos.col;
             let ty = view_y + tile_pos.row;
@@ -1324,16 +1958,14 @@ fn update_map_view(
 
             // Resolve a logo only for a city centre cell with no hero on it.
             let is_center = city_centers.contains(&coord);
-            let resolved = if is_center && session.state().hero_at(&coord).is_none() {
-                session
-                    .state()
-                    .city_owner(&coord)
-                    .and_then(|team_id| session.state().get_team(team_id))
-                    .and_then(|team| {
+            let resolved = if is_center && state.hero_at(&coord).is_none() {
+                state.city_owner(&coord).and_then(|team_id| state.get_team(team_id)).and_then(
+                    |team| {
                         catalog
                             .by_name(team.get_name())
                             .map(|def| (def.get_logo(), team.get_name(), team.get_color()))
-                    })
+                    },
+                )
             } else {
                 None
             };
@@ -1351,7 +1983,7 @@ fn update_map_view(
                             sprite.color = tint;
                         }
                         TeamLogo::Bitmap(_) => {
-                            match layers.logo_images.handle(&mut layers.images, name, &logo) {
+                            match layers.logo_images.handle(&mut layers.images, name, logo) {
                                 Some(handle) => {
                                     sprite.image = handle;
                                     sprite.texture_atlas = None;
@@ -1389,8 +2021,6 @@ fn update_map_view(
             }
         }
     }
-
-    map_view_state.map_view = Some(map_view_box);
 }
 
 #[allow(clippy::too_many_arguments)]

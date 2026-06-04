@@ -45,11 +45,10 @@ pub fn game_map_to_lua_table(lua: &Lua, map: &GameMap) -> mlua::Result<Table> {
     let mut idx: i64 = 1;
     for gy in 0..th {
         for gx in 0..tw {
-            let kind = map
-                .get_tile(MapCoord::new(gx, gy))
-                .expect("map coordinate must be valid")
-                .kind
-                .as_str();
+            let kind = match map.get_tile(MapCoord::new(gx, gy)) {
+                Ok(tile) => tile.kind.as_str(),
+                Err(_) => "out_of_bounds",
+            };
             tiles.set(idx, kind)?;
             idx += 1;
         }

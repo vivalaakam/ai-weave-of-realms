@@ -210,7 +210,7 @@ fn spawn_logo(
             ));
         }
         TeamLogo::Bitmap(_) => {
-            if let Some(handle) = logo_images.handle(images, &team.get_name(), &team.get_logo()) {
+            if let Some(handle) = logo_images.handle(images, team.get_name(), team.get_logo()) {
                 row.spawn((ImageNode { image: handle, color: tint, ..default() }, node));
             } else {
                 row.spawn((node, BackgroundColor(tint)));

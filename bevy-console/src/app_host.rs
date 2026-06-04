@@ -225,7 +225,7 @@ fn generate_map(
 }
 
 fn build_default_state(map: GameMap, seed: &str, config: GameConfig) -> Result<GameState, String> {
-    build_state_with_teams(map, seed, &vec![], config).map_err(|e| e.to_string())
+    build_state_with_teams(map, seed, &[], config).map_err(|e| e.to_string())
 }
 
 /// Configuration for a single team when building a game state.

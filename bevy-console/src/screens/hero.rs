@@ -17,15 +17,15 @@ impl Plugin for HeroPlugin {
 }
 
 fn enter_hero(mut commands: Commands, map_view_state: Res<MapViewState>) {
-    let Some(map_view) = map_view_state.map_view.as_ref() else {
+    let Some(coord) = map_view_state.cursor_coord() else {
         return;
     };
 
-    let Some(coord) = map_view.cursor_coord() else {
+    let Some(state) = map_view_state.get_game_state() else {
         return;
     };
 
-    let Some(hero) = map_view.session().state().hero_at(&coord) else {
+    let Some(hero) = state.hero_at(&coord) else {
         return;
     };
 

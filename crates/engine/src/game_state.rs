@@ -27,8 +27,8 @@ use crate::map::tile::Tiles;
 use crate::map_coord::MapCoord;
 use crate::rng::SeededRng;
 use crate::score::{
-    ScoreBoard, ScoreBreakdown, ScoreEvent, CITY_INITIAL_RADIUS,
-    CITY_TILE_POINTS, HERO_ALIVE_POINTS, LAND_TILE_POINTS, RESOURCE_POINT_POINTS, ROD_POINTS,
+    CITY_INITIAL_RADIUS, CITY_TILE_POINTS, HERO_ALIVE_POINTS, LAND_TILE_POINTS,
+    RESOURCE_POINT_POINTS, ROD_POINTS, ScoreBoard, ScoreBreakdown, ScoreEvent,
 };
 use crate::state_flood::flood_city;
 use crate::team::Team;
@@ -665,8 +665,12 @@ impl GameState {
             return Err(EngineError::NoMovementPoints { hero_id });
         }
 
-        self.heroes.get_mut(&hero_id).unwrap().mov_remaining -= cost;
-        self.heroes.get_mut(&hero_id).unwrap().position = target;
+        let hero = self
+            .heroes
+            .get_mut(&hero_id)
+            .ok_or_else(|| EngineError::OutOfBounds(format!("hero {hero_id} not found")))?;
+        hero.mov_remaining -= cost;
+        hero.position = target;
 
         let mut events = vec![TurnEvent::HeroMoved { hero_id, from: start, to: target }];
 
@@ -756,7 +760,11 @@ impl GameState {
         }
 
         self.resource_rods.insert(rod_coord, team_id);
-        self.heroes.get_mut(&hero_id).unwrap().position = new_position;
+        let hero = self
+            .heroes
+            .get_mut(&hero_id)
+            .ok_or_else(|| EngineError::OutOfBounds(format!("hero {hero_id} not found")))?;
+        hero.position = new_position;
 
         let mut events = vec![
             TurnEvent::ResourceRodPlaced { hero_id, coord: rod_coord, team_id },
@@ -806,8 +814,14 @@ impl GameState {
         // Borrow team_id before removing heroes.
         let attacker_team_id = self.heroes[&attacker_id].team_id;
 
-        let mut attacker = self.heroes.remove(&attacker_id).unwrap();
-        let mut defender = self.heroes.remove(&defender_id).unwrap();
+        let mut attacker = self
+            .heroes
+            .remove(&attacker_id)
+            .ok_or_else(|| EngineError::OutOfBounds(format!("hero {attacker_id} not found")))?;
+        let mut defender = self
+            .heroes
+            .remove(&defender_id)
+            .ok_or_else(|| EngineError::OutOfBounds(format!("hero {defender_id} not found")))?;
         let result = combat::resolve_combat(&mut attacker, &mut defender);
         attacker.take_damage(result.attacker_damage);
         defender.take_damage(result.defender_damage);
@@ -849,7 +863,25 @@ impl GameState {
         // (driven by per-team `turn` mod the expansion intervals) keeps moving.
         // Player teams get their `turn` bumped in `on_turn` at the start of
         // their own turn — calling it here would double-increment.
-        let team_turn_events: Vec<TurnEvent> = Vec::new();
+        let ai_teams: Vec<TeamId> = self
+            .teams
+            .iter()
+            .filter_map(|(&team_id, team)| (!team.is_player_controlled()).then_some(team_id))
+            .collect();
+        let mut team_turn_events = Vec::new();
+        for team_id in &ai_teams {
+            if let Some(team) = self.teams.get_mut(team_id) {
+                team.increment_turn();
+                let turn = team.get_turn();
+                team_turn_events.push(TurnEvent::TeamTurnStarted { team_id: *team_id, turn });
+            }
+        }
+
+        for hero in self.heroes.values_mut().filter(|hero| hero.is_alive()) {
+            if ai_teams.contains(&hero.team_id) {
+                hero.reset_movement();
+            }
+        }
 
         // Advance the global round counter and announce it.
         self.round += 1;
@@ -1213,6 +1245,35 @@ mod tests {
 
     use crate::config::tile_config::test_tile_config;
 
+    const TEAM_YAML: &str = r##"
+teams:
+  red:
+    id: 0
+    name: "Red"
+    color: "#dc3232"
+    kind: playable
+    logo:
+      tile: 1078
+  blue:
+    id: 1
+    name: "Blue"
+    color: "#3232dc"
+    kind: playable
+    logo:
+      tile: 1086
+  enemy:
+    id: 2
+    name: "Enemy"
+    color: "#4a4a4a"
+    kind: race
+    logo:
+      tile: 1090
+"##;
+
+    fn test_team_catalog() -> TeamCatalog {
+        TeamCatalog::from_yaml(TEAM_YAML).unwrap()
+    }
+
     fn meadow_map(w: u32, h: u32) -> GameMap {
         let tiles = vec![Tile { kind: Tiles::Meadow }; (w * h) as usize];
         GameMap::new(w, h, tiles, [0u8; 32]).unwrap()
@@ -1220,12 +1281,17 @@ mod tests {
 
     /// Creates a state with Red (0), Blue (1), Enemy (2) teams pre-registered.
     fn make_state(map: GameMap) -> GameState {
-        let cfg =
-            GameConfig::new(test_tile_config(), TeamCatalog::default(), HeroCatalog::default());
+        let catalog = test_team_catalog();
+        let cfg = GameConfig::new(test_tile_config(), catalog.clone(), HeroCatalog::default());
         let mut state = GameState::new_with_config(map, "test-session", cfg);
-        state.add_team(Team::red());
-        state.add_team(Team::blue());
-        state.add_team(Team::enemy());
+        state.team_pointer = 0;
+        state.hero_pointer = 0;
+        let red = catalog.by_name("Red").unwrap();
+        let blue = catalog.by_name("Blue").unwrap();
+        let enemy = catalog.by_name("Enemy").unwrap();
+        state.add_team(Team::new(0, red, true));
+        state.add_team(Team::new(1, blue, true));
+        state.add_team(Team::new(2, enemy, false));
         state
     }
 
@@ -1545,9 +1611,15 @@ mod tests {
     #[test]
     fn on_turn_each_team_has_own_counter() {
         let map = meadow_map(5, 5);
-        let mut state = GameState::new(map, "test-session");
-        state.add_team(Team::red());
-        state.add_team(Team::new(1, "Blue", (50, 50, 220), true));
+        let catalog = test_team_catalog();
+        let cfg = GameConfig::new(test_tile_config(), catalog.clone(), HeroCatalog::default());
+        let mut state = GameState::new_with_config(map, "test-session", cfg);
+        state.team_pointer = 0;
+        state.hero_pointer = 0;
+        let red = catalog.by_name("Red").unwrap();
+        let blue = catalog.by_name("Blue").unwrap();
+        state.add_team(Team::new(0, red, true));
+        state.add_team(Team::new(1, blue, true));
 
         // Simulate: first team begins turn 1.
         state.on_turn().unwrap();
@@ -1716,14 +1788,10 @@ mod tests {
         let initial_count = state.land_owners.values().filter(|&&o| o == 0).count();
 
         // Manually call expand_city_territory.
-        let mut events = Vec::new();
-        state.expand_city_territory(0, &mut events);
+        state.expand_city_territory(0);
 
         let after_count = state.land_owners.values().filter(|&&o| o == 0).count();
         assert_eq!(after_count, initial_count + 1, "city expansion should add exactly 1 tile");
-        assert!(
-            events.iter().any(|e| matches!(e, TurnEvent::CityTerritoryExpanded { team_id: 0, .. }))
-        );
     }
 
     #[test]
@@ -1737,15 +1805,11 @@ mod tests {
         // Claim the rod tile itself as land.
         state.set_land_owner(rod, Some(0));
 
-        let mut events = Vec::new();
-        state.expand_rod_territory(0, &mut events);
+        state.expand_rod_territory(0);
 
         let owned_count = state.land_owners.values().filter(|&&o| o == 0).count();
         // 1 initial (rod tile) + 1 expansion = 2
         assert_eq!(owned_count, 2, "rod expansion should add exactly 1 tile");
-        assert!(
-            events.iter().any(|e| matches!(e, TurnEvent::RodTerritoryExpanded { team_id: 0, .. }))
-        );
     }
 
     #[test]
@@ -1761,12 +1825,7 @@ mod tests {
 
         // Run 4 expansion rounds.
         for _ in 0..4 {
-            let mut events = Vec::new();
-            state.expand_city_territory(0, &mut events);
-            // At least one event per round (city exists, expansion possible).
-            assert!(
-                !events.is_empty() || state.land_owners.values().filter(|&&o| o == 0).count() >= 13
-            );
+            state.expand_city_territory(0);
         }
 
         // Check that territory extends in multiple directions — not just one.
@@ -1798,8 +1857,7 @@ mod tests {
         // All 9 tiles (radius-2 from center covers entire 3×3) are claimed.
         let count_before = state.land_owners.values().filter(|&&o| o == 0).count();
 
-        let mut events = Vec::new();
-        state.expand_city_territory(0, &mut events);
+        state.expand_city_territory(0);
         let count_after = state.land_owners.values().filter(|&&o| o == 0).count();
 
         assert_eq!(count_before, count_after, "no expansion possible on fully claimed small map");
@@ -1848,8 +1906,7 @@ mod tests {
             // Boundary of (0,0): right is (1,0)=Mountain skip, left/up/down out of bounds
             // Boundary of (2,0): left is (1,0)=Mountain skip, right is (3,0)=Meadow
             // So expansion candidates: (3,0)
-            let mut events = Vec::new();
-            state.expand_city_territory(0, &mut events);
+            state.expand_city_territory(0);
             assert_eq!(
                 state.land_owner(MapCoord::new(1, 0)),
                 None,
@@ -1874,8 +1931,7 @@ mod tests {
             // (2,0) is Water — not terraformable, skipped.
             // Within radius 2: (0,0), (1,0) meadow ✓; (2,0) water ✗
             assert_eq!(state.land_owner(MapCoord::new(2, 0)), None, "water should not be claimed");
-            let mut events = Vec::new();
-            state.expand_city_territory(0, &mut events);
+            state.expand_city_territory(0);
             assert_eq!(state.land_owner(MapCoord::new(2, 0)), None, "water should block expansion");
         }
 
@@ -1889,8 +1945,7 @@ mod tests {
             state.set_city_owner(city, Some(0));
             state.claim_initial_city_territory(0);
             assert_eq!(state.land_owner(MapCoord::new(2, 0)), None, "river should not be claimed");
-            let mut events = Vec::new();
-            state.expand_city_territory(0, &mut events);
+            state.expand_city_territory(0);
             assert_eq!(state.land_owner(MapCoord::new(2, 0)), None, "river should block expansion");
         }
     }

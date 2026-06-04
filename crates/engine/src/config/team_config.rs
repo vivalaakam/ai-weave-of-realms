@@ -224,18 +224,21 @@ mod tests {
     const YAML: &str = r##"
 teams:
   red:
+    id: 0
     name: "Red"
     color: "#dc3232"
     kind: playable
     logo:
       tile: 1078
   empire:
+    id: 1
     name: "Empire"
     color: "#c8c8d2"
     kind: faction
     logo:
       tile: 1086
   goblins:
+    id: 2
     name: "Goblins"
     color: "#5a8a3c"
     kind: race

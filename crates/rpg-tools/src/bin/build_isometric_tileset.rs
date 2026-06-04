@@ -28,9 +28,20 @@ fn main() {
         .init();
 
     let cfg: TileConfig = {
-        let yaml =
-            std::fs::read_to_string("assets/tiles.yaml").expect("failed to read assets/tiles.yaml");
-        serde_yaml::from_str(&yaml).expect("failed to parse assets/tiles.yaml")
+        let yaml = match std::fs::read_to_string("assets/tiles.yaml") {
+            Ok(contents) => contents,
+            Err(err) => {
+                error!(error = %err, "failed to read assets/tiles.yaml");
+                std::process::exit(1);
+            }
+        };
+        match serde_yaml::from_str(&yaml) {
+            Ok(cfg) => cfg,
+            Err(err) => {
+                error!(error = %err, "failed to parse assets/tiles.yaml");
+                std::process::exit(1);
+            }
+        }
     };
 
     let atlas = render_tileset(&cfg);

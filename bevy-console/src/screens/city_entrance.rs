@@ -256,7 +256,9 @@ fn spawn_hero_select(
             if idx >= total {
                 break;
             }
-            let class = classes.get(idx).unwrap();
+            let Some(class) = classes.get(idx) else {
+                continue;
+            };
 
             let stats = format!(
                 "HP:{} ATK:{} DEF:{}\nSPD:{} MOV:{}",
@@ -575,22 +577,15 @@ fn hire_hero_of_class(map_view_state: &mut ResMut<MapViewState>, index: usize) {
 
     match result {
         Ok((new_id, cost)) => {
-            let Some(map_view) = map_view_state.map_view.as_mut() else {
-                return;
-            };
-            map_view.session_mut().set_selected_hero_id(new_id);
-            map_view.sync_cursor_to_hero();
-            map_view.set_status(Some(format!("Hero hired! (-{} gold)", cost)));
+            map_view_state.set_selected_hero_id(new_id);
+            map_view_state.sync_cursor_to_hero();
+            map_view_state.set_status(Some(format!("Hero hired! (-{} gold)", cost)));
         }
         Err(EngineError::InsufficientGold { needed, have }) => {
-            if let Some(map_view) = map_view_state.map_view.as_mut() {
-                map_view.set_status(Some(format!("Not enough gold: need {needed}, have {have}")));
-            }
+            map_view_state.set_status(Some(format!("Not enough gold: need {needed}, have {have}")));
         }
         Err(_) => {
-            if let Some(map_view) = map_view_state.map_view.as_mut() {
-                map_view.set_status(Some("Cannot hire here".to_string()));
-            }
+            map_view_state.set_status(Some("Cannot hire here".to_string()));
         }
     }
 }
