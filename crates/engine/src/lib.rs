@@ -20,7 +20,7 @@
 extern crate alloc;
 
 pub use entrance_info::EntranceInfo;
-pub use game_state::{GameOutcome, WinCondition};
+pub use game_state::{GameOutcome, TurnIncome, TurnStartReport, WinCondition};
 pub use hero_candidate::HeroCandidate;
 pub use map::game_map::Direction;
 pub use map_coord::MapCoord;

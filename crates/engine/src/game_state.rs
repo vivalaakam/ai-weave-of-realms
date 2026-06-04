@@ -22,7 +22,7 @@ use crate::entrance_info::EntranceInfo;
 use crate::error::EngineError;
 use crate::hero::{Hero, HeroId, TeamId};
 use crate::hero_candidate::HeroCandidate;
-use crate::map::game_map::{Direction, GameMap, ResourceKind};
+use crate::map::game_map::{Direction, GameMap, ResourceKind, RESOURCE_KIND_COUNT};
 use crate::map::tile::Tiles;
 use crate::map_coord::MapCoord;
 use crate::rng::SeededRng;
@@ -93,6 +93,21 @@ pub enum TurnEvent {
     CityTerritoryExpanded { team_id: TeamId, new_tile: MapCoord },
     /// Territory around a rod expanded by one tile.
     RodTerritoryExpanded { team_id: TeamId, new_tile: MapCoord },
+}
+
+/// Start-of-turn income, including gold and resources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TurnIncome {
+    pub gold: u32,
+    pub resources: [u32; RESOURCE_KIND_COUNT],
+}
+
+/// Summary of a team starting its turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TurnStartReport {
+    pub team_id: TeamId,
+    pub turn: u32,
+    pub income: TurnIncome,
 }
 
 // ─── GameState ────────────────────────────────────────────────────────────────
@@ -347,6 +362,12 @@ impl GameState {
             .collect::<Vec<HeroId>>()
     }
 
+    /// Returns `true` if the team has no cities and no living heroes.
+    pub fn is_team_defeated(&self, team_id: TeamId) -> bool {
+        self.city_owner_for_team(team_id).is_none()
+            && self.get_team_alive_heroes_ids(team_id).is_empty()
+    }
+
     /// Advances to the next player team.
     ///
     /// Returns `true` if all player teams have acted (full round completed).
@@ -369,7 +390,7 @@ impl GameState {
     /// turn after game initialisation (so that turn 0 → 1 fires the same event as
     /// any subsequent team-turn start).
     #[instrument(level = "info", skip(self))]
-    pub fn on_turn(&mut self) -> Result<TurnEvent, EngineError> {
+    pub fn on_turn(&mut self) -> Result<TurnStartReport, EngineError> {
         let active_team_id = *self.get_active_team_id()?;
         let Some(team) = self.teams.get_mut(&active_team_id) else {
             return Err(EngineError::ActiveTeamNotFound(active_team_id));
@@ -387,13 +408,13 @@ impl GameState {
             hero.reset_movement();
         }
 
-        self.grant_turn_income(team_id);
+        let income = self.grant_turn_income(team_id);
         self.score.record_for(team_id, ScoreEvent::TurnSurvived);
 
         self.expand_city_territory(team_id);
         self.expand_rod_territory(team_id);
 
-        Ok(TurnEvent::TeamTurnStarted { team_id, turn })
+        Ok(TurnStartReport { team_id, turn, income })
     }
 
     /// Grants `team_id` its start-of-turn income: a flat gold stipend plus the
@@ -401,10 +422,10 @@ impl GameState {
     /// add to the matching resource stockpile.
     ///
     /// Call this once when a team's turn begins (after [`on_turn`](Self::on_turn)).
-    fn grant_turn_income(&mut self, team_id: TeamId) -> TurnEvent {
+    fn grant_turn_income(&mut self, team_id: TeamId) -> TurnIncome {
         // Tally mine output first to avoid borrowing the team while reading the map.
         let mut gold = TURN_GOLD_INCOME;
-        let mut resources = [0u32; 4];
+        let mut resources = [0u32; RESOURCE_KIND_COUNT];
         for (&coord, &owner) in self.resource_owners.iter() {
             if owner != team_id {
                 continue;
@@ -429,7 +450,7 @@ impl GameState {
             }
         }
 
-        TurnEvent::TeamIncomeCollected { team_id, gold }
+        TurnIncome { gold, resources }
     }
 
     /// Returns the resource kind produced by the mine at `coord`, falling back
@@ -1496,13 +1517,14 @@ teams:
         state.set_resource_owner(resource_mine, Some(0));
         let before = state.get_team(0).unwrap().gold();
 
-        let event = state.grant_turn_income(0);
+        let income = state.grant_turn_income(0);
 
         let team = state.get_team(0).unwrap();
         assert_eq!(team.gold(), before + TURN_GOLD_INCOME + GOLD_MINE_INCOME);
         // Resource2 maps to treasury slot index 1.
         assert_eq!(team.resource(1), RESOURCE_MINE_INCOME);
-        assert!(matches!(event, TurnEvent::TeamIncomeCollected { team_id: 0, .. }));
+        assert_eq!(income.gold, TURN_GOLD_INCOME + GOLD_MINE_INCOME);
+        assert_eq!(income.resources[1], RESOURCE_MINE_INCOME);
     }
 
     #[test]
@@ -1642,13 +1664,11 @@ teams:
             assert_eq!(team.get_turn(), 0);
         }
         // First team's turn begins.
-        let event = state.on_turn().unwrap();
+        let report = state.on_turn().unwrap();
         let active_id = *state.get_active_team_id().unwrap();
         assert_eq!(state.get_active_team().unwrap().get_turn(), 1);
-        assert!(matches!(
-            event,
-            TurnEvent::TeamTurnStarted { team_id, turn: 1 } if team_id == active_id
-        ));
+        assert_eq!(report.team_id, active_id);
+        assert_eq!(report.turn, 1);
     }
 
     #[test]
