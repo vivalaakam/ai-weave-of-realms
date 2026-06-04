@@ -17,12 +17,10 @@ use image::{ImageBuffer, Rgb};
 use tracing::{error, info, warn};
 
 use engine::MapCoord;
-use engine::config::{HeroCatalog, TileConfig};
+use engine::config::TileConfig;
 use engine::game_state::GameState;
 use engine::map::game_map::GameMap;
 use engine::map::tile::Tiles;
-use engine::spawn;
-use engine::team::Team;
 use mapgen::map_assembler::{MapAssembler, MapConfig};
 use tiled::write_tmx;
 
@@ -139,7 +137,7 @@ fn main() {
         std::process::exit(1);
     }
 
-    if let Err(e) = save_rpgs(&map, &args.seed, &save_path, &cfg) {
+    if let Err(e) = save_rpgs(&map, &args.seed, &save_path) {
         error!(error = %e, path = %save_path.display(), "failed to save RPGS");
         std::process::exit(1);
     }
@@ -333,25 +331,8 @@ fn save_rpgs(
     map: &GameMap,
     seed: &str,
     output: &PathBuf,
-    cfg: &TileConfig,
 ) -> Result<(), engine::error::EngineError> {
-    let spawn = spawn::find_city_entrance_spawns(map, 1, cfg)
-        .first()
-        .copied()
-        .map(Ok)
-        .unwrap_or_else(|| spawn::find_player_spawn(map, cfg))?;
-
-    let mut state = GameState::new(map.clone(), seed);
-    let team_id = state.add_team(Team::new(0, "Red", (220, 50, 50), true));
-    state.add_team(Team::new(1, "Blue", (220, 50, 50), true));
-    state.add_team(Team::new(2, "Enemy", (150, 80, 200), false));
-    let catalog = HeroCatalog::from_yaml(include_str!("../../../../assets/heroes.yaml"))?;
-    let Some(hero) = catalog.heroes().first() else {
-        return Err(engine::error::EngineError::InvalidTiles("no hero candidates".to_string()));
-    };
-    state.add_hero(team_id, hero, &spawn);
-    state.set_city_owner(spawn, Some(team_id));
-    let _ = state.on_turn();
+    let state = GameState::new(map.clone(), seed);
 
     let bytes = state.to_save_bytes()?;
     fs::write(output, bytes).map_err(|err| engine::error::EngineError::Save(err.to_string()))?;

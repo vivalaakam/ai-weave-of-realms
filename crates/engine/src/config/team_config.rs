@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::tile_config::parse_hex_color;
 use crate::error::EngineError;
-
+use crate::hero::TeamId;
 // ─── TeamKind ───────────────────────────────────────────────────────────────
 
 /// What role a catalogue team plays in a game session.
@@ -63,14 +63,37 @@ impl TeamLogo {
 /// A single catalogue team definition.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamDef {
+    pub(crate) id: TeamId,
     /// Display name; also the stable key used to resolve the logo at render time.
-    pub name: String,
+    pub(crate) name: String,
     /// Team colour as an RGB triple.
-    pub color: (u8, u8, u8),
+    pub(crate) color: (u8, u8, u8),
     /// Team role (playable / faction / race).
-    pub kind: TeamKind,
+    pub(crate) kind: TeamKind,
     /// Team logo (atlas tile or bitmap).
-    pub logo: TeamLogo,
+    pub(crate) logo: TeamLogo,
+}
+
+impl TeamDef {
+    pub fn get_id(&self) -> &TeamId {
+        &self.id
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn get_color(&self) -> (u8, u8, u8) {
+        self.color
+    }
+
+    pub fn get_kind(&self) -> &TeamKind {
+        &self.kind
+    }
+
+    pub fn get_logo(&self) -> &TeamLogo {
+        &self.logo
+    }
 }
 
 /// The full team catalogue loaded from YAML, preserving file order.
@@ -127,12 +150,17 @@ impl TeamCatalog {
     pub fn by_name(&self, name: &str) -> Option<&TeamDef> {
         self.teams.iter().find(|t| t.name == name)
     }
+
+    pub fn by_id(&self, id: &TeamId) -> Option<&TeamDef> {
+        self.teams.iter().find(|t| t.id.eq(id))
+    }
 }
 
 // ─── Raw deserialization helpers ──────────────────────────────────────────────
 
 #[derive(Deserialize)]
 struct RawTeamDef {
+    id: TeamId,
     name: String,
     color: String,
     kind: TeamKind,
@@ -169,7 +197,7 @@ impl RawTeamDef {
                 )));
             }
         };
-        Ok(TeamDef { name: self.name, color, kind: self.kind, logo })
+        Ok(TeamDef { id: self.id, name: self.name, color, kind: self.kind, logo })
     }
 }
 

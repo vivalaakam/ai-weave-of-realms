@@ -962,7 +962,7 @@ impl GameState {
     /// included for fairness).
     fn expansion_candidates(&self, center: MapCoord, team_id: TeamId) -> Vec<MapCoord> {
         // 1. Collect all owned tiles for this team → this is the "island".
-        let owned: alloc::collections::BTreeSet<MapCoord> = self
+        let owned: BTreeSet<MapCoord> = self
             .land_owners
             .iter()
             .filter(|(_, owner)| **owner == team_id)

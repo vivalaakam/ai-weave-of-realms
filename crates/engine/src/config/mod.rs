@@ -4,8 +4,6 @@
 //! loaded from YAML at start-up. The binary should call [`init_tile_config`]
 //! once to load configuration.
 
-use alloc::format;
-
 use crate::error::EngineError;
 
 pub(crate) mod tile_config;

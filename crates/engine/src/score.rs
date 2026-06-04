@@ -11,8 +11,8 @@
 //! when cities and rods grow their territory outward.
 
 use core::fmt;
-
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::hero::TeamId;
 use crate::map_coord::MapCoord;
@@ -116,7 +116,7 @@ impl TeamScore {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScoreBoard {
     /// Per-team score entries, keyed by [`TeamId`].
-    teams: alloc::collections::BTreeMap<TeamId, TeamScore>,
+    teams: BTreeMap<TeamId, TeamScore>,
 }
 
 impl ScoreBoard {

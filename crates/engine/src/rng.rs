@@ -213,7 +213,7 @@ pub fn keccak256(seed: &str) -> [u8; 32] {
 /// # Returns
 /// A new 32-byte seed that is deterministically unique for this `(base, context)` pair.
 pub fn derive_seed(base: &[u8; 32], context: &[u8]) -> [u8; 32] {
-    let mut data = alloc::vec![0u8; base.len() + context.len()];
+    let mut data = vec![0u8; base.len() + context.len()];
     data[..base.len()].copy_from_slice(base);
     data[base.len()..].copy_from_slice(context);
     hash_bytes(&data)

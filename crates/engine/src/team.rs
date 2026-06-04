@@ -1,9 +1,9 @@
 //! Team configuration for the game session.
 
-use serde::{Deserialize, Serialize};
-
+use crate::config::{TeamDef, TeamLogo};
 use crate::hero::TeamId;
 use crate::map::game_map::RESOURCE_KIND_COUNT;
+use serde::{Deserialize, Serialize};
 
 /// Gold every team starts the game with, before any turn income.
 pub const STARTING_GOLD: u32 = 100;
@@ -31,24 +31,22 @@ pub struct Team {
     /// Stockpile of the four common resources, indexed by
     /// [`ResourceKind::resource_index`](crate::map::game_map::ResourceKind::resource_index).
     resources: [u32; RESOURCE_KIND_COUNT],
+
+    logo: TeamLogo,
 }
 
 impl Team {
     /// Creates a new team with the given properties.
-    pub fn new(
-        id: TeamId,
-        name: impl Into<String>,
-        color: (u8, u8, u8),
-        player_controlled: bool,
-    ) -> Self {
+    pub fn new(id: TeamId, team: &TeamDef, player_controlled: bool) -> Self {
         Self {
             id,
-            name: name.into(),
-            color,
+            name: team.get_name().to_owned(),
+            color: team.get_color(),
             player_controlled,
             turn: 0,
             gold: STARTING_GOLD,
             resources: [0; RESOURCE_KIND_COUNT],
+            logo: team.get_logo().clone(),
         }
     }
 
@@ -75,6 +73,10 @@ impl Team {
     /// Returns the full resource stockpile.
     pub fn resources(&self) -> [u32; RESOURCE_KIND_COUNT] {
         self.resources
+    }
+
+    pub fn logo(&self) -> &TeamLogo {
+        &self.logo
     }
 
     /// Adds `amount` gold to the treasury.

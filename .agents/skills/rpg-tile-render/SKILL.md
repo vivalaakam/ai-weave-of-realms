@@ -20,7 +20,7 @@ Reference doc: `docs/tile-rendering.md` — **read this first** for the full sys
 
 ## Project constraints
 
-- Crate is `no_std + alloc`. No `std::collections::HashMap` — use `alloc::collections::BTreeMap` or a plain `Vec`.
+- Crate is `no_std + alloc`. No `std::collections::HashMap` — use `BTreeMap` or a plain `Vec`.
 - No `println!` / `eprintln!`. No `anyhow`. No GDScript.
 - Draw target is `embedded-graphics`. All drawing goes through `DrawTarget`.
 - Tile atlas is `assets/tiles.bin` (compile-time `include_bytes!`). Regenerate with:

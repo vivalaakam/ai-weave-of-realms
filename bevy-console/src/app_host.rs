@@ -3,7 +3,7 @@ use std::{fs, io};
 
 use bevy::prelude::Resource;
 use engine::MapCoord;
-use engine::config::GameConfig;
+use engine::config::{GameConfig, TeamDef};
 use engine::error::EngineError;
 use engine::game_state::GameState;
 use engine::map::game_map::GameMap;
@@ -225,18 +225,13 @@ fn generate_map(
 }
 
 fn build_default_state(map: GameMap, seed: &str, config: GameConfig) -> Result<GameState, String> {
-    let team_cfgs = vec![
-        TeamConfig { name: "Red".to_string(), color: (220, 50, 50), player_controlled: true },
-        TeamConfig { name: "Enemy".to_string(), color: (150, 80, 200), player_controlled: false },
-    ];
-    build_state_with_teams(map, seed, &team_cfgs, config).map_err(|e| e.to_string())
+    build_state_with_teams(map, seed, &vec![], config).map_err(|e| e.to_string())
 }
 
 /// Configuration for a single team when building a game state.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TeamConfig {
-    pub name: String,
-    pub color: (u8, u8, u8),
+    pub team_def: TeamDef,
     pub player_controlled: bool,
 }
 
@@ -250,8 +245,7 @@ pub fn build_state_with_teams(
         engine::spawn::find_city_entrance_spawns(&map, teams.len(), &config.tiles);
     let mut state = GameState::new_with_config(map, seed, config);
     for (i, cfg) in teams.iter().enumerate() {
-        let team_id =
-            state.add_team(Team::new(i as u8, &cfg.name, cfg.color, cfg.player_controlled));
+        let team_id = state.add_team(Team::new(i as u8, &cfg.team_def, cfg.player_controlled));
         let hero_pos = entrance_spawns.get(i).copied().unwrap_or_else(|| MapCoord::new(0, 0));
 
         // Player-controlled teams start without a hero — they must hire one at a city entrance.

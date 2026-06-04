@@ -3,7 +3,7 @@ use crate::atlas::{TeamLogoImages, TileAtlas};
 use crate::input::UiAction;
 use crate::screens::AppState;
 use bevy::prelude::*;
-use engine::config::{TeamCatalog, TeamKind, TeamLogo};
+use engine::config::{TeamCatalog, TeamDef, TeamKind, TeamLogo};
 use engine::game_state::GameState;
 use std::collections::HashSet;
 
@@ -63,11 +63,30 @@ impl TeamControl {
 
 #[derive(Clone)]
 pub struct TeamRow {
-    pub name: String,
-    pub color: (u8, u8, u8),
-    pub kind: TeamKind,
-    pub logo: TeamLogo,
+    pub team_def: TeamDef,
     pub control: TeamControl,
+}
+
+impl TeamRow {
+    pub fn is_playable(&self) -> bool {
+        matches!(self.team_def.get_kind(), TeamKind::Playable)
+    }
+
+    pub fn is_faction(&self) -> bool {
+        matches!(self.team_def.get_kind(), TeamKind::Faction)
+    }
+
+    pub fn get_name(&self) -> &str {
+        self.team_def.get_name()
+    }
+
+    pub fn get_color(&self) -> (u8, u8, u8) {
+        self.team_def.get_color()
+    }
+
+    pub fn get_logo(&self) -> &TeamLogo {
+        self.team_def.get_logo()
+    }
 }
 
 #[derive(Resource)]
@@ -100,34 +119,14 @@ impl TeamSetupState {
             // defaults to Human; everything else starts disabled.
             for (i, def) in catalog.playable().into_iter().enumerate() {
                 teams.push(TeamRow {
-                    name: def.name.clone(),
-                    color: def.color,
-                    kind: def.kind,
-                    logo: def.logo.clone(),
+                    team_def: def.clone(),
                     control: if i == 0 { TeamControl::Human } else { TeamControl::Off },
                 });
             }
             for def in catalog.factions() {
-                teams.push(TeamRow {
-                    name: def.name.clone(),
-                    color: def.color,
-                    kind: def.kind,
-                    logo: def.logo.clone(),
-                    control: TeamControl::Off,
-                });
+                teams.push(TeamRow { team_def: def.clone(), control: TeamControl::Off });
             }
             max_races = catalog.races().len();
-        }
-
-        // Fallback when no catalogue is loaded (e.g. tests): one Human team.
-        if teams.is_empty() {
-            teams.push(TeamRow {
-                name: "Red".to_string(),
-                color: (220, 50, 50),
-                kind: TeamKind::Playable,
-                logo: TeamLogo::Tile(0),
-                control: TeamControl::Human,
-            });
         }
 
         Self { selected: 0, teams, num_races: 0, max_races, status: None, needs_rebuild: true }
@@ -193,9 +192,9 @@ fn spawn_logo(
     logo_images: &mut TeamLogoImages,
     images: &mut Assets<Image>,
 ) {
-    let tint = rgb(team.color);
+    let tint = rgb(team.get_color());
     let node = Node { width: Val::Px(22.0), height: Val::Px(22.0), ..default() };
-    match &team.logo {
+    match &team.get_logo() {
         TeamLogo::Tile(index) => {
             row.spawn((
                 ImageNode {
@@ -211,7 +210,7 @@ fn spawn_logo(
             ));
         }
         TeamLogo::Bitmap(_) => {
-            if let Some(handle) = logo_images.handle(images, &team.name, &team.logo) {
+            if let Some(handle) = logo_images.handle(images, &team.get_name(), &team.get_logo()) {
                 row.spawn((ImageNode { image: handle, color: tint, ..default() }, node));
             } else {
                 row.spawn((node, BackgroundColor(tint)));
@@ -318,7 +317,7 @@ fn rebuild_team_setup_ui(
                         // Colour swatch.
                         row.spawn((
                             Node { width: Val::Px(18.0), height: Val::Px(18.0), ..default() },
-                            BackgroundColor(rgb(team.color)),
+                            BackgroundColor(rgb(team.get_color())),
                         ));
                         // Logo.
                         spawn_logo(row, team, &atlas, &mut logo_images, &mut images);
@@ -326,13 +325,13 @@ fn rebuild_team_setup_ui(
                         row.spawn((
                             Node { flex_grow: 1.0, ..default() },
                             children![(
-                                Text::new(team.name.clone()),
+                                Text::new(team.get_name()),
                                 TextFont { font_size: FontSize::Px(16.0), ..default() },
                                 TextColor(TEXT_COLOR),
                             )],
                         ));
                         // Faction tag.
-                        if team.kind == TeamKind::Faction {
+                        if team.is_faction() {
                             row.spawn((
                                 Text::new("Faction"),
                                 TextFont { font_size: FontSize::Px(12.0), ..default() },
@@ -450,7 +449,7 @@ fn update_team_setup(
             changed = true;
         } else if sel >= 1 && sel <= state.team_count() {
             let idx = sel - 1;
-            let playable = state.teams[idx].kind == TeamKind::Playable;
+            let playable = state.teams[idx].is_playable();
             let cur = state.teams[idx].control;
             state.teams[idx].control =
                 if adjust_right { cur.next(playable) } else { cur.prev(playable) };
@@ -468,19 +467,14 @@ fn update_team_setup(
                 .iter()
                 .filter(|t| t.control != TeamControl::Off)
                 .map(|t| TeamConfig {
-                    name: t.name.clone(),
-                    color: t.color,
+                    team_def: t.team_def.clone(),
                     player_controlled: t.control == TeamControl::Human,
                 })
                 .collect();
 
             // Append the chosen number of hostile races (always CPU/non-player).
             for def in host.team_catalog.races().into_iter().take(state.num_races) {
-                team_cfgs.push(TeamConfig {
-                    name: def.name.clone(),
-                    color: def.color,
-                    player_controlled: false,
-                });
+                team_cfgs.push(TeamConfig { team_def: def.clone(), player_controlled: false });
             }
 
             if !team_cfgs.iter().any(|t| t.player_controlled) {

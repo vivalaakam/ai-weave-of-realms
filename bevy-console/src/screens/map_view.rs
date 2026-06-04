@@ -1332,7 +1332,7 @@ fn update_map_view(
                     .and_then(|team| {
                         catalog
                             .by_name(team.get_name())
-                            .map(|def| (def.logo.clone(), team.get_name(), team.get_color()))
+                            .map(|def| (def.get_logo(), team.get_name(), team.get_color()))
                     })
             } else {
                 None

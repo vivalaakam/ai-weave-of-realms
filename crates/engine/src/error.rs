@@ -2,7 +2,6 @@
 
 use crate::hero::{HeroId, TeamId};
 use crate::spawn::SpawnError;
-use alloc::string::String;
 
 /// All errors that can occur within the rpg-engine crate.
 #[derive(Debug, thiserror::Error)]
